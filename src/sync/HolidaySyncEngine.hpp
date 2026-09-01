@@ -6,6 +6,7 @@
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QSet>
+#include <QStringList>
 #include <QTimer>
 #include <QUrl>
 
@@ -51,6 +52,7 @@ private:
   QDateTime m_lastSuccessfulSync;
   QString m_state = QStringLiteral("local-only");
   QString m_lastError;
+  QStringList m_coverageErrors;
   bool m_inFlight = false;
 };
 

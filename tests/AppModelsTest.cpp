@@ -55,6 +55,9 @@ void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {
                   {QStringLiteral("name"), QStringLiteral("Feriado legal")},
                   {QStringLiteral("kind"), QStringLiteral("legal")}},
       QJsonObject{{QStringLiteral("date"), today.toString(Qt::ISODate)},
+                  {QStringLiteral("name"), QStringLiteral("Ponto facultativo")},
+                  {QStringLiteral("kind"), QStringLiteral("optional")}},
+      QJsonObject{{QStringLiteral("date"), today.toString(Qt::ISODate)},
                   {QStringLiteral("name"), QStringLiteral("Data comemorativa")},
                   {QStringLiteral("kind"), QStringLiteral("commemorative")}},
   });
@@ -64,9 +67,10 @@ void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {
     if (model.data(index, waypoint::CalendarModel::DateRole).toString() != today.toString(Qt::ISODate)) {
       continue;
     }
-    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayCountRole).toInt(), 2);
-    QVERIFY(model.data(index, waypoint::CalendarModel::LegalHolidayRole).toBool());
-    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayNamesRole).toStringList().size(), 2);
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayCountRole).toInt(), 3);
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayKindRole).toString(),
+             QStringLiteral("legal"));
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayNamesRole).toStringList().size(), 3);
     return;
   }
   QFAIL("today is absent from the visible calendar grid");

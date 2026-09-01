@@ -70,6 +70,7 @@ void HolidaySyncEngine::syncNow() {
 
   const int currentYear = QDate::currentDate().year();
   m_pendingYears = {currentYear - 1, currentYear, currentYear + 1};
+  m_coverageErrors.clear();
   m_inFlight = true;
   setStatus(QStringLiteral("syncing"));
   uploadPreferences();
@@ -103,6 +104,10 @@ void HolidaySyncEngine::finishPreferencesUpload(QNetworkReply *reply) {
 void HolidaySyncEngine::fetchNextYear() {
   if (m_pendingYears.isEmpty()) {
     m_inFlight = false;
+    if (!m_coverageErrors.isEmpty()) {
+      setStatus(QStringLiteral("partial"), m_coverageErrors.join(QStringLiteral("; ")));
+      return;
+    }
     m_lastSuccessfulSync = QDateTime::currentDateTimeUtc();
     setStatus(QStringLiteral("ready"));
     return;
@@ -138,6 +143,21 @@ void HolidaySyncEngine::finishYearFetch(QNetworkReply *reply, int year) {
         QStringLiteral("Holiday response for %1 is invalid: %2").arg(year).arg(parseError.errorString()));
     return;
   }
+  if (!response.value(QStringLiteral("complete")).toBool(false)) {
+    const QJsonArray coverage = response.value(QStringLiteral("coverage")).toArray();
+    QStringList failedSources;
+    for (const QJsonValue &value : coverage) {
+      const QJsonObject item = value.toObject();
+      if (item.value(QStringLiteral("year")).toInt() == year &&
+          item.value(QStringLiteral("status")).toString() != QStringLiteral("ready")) {
+        failedSources.append(item.value(QStringLiteral("source")).toString());
+      }
+    }
+    const QString detail = failedSources.isEmpty() ? QStringLiteral("missing source coverage")
+                                                   : failedSources.join(QStringLiteral(", "));
+    m_coverageErrors.append(QStringLiteral("%1: %2").arg(year).arg(detail));
+  }
+
 
   QString error;
   if (!m_taskStore->replaceHolidaySnapshot(QDate(year, 1, 1), QDate(year, 12, 31),

@@ -135,15 +135,18 @@ void TaskStoreTest::persistHolidayPreferencesAndMunicipalities() {
   QVERIFY2(error.isEmpty(), qPrintable(error));
   QVERIFY(preferences.value(QStringLiteral("includeNational")).toBool());
   QVERIFY(!preferences.value(QStringLiteral("includeCommemorative")).toBool());
+  QVERIFY(preferences.value(QStringLiteral("includeOptional")).toBool());
 
   preferences.insert(QStringLiteral("stateCode"), QStringLiteral(" sp "));
   preferences.insert(QStringLiteral("cityCode"), QStringLiteral("3550308"));
   preferences.insert(QStringLiteral("includeCommemorative"), true);
+  preferences.insert(QStringLiteral("includeOptional"), false);
   QVERIFY2(store.saveHolidayPreferences(preferences, &error), qPrintable(error));
   const QJsonObject loaded = store.holidayPreferences(&error);
   QCOMPARE(loaded.value(QStringLiteral("stateCode")).toString(), QStringLiteral("SP"));
   QCOMPARE(loaded.value(QStringLiteral("cityCode")).toString(), QStringLiteral("3550308"));
   QVERIFY(loaded.value(QStringLiteral("includeCommemorative")).toBool());
+  QVERIFY(!loaded.value(QStringLiteral("includeOptional")).toBool());
 
   const QJsonArray municipalities{
       QJsonObject{{QStringLiteral("code"), QStringLiteral("3550308")},

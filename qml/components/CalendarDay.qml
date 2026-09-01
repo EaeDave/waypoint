@@ -15,11 +15,19 @@ Rectangle {
     required property int completedCount
     required property int overdueCount
     required property int holidayCount
-    required property bool legalHoliday
+    required property string holidayKind
     required property var holidayNames
     property bool selected: false
 
     signal activated(string selectedDateKey)
+    function holidayColor(kind) {
+        if (kind === "legal")
+            return "#ff7085";
+        if (kind === "optional")
+            return "#9aa7ff";
+        return "#e9b86f";
+    }
+
 
     implicitWidth: 58
     implicitHeight: 48
@@ -32,7 +40,9 @@ Rectangle {
         anchors.centerIn: parent
         anchors.verticalCenterOffset: -3
         text: root.dayNumber
-        color: root.inVisibleMonth ? (root.legalHoliday ? "#ff8395" : (root.weekend ? "#aaa7ad" : "#f2f0f5")) : "#5a585f"
+        color: root.inVisibleMonth ? (root.holidayCount > 0 ? root.holidayColor(root.holidayKind)
+                                                             : (root.weekend ? "#aaa7ad" : "#f2f0f5"))
+                                   : "#5a585f"
         font.family: "monospace"
         font.pixelSize: 13
         font.bold: root.today
@@ -45,7 +55,7 @@ Rectangle {
         width: root.holidayCount > 1 ? 12 : 7
         height: 2
         radius: 1
-        color: root.legalHoliday ? "#ff7085" : "#e9b86f"
+        color: root.holidayColor(root.holidayKind)
     }
 
 

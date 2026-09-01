@@ -48,6 +48,7 @@ Item {
         stateCheck.checked = controller.includeStateHolidays;
         municipalCheck.checked = controller.includeMunicipalHolidays;
         commemorativeCheck.checked = controller.includeCommemorativeDates;
+        optionalCheck.checked = controller.includeOptionalDates;
         if (controller.holidayStateCode !== "")
             controller.loadMunicipalities(controller.holidayStateCode);
         cityField.currentIndex = cityIndex(controller.holidayCityCode);
@@ -364,6 +365,11 @@ Item {
                             enabled: cityField.currentIndex >= 0
                         }
                         CheckBox {
+                            id: optionalCheck
+                            text: "Pontos facultativos"
+                            palette.windowText: "#d8d5de"
+                        }
+                        CheckBox {
                             id: commemorativeCheck
                             text: "Datas comemorativas"
                             palette.windowText: "#d8d5de"
@@ -383,7 +389,8 @@ Item {
                                     nationalCheck.checked,
                                     stateCheck.checked,
                                     municipalCheck.checked,
-                                    commemorativeCheck.checked);
+                                    commemorativeCheck.checked,
+                                    optionalCheck.checked);
                                 root.feedbackError = !saved;
                                 root.feedbackMessage = saved ? "Preferências de feriados salvas." : root.controller.errorMessage;
                             }
@@ -405,9 +412,11 @@ Item {
 
                         Text {
                             text: root.controller.holidaySyncState === "offline" ? "Cache offline" :
+                                  root.controller.holidaySyncState === "partial" ? "Cobertura parcial" :
                                   root.controller.holidaySyncState === "ready" ? "Atualizado" :
                                   root.controller.holidaySyncState === "syncing" ? "Atualizando…" : "Somente local"
                             color: root.controller.holidaySyncState === "offline" ? "#ffb86c" :
+                                   root.controller.holidaySyncState === "partial" ? "#e9b86f" :
                                    root.controller.holidaySyncState === "ready" ? "#81d39a" : "#777780"
                             font.pixelSize: 12
                         }

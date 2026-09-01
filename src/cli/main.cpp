@@ -60,6 +60,8 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("on|off")});
   parser.addOption({QStringLiteral("commemorative"), QStringLiteral("Include commemorative dates (on/off)"),
                     QStringLiteral("on|off")});
+  parser.addOption({QStringLiteral("optional"), QStringLiteral("Include optional dates (on/off)"),
+                    QStringLiteral("on|off")});
   parser.addOption(
       {QStringLiteral("from"), QStringLiteral("Range start in YYYY-MM-DD format"), QStringLiteral("date")});
   parser.addOption(
@@ -202,6 +204,7 @@ int main(int argc, char *argv[]) {
         {QStringLiteral("state-holidays"), QStringLiteral("includeState")},
         {QStringLiteral("municipal"), QStringLiteral("includeMunicipal")},
         {QStringLiteral("commemorative"), QStringLiteral("includeCommemorative")},
+        {QStringLiteral("optional"), QStringLiteral("includeOptional")},
     };
     for (const auto &[option, field] : flags) {
       if (!parser.isSet(option)) {

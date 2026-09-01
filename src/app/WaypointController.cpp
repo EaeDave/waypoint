@@ -60,6 +60,8 @@ bool WaypointController::includeStateHolidays() const { return m_includeStateHol
 bool WaypointController::includeMunicipalHolidays() const { return m_includeMunicipalHolidays; }
 
 bool WaypointController::includeCommemorativeDates() const { return m_includeCommemorativeDates; }
+bool WaypointController::includeOptionalDates() const { return m_includeOptionalDates; }
+
 
 QVariantList WaypointController::municipalities() const { return m_municipalities; }
 
@@ -195,7 +197,8 @@ bool WaypointController::syncNow() {
 }
 bool WaypointController::saveHolidayPreferences(const QString &stateCode, const QString &cityCode,
                                                 bool includeNational, bool includeState,
-                                                bool includeMunicipal, bool includeCommemorative) {
+                                                bool includeMunicipal, bool includeCommemorative,
+                                                bool includeOptional) {
   const QJsonObject preferences{
       {QStringLiteral("stateCode"), stateCode},
       {QStringLiteral("cityCode"), cityCode},
@@ -203,6 +206,7 @@ bool WaypointController::saveHolidayPreferences(const QString &stateCode, const 
       {QStringLiteral("includeState"), includeState},
       {QStringLiteral("includeMunicipal"), includeMunicipal},
       {QStringLiteral("includeCommemorative"), includeCommemorative},
+      {QStringLiteral("includeOptional"), includeOptional},
   };
   QString error;
   if (!m_client.saveHolidayPreferences(preferences, &error)) {
@@ -316,15 +320,18 @@ bool WaypointController::refreshHolidayDetails(QString *errorMessage) {
   const bool includeState = preferences.value(QStringLiteral("includeState")).toBool(true);
   const bool includeMunicipal = preferences.value(QStringLiteral("includeMunicipal")).toBool(true);
   const bool includeCommemorative = preferences.value(QStringLiteral("includeCommemorative")).toBool(false);
+  const bool includeOptional = preferences.value(QStringLiteral("includeOptional")).toBool(true);
   if (stateCode != m_holidayStateCode || cityCode != m_holidayCityCode ||
       includeNational != m_includeNationalHolidays || includeState != m_includeStateHolidays ||
-      includeMunicipal != m_includeMunicipalHolidays || includeCommemorative != m_includeCommemorativeDates) {
+      includeMunicipal != m_includeMunicipalHolidays || includeCommemorative != m_includeCommemorativeDates ||
+      includeOptional != m_includeOptionalDates) {
     m_holidayStateCode = stateCode;
     m_holidayCityCode = cityCode;
     m_includeNationalHolidays = includeNational;
     m_includeStateHolidays = includeState;
     m_includeMunicipalHolidays = includeMunicipal;
     m_includeCommemorativeDates = includeCommemorative;
+    m_includeOptionalDates = includeOptional;
     emit holidayConfigurationChanged();
   }
   if (!stateCode.isEmpty()) {

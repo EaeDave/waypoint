@@ -15,6 +15,16 @@ function parseLocalDate(value) {
 function mondayIndex(jsDay) {
     return (jsDay + 6) % 7
 }
+function holidayPriority(kind) {
+    if (kind === "legal")
+        return 3
+    if (kind === "optional")
+        return 2
+    if (kind === "commemorative")
+        return 1
+    return 0
+}
+
 
 function monthCells(year, month, tasks, holidays) {
     const first = new Date(year, month, 1)
@@ -40,7 +50,11 @@ function monthCells(year, month, tasks, holidays) {
             }
         }
         const holidayEvents = (holidays || []).filter(holiday => holiday.date === key)
-        const legalHoliday = holidayEvents.some(holiday => holiday.kind === "legal")
+        let holidayKind = ""
+        for (const holiday of holidayEvents) {
+            if (holidayPriority(holiday.kind) > holidayPriority(holidayKind))
+                holidayKind = holiday.kind
+        }
         cells.push({
             date: date,
             key: key,
@@ -53,7 +67,7 @@ function monthCells(year, month, tasks, holidays) {
             overdue: overdue,
             holidays: holidayEvents,
             holidayCount: holidayEvents.length,
-            legalHoliday: legalHoliday
+            holidayKind: holidayKind
         })
     }
     return cells

@@ -118,7 +118,8 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "singleton INTEGER PRIMARY KEY CHECK(singleton = 1), state_code TEXT, city_code TEXT, "
                      "include_national INTEGER NOT NULL DEFAULT 1, include_state INTEGER NOT NULL DEFAULT 1, "
                      "include_municipal INTEGER NOT NULL DEFAULT 1, "
-                     "include_commemorative INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 0, "
+                     "include_commemorative INTEGER NOT NULL DEFAULT 0, "
+                     "include_optional INTEGER NOT NULL DEFAULT 1, revision INTEGER NOT NULL DEFAULT 0, "
                      "updated_at TEXT NOT NULL)"),
       QStringLiteral("INSERT OR IGNORE INTO holiday_preferences(singleton, updated_at) "
                      "VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
@@ -132,6 +133,26 @@ bool TaskStore::migrate(QString *errorMessage) {
     QSqlQuery query(m_database);
     if (!query.exec(statement)) {
       setError(errorMessage, queryFailure(QStringLiteral("Cannot migrate Waypoint database"), query));
+      return false;
+    }
+  }
+  QSqlQuery columns(m_database);
+  if (!columns.exec(QStringLiteral("PRAGMA table_info(holiday_preferences)"))) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot inspect holiday preference schema"), columns));
+    return false;
+  }
+  bool hasOptionalPreference = false;
+  while (columns.next()) {
+    hasOptionalPreference =
+        hasOptionalPreference || columns.value(1).toString() == QStringLiteral("include_optional");
+  }
+  if (!hasOptionalPreference) {
+    QSqlQuery addOptionalPreference(m_database);
+    if (!addOptionalPreference.exec(QStringLiteral(
+            "ALTER TABLE holiday_preferences ADD COLUMN include_optional INTEGER NOT NULL DEFAULT 1"))) {
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot add optional holiday preference"), addOptionalPreference));
       return false;
     }
   }
@@ -414,7 +435,8 @@ QJsonObject TaskStore::holidayPreferences(QString *errorMessage) const {
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral(
       "SELECT state_code, city_code, include_national, include_state, include_municipal, "
-      "include_commemorative, revision, updated_at FROM holiday_preferences WHERE singleton = 1"));
+      "include_commemorative, include_optional, revision, updated_at "
+      "FROM holiday_preferences WHERE singleton = 1"));
   if (!query.exec() || !query.next()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot read holiday preferences"), query));
     return {};
@@ -426,8 +448,9 @@ QJsonObject TaskStore::holidayPreferences(QString *errorMessage) const {
       {QStringLiteral("includeState"), query.value(3).toBool()},
       {QStringLiteral("includeMunicipal"), query.value(4).toBool()},
       {QStringLiteral("includeCommemorative"), query.value(5).toBool()},
-      {QStringLiteral("revision"), query.value(6).toLongLong()},
-      {QStringLiteral("updatedAt"), query.value(7).toString()},
+      {QStringLiteral("includeOptional"), query.value(6).toBool()},
+      {QStringLiteral("revision"), query.value(7).toLongLong()},
+      {QStringLiteral("updatedAt"), query.value(8).toString()},
   };
 }
 
@@ -448,14 +471,16 @@ bool TaskStore::saveHolidayPreferences(const QJsonObject &preferences, QString *
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral(
       "UPDATE holiday_preferences SET state_code = ?, city_code = ?, include_national = ?, "
-      "include_state = ?, include_municipal = ?, include_commemorative = ?, revision = revision + 1, "
-      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE singleton = 1"));
+      "include_state = ?, include_municipal = ?, include_commemorative = ?, include_optional = ?, "
+      "revision = revision + 1, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
+      "WHERE singleton = 1"));
   query.addBindValue(stateCode.isEmpty() ? QVariant() : stateCode);
   query.addBindValue(cityCode.isEmpty() ? QVariant() : cityCode);
   query.addBindValue(preferences.value(QStringLiteral("includeNational")).toBool(true));
   query.addBindValue(preferences.value(QStringLiteral("includeState")).toBool(true));
   query.addBindValue(preferences.value(QStringLiteral("includeMunicipal")).toBool(true));
   query.addBindValue(preferences.value(QStringLiteral("includeCommemorative")).toBool(false));
+  query.addBindValue(preferences.value(QStringLiteral("includeOptional")).toBool(true));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot save holiday preferences"), query));
     return false;

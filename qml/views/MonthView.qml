@@ -17,6 +17,47 @@ Item {
         const parts = controller.selectedDateKey.split("-");
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
+    function holidayColor(kind) {
+        if (kind === "legal")
+            return "#ff9aaa";
+        if (kind === "optional")
+            return "#aab4ff";
+        return "#e9c98d";
+    }
+
+    function holidayBackground(kind) {
+        if (kind === "legal")
+            return "#211318";
+        if (kind === "optional")
+            return "#15182a";
+        return "#1c1811";
+    }
+
+    function holidayBorder(kind) {
+        if (kind === "legal")
+            return "#5e2732";
+        if (kind === "optional")
+            return "#343d7a";
+        return "#5a4625";
+    }
+
+    function holidayKindLabel(kind, scope) {
+        let category = "DATA COMEMORATIVA";
+        if (kind === "legal")
+            category = "FERIADO";
+        else if (kind === "optional")
+            category = "PONTO FACULTATIVO";
+
+        let coverage = "";
+        if (scope === "national")
+            coverage = "NACIONAL";
+        else if (scope === "state")
+            coverage = "ESTADUAL";
+        else if (scope === "municipal")
+            coverage = "MUNICIPAL";
+        return coverage === "" ? category : category + " " + coverage;
+    }
+
 
     RowLayout {
         anchors.fill: parent
@@ -161,9 +202,9 @@ Item {
                     Layout.topMargin: 10
                     Layout.preferredHeight: holidayContent.implicitHeight + 18
                     radius: 8
-                    color: modelData.kind === "legal" ? "#211318" : "#1c1811"
+                    color: root.holidayBackground(modelData.kind)
                     border.width: 1
-                    border.color: modelData.kind === "legal" ? "#5e2732" : "#5a4625"
+                    border.color: root.holidayBorder(modelData.kind)
 
                     ColumnLayout {
                         id: holidayContent
@@ -174,11 +215,22 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             text: holidayCard.modelData.name
-                            color: holidayCard.modelData.kind === "legal" ? "#ff9aaa" : "#e9c98d"
+                            color: root.holidayColor(holidayCard.modelData.kind)
                             font.pixelSize: 13
                             font.bold: true
                             elide: Text.ElideRight
                         }
+                        Text {
+                            text: root.holidayKindLabel(holidayCard.modelData.kind,
+                                                        holidayCard.modelData.scope)
+                            color: root.holidayColor(holidayCard.modelData.kind)
+                            opacity: 0.72
+                            font.family: "monospace"
+                            font.pixelSize: 9
+                            font.bold: true
+                            font.letterSpacing: 0.8
+                        }
+
 
                         Text {
                             Layout.fillWidth: true

@@ -32,6 +32,7 @@ class WaypointController final : public QObject {
   Q_PROPERTY(bool includeStateHolidays READ includeStateHolidays NOTIFY holidayConfigurationChanged)
   Q_PROPERTY(bool includeMunicipalHolidays READ includeMunicipalHolidays NOTIFY holidayConfigurationChanged)
   Q_PROPERTY(bool includeCommemorativeDates READ includeCommemorativeDates NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(bool includeOptionalDates READ includeOptionalDates NOTIFY holidayConfigurationChanged)
   Q_PROPERTY(QVariantList municipalities READ municipalities NOTIFY municipalitiesChanged)
   Q_PROPERTY(QVariantList selectedDateHolidays READ selectedDateHolidays NOTIFY selectedDateHolidaysChanged)
   Q_PROPERTY(QString holidaySyncState READ holidaySyncState NOTIFY holidayStatusChanged)
@@ -58,6 +59,7 @@ public:
   [[nodiscard]] bool includeStateHolidays() const;
   [[nodiscard]] bool includeMunicipalHolidays() const;
   [[nodiscard]] bool includeCommemorativeDates() const;
+  [[nodiscard]] bool includeOptionalDates() const;
   [[nodiscard]] QVariantList municipalities() const;
   [[nodiscard]] QVariantList selectedDateHolidays() const;
   [[nodiscard]] QString holidaySyncState() const;
@@ -74,7 +76,7 @@ public:
   Q_INVOKABLE bool syncNow();
   Q_INVOKABLE bool saveHolidayPreferences(const QString &stateCode, const QString &cityCode,
                                           bool includeNational, bool includeState, bool includeMunicipal,
-                                          bool includeCommemorative);
+                                          bool includeCommemorative, bool includeOptional);
   Q_INVOKABLE void loadMunicipalities(const QString &stateCode);
   Q_INVOKABLE bool refreshHolidays();
 
@@ -123,6 +125,7 @@ private:
   bool m_includeStateHolidays = true;
   bool m_includeMunicipalHolidays = true;
   bool m_includeCommemorativeDates = false;
+  bool m_includeOptionalDates = true;
   bool m_syncConfigured = false;
 };
 

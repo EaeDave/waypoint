@@ -27,7 +27,7 @@ public:
     OverdueCountRole,
     WeekNumberRole,
     HolidayCountRole,
-    LegalHolidayRole,
+    HolidayKindRole,
     HolidayNamesRole,
   };
   Q_ENUM(Role)
@@ -60,7 +60,7 @@ private:
     int completedCount = 0;
     int overdueCount = 0;
     int holidayCount = 0;
-    bool legalHoliday = false;
+    QString holidayKind;
     QStringList holidayNames;
   };
 

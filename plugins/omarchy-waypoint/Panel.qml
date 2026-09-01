@@ -36,6 +36,33 @@ Panel {
     readonly property int cellSpacing: Style.space(2)
     readonly property int weekColumnWidth: Style.space(32)
     readonly property int gutterWidth: Style.space(14)
+    readonly property color optionalHolidayColor: "#8ba9ff"
+
+    function holidayColor(kind) {
+        if (kind === "legal")
+            return Color.urgent;
+        if (kind === "optional")
+            return optionalHolidayColor;
+        return Color.accent;
+    }
+
+    function holidayKindLabel(kind, scope) {
+        let category = "DATA COMEMORATIVA";
+        if (kind === "legal")
+            category = "FERIADO";
+        else if (kind === "optional")
+            category = "PONTO FACULTATIVO";
+
+        let coverage = "";
+        if (scope === "national")
+            coverage = "NACIONAL";
+        else if (scope === "state")
+            coverage = "ESTADUAL";
+        else if (scope === "municipal")
+            coverage = "MUNICIPAL";
+        return coverage === "" ? category : category + " " + coverage;
+    }
+
 
     function open() {
         today = new Date();
@@ -296,9 +323,10 @@ Panel {
                                                 anchors.verticalCenterOffset: -2
                                                 text: modelData.day
                                                 color: modelData.inMonth
-                                                    ? (modelData.legalHoliday ? Color.urgent
-                                                      : modelData.weekend ? Qt.darker(root.foreground, 1.45)
-                                                                          : root.foreground)
+                                                    ? (modelData.holidayCount > 0
+                                                       ? root.holidayColor(modelData.holidayKind)
+                                                       : modelData.weekend ? Qt.darker(root.foreground, 1.45)
+                                                                           : root.foreground)
                                                     : Qt.darker(root.foreground, 2.2)
                                                 font.family: root.fontFamily
                                                 font.pixelSize: Style.font.body
@@ -312,7 +340,7 @@ Panel {
                                                 width: modelData.holidayCount > 1 ? Style.space(10) : Style.space(6)
                                                 height: Style.spacing.hairline * 2
                                                 radius: height / 2
-                                                color: modelData.legalHoliday ? Color.urgent : Color.accent
+                                                color: root.holidayColor(modelData.holidayKind)
                                             }
 
 
@@ -439,7 +467,7 @@ Panel {
                                 height: holidayDetails.implicitHeight + Style.space(14)
                                 radius: Style.cornerRadius
                                 color: Style.hoverFillFor(root.foreground,
-                                                         modelData.kind === "legal" ? Color.urgent : Color.accent)
+                                                         root.holidayColor(modelData.kind))
 
                                 Column {
                                     id: holidayDetails
@@ -453,12 +481,22 @@ Panel {
                                     Text {
                                         width: parent.width
                                         text: modelData.name
-                                        color: modelData.kind === "legal" ? Color.urgent : Color.accent
+                                        color: root.holidayColor(modelData.kind)
                                         font.family: root.fontFamily
                                         font.pixelSize: Style.font.body
                                         font.bold: true
                                         elide: Text.ElideRight
                                     }
+                                    Text {
+                                        width: parent.width
+                                        text: root.holidayKindLabel(modelData.kind, modelData.scope)
+                                        color: root.holidayColor(modelData.kind)
+                                        opacity: 0.72
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.bold: true
+                                    }
+
 
                                     Text {
                                         width: parent.width

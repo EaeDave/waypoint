@@ -3,6 +3,23 @@
 #include <QLocale>
 
 namespace waypoint {
+namespace {
+
+int holidayKindPriority(const QString &kind) {
+  if (kind == QStringLiteral("legal")) {
+    return 3;
+  }
+  if (kind == QStringLiteral("optional")) {
+    return 2;
+  }
+  if (kind == QStringLiteral("commemorative")) {
+    return 1;
+  }
+  return 0;
+}
+
+} // namespace
+
 
 CalendarModel::CalendarModel(QObject *parent) : QAbstractListModel(parent) {
   const QDate today = QDate::currentDate();
@@ -38,8 +55,8 @@ QVariant CalendarModel::data(const QModelIndex &index, int role) const {
     return cell.date.weekNumber();
   case HolidayCountRole:
     return cell.holidayCount;
-  case LegalHolidayRole:
-    return cell.legalHoliday;
+  case HolidayKindRole:
+    return cell.holidayKind;
   case HolidayNamesRole:
     return cell.holidayNames;
   default:
@@ -58,7 +75,7 @@ QHash<int, QByteArray> CalendarModel::roleNames() const {
       {CompletedCountRole, "completedCount"},
       {OverdueCountRole, "overdueCount"},
       {HolidayCountRole, "holidayCount"},
-      {LegalHolidayRole, "legalHoliday"},
+      {HolidayKindRole, "holidayKind"},
       {HolidayNamesRole, "holidayNames"},
       {WeekNumberRole, "weekNumber"},
   };
@@ -143,8 +160,10 @@ void CalendarModel::rebuildCells() {
         continue;
       }
       ++cell.holidayCount;
-      cell.legalHoliday =
-          cell.legalHoliday || holiday.value(QStringLiteral("kind")).toString() == QStringLiteral("legal");
+      const QString kind = holiday.value(QStringLiteral("kind")).toString();
+      if (holidayKindPriority(kind) > holidayKindPriority(cell.holidayKind)) {
+        cell.holidayKind = kind;
+      }
       cell.holidayNames.append(holiday.value(QStringLiteral("name")).toString());
     }
     cells.append(cell);
