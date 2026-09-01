@@ -92,12 +92,51 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("tasks"), tasks}};
   }
+  if (command == QStringLiteral("occurrences")) {
+    const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
+    const QDate to = QDate::fromString(request.value(QStringLiteral("to")).toString(), Qt::ISODate);
+    const QList<TaskOccurrence> records = m_taskStore->listOccurrences(from, to, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    QJsonArray occurrences;
+    for (const TaskOccurrence &occurrence : records) {
+      occurrences.append(occurrence.toJson());
+    }
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("from"), from.toString(Qt::ISODate)},
+            {QStringLiteral("to"), to.toString(Qt::ISODate)},
+            {QStringLiteral("occurrences"), occurrences}};
+  }
+  if (command == QStringLiteral("today")) {
+    const QString requestedDate = request.value(QStringLiteral("date")).toString();
+    const QDate today =
+        requestedDate.isEmpty() ? QDate::currentDate() : QDate::fromString(requestedDate, Qt::ISODate);
+    const QList<TaskOccurrence> records = m_taskStore->listActionableOccurrences(today, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    QJsonArray occurrences;
+    for (const TaskOccurrence &occurrence : records) {
+      occurrences.append(occurrence.toJson());
+    }
+    const OccurrenceSummary summary = summarizeOccurrences(records, today);
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("date"), today.toString(Qt::ISODate)},
+            {QStringLiteral("pendingCount"), summary.pendingToday},
+            {QStringLiteral("overdueCount"), summary.overdue},
+            {QStringLiteral("occurrences"), occurrences}};
+  }
   if (command == QStringLiteral("add")) {
     TaskRecord task;
     const QString title = request.value(QStringLiteral("title")).toString();
     const QDate date =
         QDate::fromString(request.value(QStringLiteral("scheduledDate")).toString(), Qt::ISODate);
-    if (!m_taskStore->createTask(title, date, &task, &error)) {
+    const QTime time =
+        QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+    const RecurrenceRule recurrence =
+        RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
+    if (!m_taskStore->createTask(title, date, time, recurrence, &task, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("task"), task.toJson()}};
@@ -105,7 +144,31 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   if (command == QStringLiteral("complete")) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const bool completed = request.value(QStringLiteral("completed")).toBool(true);
-    if (!m_taskStore->setTaskCompleted(taskId, completed, &error)) {
+    const QString occurrenceDateKey = request.value(QStringLiteral("occurrenceDate")).toString();
+    const bool succeeded =
+        occurrenceDateKey.isEmpty()
+            ? m_taskStore->setTaskCompleted(taskId, completed, &error)
+            : m_taskStore->setOccurrenceCompleted(taskId, QDate::fromString(occurrenceDateKey, Qt::ISODate),
+                                                  completed, &error);
+    if (!succeeded) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("delete-occurrence")) {
+    const QString taskId = request.value(QStringLiteral("taskId")).toString();
+    const QDate occurrenceDate =
+        QDate::fromString(request.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
+    const QString scopeName = request.value(QStringLiteral("scope")).toString();
+    RecurrenceEditScope scope = RecurrenceEditScope::Occurrence;
+    if (scopeName == QStringLiteral("following")) {
+      scope = RecurrenceEditScope::Following;
+    } else if (scopeName == QStringLiteral("series")) {
+      scope = RecurrenceEditScope::Series;
+    } else if (scopeName != QStringLiteral("occurrence")) {
+      return protocol::errorResponse(QStringLiteral("Invalid recurrence edit scope"));
+    }
+    if (!m_taskStore->deleteOccurrence(taskId, occurrenceDate, scope, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};
@@ -114,7 +177,9 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const QDate date =
         QDate::fromString(request.value(QStringLiteral("scheduledDate")).toString(), Qt::ISODate);
-    if (!m_taskStore->rescheduleTask(taskId, date, &error)) {
+    const QTime time =
+        QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+    if (!m_taskStore->rescheduleTask(taskId, date, time, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};

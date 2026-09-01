@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/TaskRecord.hpp"
+#include "core/Recurrence.hpp"
 
 #include <QAbstractListModel>
 #include <QDate>
@@ -41,7 +41,7 @@ public:
   [[nodiscard]] int visibleYear() const;
   [[nodiscard]] int visibleMonth() const;
   [[nodiscard]] QString monthLabel() const;
-  void setSourceTasks(const QList<TaskRecord> &tasks);
+  void setSourceOccurrences(const QList<TaskOccurrence> &occurrences);
   void setSourceHolidays(const QJsonArray &holidays);
 
   Q_INVOKABLE void showPreviousMonth();
@@ -68,7 +68,7 @@ private:
   void rebuildCells();
 
   QDate m_visibleMonth;
-  QList<TaskRecord> m_sourceTasks;
+  QList<TaskOccurrence> m_sourceOccurrences;
   QJsonArray m_sourceHolidays;
   QList<CalendarCell> m_cells;
 };

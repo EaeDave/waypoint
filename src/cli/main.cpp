@@ -45,6 +45,8 @@ int main(int argc, char *argv[]) {
   parser.addOption({{QStringLiteral("d"), QStringLiteral("date")},
                     QStringLiteral("Scheduled date in YYYY-MM-DD format"),
                     QStringLiteral("date")});
+  parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
+                    QStringLiteral("time")});
   parser.addOption({QStringLiteral("endpoint"), QStringLiteral("Waypoint synchronization server URL"),
                     QStringLiteral("url")});
   parser.addOption({QStringLiteral("token"), QStringLiteral("Waypoint synchronization access token"),
@@ -84,21 +86,37 @@ int main(int argc, char *argv[]) {
     return 0;
   }
   if (command == QStringLiteral("snapshot")) {
-    const QList<waypoint::TaskRecord> tasks = client.listTasks(&error);
-    if (!error.isEmpty()) {
-      return printError(error);
+    QJsonObject todaySummary = client.request({{QStringLiteral("command"), QStringLiteral("today")}}, &error);
+    if (!error.isEmpty() || !todaySummary.value(QStringLiteral("ok")).toBool()) {
+      return printError(error.isEmpty() ? todaySummary.value(QStringLiteral("error")).toString() : error);
     }
-    QJsonArray values;
-    for (const waypoint::TaskRecord &task : tasks) {
-      values.append(task.toJson());
+    todaySummary.remove(QStringLiteral("ok"));
+
+    const bool hasRange = parser.isSet(QStringLiteral("from")) || parser.isSet(QStringLiteral("to"));
+    const QDate requestedFrom = QDate::fromString(parser.value(QStringLiteral("from")), Qt::ISODate);
+    const QDate requestedTo = QDate::fromString(parser.value(QStringLiteral("to")), Qt::ISODate);
+    if (hasRange && (!requestedFrom.isValid() || !requestedTo.isValid() || requestedFrom > requestedTo)) {
+      return printError(QStringLiteral("snapshot range requires ordered --from and --to dates"));
     }
+    QJsonArray occurrences;
+    if (hasRange) {
+      for (const waypoint::TaskOccurrence &occurrence :
+           client.listOccurrences(requestedFrom, requestedTo, &error)) {
+        occurrences.append(occurrence.toJson());
+      }
+      if (!error.isEmpty()) {
+        return printError(error);
+      }
+    }
+
     const QJsonObject sync = client.syncStatus(&error);
     if (!error.isEmpty()) {
       return printError(error);
     }
     const QDate today = QDate::currentDate();
-    const QJsonObject holidayData =
-        client.holidays(QDate(today.year() - 1, 1, 1), QDate(today.year() + 1, 12, 31), &error);
+    const QDate holidayFrom = hasRange ? requestedFrom : QDate(today.year() - 1, 1, 1);
+    const QDate holidayTo = hasRange ? requestedTo : QDate(today.year() + 1, 12, 31);
+    const QJsonObject holidayData = client.holidays(holidayFrom, holidayTo, &error);
     if (!error.isEmpty()) {
       return printError(error);
     }
@@ -111,7 +129,8 @@ int main(int argc, char *argv[]) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true},
-               {QStringLiteral("tasks"), values},
+               {QStringLiteral("today"), todaySummary},
+               {QStringLiteral("occurrences"), occurrences},
                {QStringLiteral("sync"), sync},
                {QStringLiteral("holidays"), holidayData.value(QStringLiteral("holidays"))},
                {QStringLiteral("holidayCoverage"), holidayData.value(QStringLiteral("coverage"))},
@@ -121,10 +140,14 @@ int main(int argc, char *argv[]) {
   }
   if (command == QStringLiteral("add")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+    const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
     if (!date.isValid()) {
       return printError(QStringLiteral("add requires --date YYYY-MM-DD"));
     }
-    if (!client.addTask(parser.value(QStringLiteral("title")), date, &error)) {
+    if (parser.isSet(QStringLiteral("time")) && !time.isValid()) {
+      return printError(QStringLiteral("--time requires HH:mm"));
+    }
+    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {}, &error)) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});
@@ -260,16 +283,19 @@ int main(int argc, char *argv[]) {
 
   const QString taskId = positional.at(1);
   bool succeeded = false;
-  if (command == QStringLiteral("complete")) {
-    succeeded = client.setTaskCompleted(taskId, true, &error);
-  } else if (command == QStringLiteral("reopen")) {
-    succeeded = client.setTaskCompleted(taskId, false, &error);
+  if (command == QStringLiteral("complete") || command == QStringLiteral("reopen")) {
+    const bool completed = command == QStringLiteral("complete");
+    const QDate occurrenceDate = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+    succeeded = occurrenceDate.isValid()
+                    ? client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)
+                    : client.setTaskCompleted(taskId, completed, &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
-    if (!date.isValid()) {
-      return printError(QStringLiteral("reschedule requires --date YYYY-MM-DD"));
+    const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
+    if (!date.isValid() || !time.isValid()) {
+      return printError(QStringLiteral("reschedule requires --date YYYY-MM-DD and --time HH:mm"));
     }
-    succeeded = client.rescheduleTask(taskId, date, &error);
+    succeeded = client.rescheduleTask(taskId, date, time, &error);
   } else if (command == QStringLiteral("delete")) {
     succeeded = client.deleteTask(taskId, &error);
   } else {

@@ -67,9 +67,16 @@ public:
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void refresh();
-  Q_INVOKABLE bool addTask(const QString &title, const QString &scheduledDateKey);
-  Q_INVOKABLE bool setTaskCompleted(const QString &taskId, bool completed);
-  Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey);
+  Q_INVOKABLE bool addTask(const QString &title, const QString &scheduledDateKey,
+                           const QString &scheduledTimeKey, const QString &frequency, int interval,
+                           const QVariantList &weekdays, const QString &endMode, const QString &untilDateKey,
+                           int occurrenceCount);
+  Q_INVOKABLE bool setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
+                                          bool completed);
+  Q_INVOKABLE bool deleteOccurrence(const QString &taskId, const QString &occurrenceDateKey,
+                                    const QString &scope);
+  Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey,
+                                  const QString &scheduledTimeKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();
@@ -93,7 +100,8 @@ signals:
 
 private:
   void updateConnection(bool online, const QString &errorMessage = {});
-  void publishTasks(const QList<TaskRecord> &tasks);
+  void publishOccurrences(const QList<TaskOccurrence> &todayOccurrences,
+                          const QList<TaskOccurrence> &rangeOccurrences);
   void startDaemonOnce();
   bool refreshSyncDetails(QString *errorMessage);
   bool refreshHolidayDetails(QString *errorMessage);

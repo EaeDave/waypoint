@@ -10,20 +10,22 @@ private slots:
   void aggregateTaskMarkersByCalendarDate();
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
+  void sortTasksByFloatingLocalTime();
 };
 
 namespace {
 
-waypoint::TaskRecord task(QString id, const QDate &date, bool completed) {
-  waypoint::TaskRecord record;
-  record.id = std::move(id);
-  record.title = QStringLiteral("Task %1").arg(record.id);
-  record.scheduledDate = date;
-  record.completed = completed;
-  record.createdAt = QDateTime::currentDateTimeUtc();
-  record.updatedAt = record.createdAt;
-  record.version = 1;
-  return record;
+waypoint::TaskOccurrence occurrence(QString id, const QDate &date, bool completed, bool recurring = false,
+                                    const QTime &scheduledTime = QTime(9, 0)) {
+  waypoint::TaskOccurrence value;
+  value.taskId = std::move(id);
+  value.title = QStringLiteral("Task %1").arg(value.taskId);
+  value.occurrenceDate = date;
+  value.scheduledTime = scheduledTime;
+  value.completed = completed;
+  value.recurring = recurring;
+  value.recurrenceLabel = recurring ? QStringLiteral("DIÁRIA") : QString();
+  return value;
 }
 
 } // namespace
@@ -31,8 +33,8 @@ waypoint::TaskRecord task(QString id, const QDate &date, bool completed) {
 void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
   waypoint::CalendarModel model;
   const QDate today = QDate::currentDate();
-  model.setSourceTasks(
-      {task(QStringLiteral("pending"), today, false), task(QStringLiteral("done"), today, true)});
+  model.setSourceOccurrences(
+      {occurrence(QStringLiteral("pending"), today, false), occurrence(QStringLiteral("done"), today, true)});
 
   bool foundToday = false;
   for (int row = 0; row < model.rowCount(); ++row) {
@@ -68,8 +70,7 @@ void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {
       continue;
     }
     QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayCountRole).toInt(), 3);
-    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayKindRole).toString(),
-             QStringLiteral("legal"));
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayKindRole).toString(), QStringLiteral("legal"));
     QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayNamesRole).toStringList().size(), 3);
     return;
   }
@@ -79,9 +80,9 @@ void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {
 void AppModelsTest::includeOverdueTasksOnlyInTodayView() {
   const QDate today = QDate::currentDate();
   waypoint::TaskListModel model;
-  model.setSourceTasks({task(QStringLiteral("overdue"), today.addDays(-1), false),
-                        task(QStringLiteral("today"), today, false),
-                        task(QStringLiteral("tomorrow"), today.addDays(1), false)});
+  model.setSourceOccurrences({occurrence(QStringLiteral("overdue"), today.addDays(-1), false),
+                              occurrence(QStringLiteral("today"), today, false, true),
+                              occurrence(QStringLiteral("tomorrow"), today.addDays(1), false)});
 
   model.setFocusDate(today);
   QCOMPARE(model.rowCount(), 2);
@@ -91,6 +92,22 @@ void AppModelsTest::includeOverdueTasksOnlyInTodayView() {
   QCOMPARE(model.rowCount(), 1);
   QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
            QStringLiteral("tomorrow"));
+  model.setFocusDate(today);
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::RecurringRole).toBool(), true);
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::RecurrenceLabelRole).toString(),
+           QStringLiteral("DIÁRIA"));
+}
+void AppModelsTest::sortTasksByFloatingLocalTime() {
+  const QDate today = QDate::currentDate();
+  waypoint::TaskListModel model;
+  model.setSourceOccurrences({occurrence(QStringLiteral("late"), today, false, false, QTime(17, 45)),
+                              occurrence(QStringLiteral("early"), today, false, false, QTime(8, 15))});
+
+  QCOMPARE(model.rowCount(), 2);
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("early"));
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::ScheduledTimeRole).toString(),
+           QStringLiteral("08:15"));
 }
 
 QTEST_MAIN(AppModelsTest)

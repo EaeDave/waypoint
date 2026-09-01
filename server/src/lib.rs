@@ -7,7 +7,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
@@ -69,9 +69,10 @@ struct SyncRequest {
 #[serde(rename_all = "camelCase")]
 struct SyncMutation {
     mutation_id: String,
-    task_id: String,
+    entity_type: String,
+    entity_id: String,
     operation: String,
-    task: Value,
+    payload: Value,
 }
 
 #[derive(Debug, Serialize)]
@@ -83,10 +84,13 @@ struct SyncResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SyncChange {
     sequence: i64,
+    entity_type: String,
+    entity_id: String,
     operation: String,
-    task: Value,
+    payload: Value,
 }
 
 async fn sync(
@@ -104,8 +108,8 @@ async fn sync(
         let mutation_id = Uuid::parse_str(&mutation.mutation_id).map_err(|_| {
             ApiError::bad_request(format!("invalid mutationId: {}", mutation.mutation_id))
         })?;
-        let task_id = Uuid::parse_str(&mutation.task_id)
-            .map_err(|_| ApiError::bad_request(format!("invalid taskId: {}", mutation.task_id)))?;
+        let entity_type = mutation.entity_type.as_str();
+        let entity_id = mutation.entity_id.as_str();
 
         let inserted = sqlx::query_scalar::<_, Uuid>(
             "INSERT INTO mutations(mutation_id, device_id) VALUES($1, $2) \
@@ -122,44 +126,56 @@ async fn sync(
             continue;
         }
 
-        let current_version =
-            sqlx::query_scalar::<_, i64>("SELECT version FROM tasks WHERE id = $1 FOR UPDATE")
-                .bind(task_id)
-                .fetch_optional(&mut *transaction)
-                .await
-                .map_err(ApiError::database)?
-                .unwrap_or(0);
+        let current_version = sqlx::query_scalar::<_, i64>(
+            "SELECT version FROM sync_entities \
+             WHERE entity_type = $1 AND entity_id = $2 FOR UPDATE",
+        )
+        .bind(entity_type)
+        .bind(entity_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(ApiError::database)?
+        .unwrap_or(0);
         let server_version = current_version + 1;
 
-        let mut task = mutation.task;
-        task["id"] = Value::String(mutation.task_id.clone());
-        task["version"] = Value::Number(server_version.into());
+        let mut payload = mutation.payload;
+        payload["version"] = Value::Number(server_version.into());
         let deleted = mutation.operation == "delete";
 
         sqlx::query(
-            "INSERT INTO tasks(id, payload, version, deleted) VALUES($1, $2, $3, $4) \
-             ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, version = excluded.version, \
+            "INSERT INTO sync_entities \
+             (entity_type, entity_id, payload, version, deleted) VALUES($1, $2, $3, $4, $5) \
+             ON CONFLICT(entity_type, entity_id) DO UPDATE SET \
+             payload = excluded.payload, version = excluded.version, \
              deleted = excluded.deleted, updated_at = now()",
         )
-        .bind(task_id)
-        .bind(sqlx::types::Json(&task))
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(sqlx::types::Json(&payload))
         .bind(server_version)
         .bind(deleted)
         .execute(&mut *transaction)
         .await
         .map_err(ApiError::database)?;
 
-        sqlx::query("INSERT INTO changes(mutation_id, operation, task) VALUES($1, $2, $3)")
-            .bind(mutation_id)
-            .bind(&mutation.operation)
-            .bind(sqlx::types::Json(&task))
-            .execute(&mut *transaction)
-            .await
-            .map_err(ApiError::database)?;
+        sqlx::query(
+            "INSERT INTO changes \
+             (mutation_id, entity_type, entity_id, operation, payload) \
+             VALUES($1, $2, $3, $4, $5)",
+        )
+        .bind(mutation_id)
+        .bind(entity_type)
+        .bind(entity_id)
+        .bind(&mutation.operation)
+        .bind(sqlx::types::Json(&payload))
+        .execute(&mut *transaction)
+        .await
+        .map_err(ApiError::database)?;
     }
 
     let rows = sqlx::query(
-        "SELECT sequence, operation, task FROM changes WHERE sequence > $1 ORDER BY sequence LIMIT 1000",
+        "SELECT sequence, entity_type, entity_id, operation, payload \
+         FROM changes WHERE sequence > $1 ORDER BY sequence LIMIT 1000",
     )
     .bind(request.cursor)
     .fetch_all(&mut *transaction)
@@ -170,12 +186,15 @@ async fn sync(
     let mut changes = Vec::with_capacity(rows.len());
     for row in rows {
         let sequence: i64 = row.try_get("sequence").map_err(ApiError::database)?;
-        let task: sqlx::types::Json<Value> = row.try_get("task").map_err(ApiError::database)?;
+        let payload: sqlx::types::Json<Value> =
+            row.try_get("payload").map_err(ApiError::database)?;
         next_cursor = sequence;
         changes.push(SyncChange {
             sequence,
+            entity_type: row.try_get("entity_type").map_err(ApiError::database)?,
+            entity_id: row.try_get("entity_id").map_err(ApiError::database)?,
             operation: row.try_get("operation").map_err(ApiError::database)?,
-            task: task.0,
+            payload: payload.0,
         });
     }
 
@@ -225,9 +244,27 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
             mutation.operation, mutation.mutation_id
         )));
     }
-    if mutation.task.get("id").and_then(Value::as_str) != Some(mutation.task_id.as_str()) {
+    if mutation.entity_id.is_empty() || mutation.entity_id.len() > 256 {
+        return Err(ApiError::bad_request(
+            "entityId must contain 1 to 256 characters",
+        ));
+    }
+    match mutation.entity_type.as_str() {
+        "task" => validate_task_mutation(mutation),
+        "occurrence" => validate_occurrence_mutation(mutation),
+        entity_type => Err(ApiError::bad_request(format!(
+            "invalid entityType: {entity_type}"
+        ))),
+    }
+}
+
+fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
+    Uuid::parse_str(&mutation.entity_id).map_err(|_| {
+        ApiError::bad_request(format!("invalid task entityId: {}", mutation.entity_id))
+    })?;
+    if mutation.payload.get("id").and_then(Value::as_str) != Some(mutation.entity_id.as_str()) {
         return Err(ApiError::bad_request(format!(
-            "task.id must match taskId for mutation {}",
+            "task.id must match entityId for mutation {}",
             mutation.mutation_id
         )));
     }
@@ -236,7 +273,7 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     }
 
     let title = mutation
-        .task
+        .payload
         .get("title")
         .and_then(Value::as_str)
         .unwrap_or_default();
@@ -247,12 +284,119 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
         )));
     }
     let scheduled_date = mutation
-        .task
+        .payload
         .get("scheduledDate")
         .and_then(Value::as_str)
         .ok_or_else(|| ApiError::bad_request("task scheduledDate is required"))?;
     NaiveDate::parse_from_str(scheduled_date, "%Y-%m-%d")
         .map_err(|_| ApiError::bad_request(format!("invalid scheduledDate: {scheduled_date}")))?;
+    if let Some(scheduled_time) = mutation
+        .payload
+        .get("scheduledTime")
+        .and_then(Value::as_str)
+    {
+        NaiveTime::parse_from_str(scheduled_time, "%H:%M").map_err(|_| {
+            ApiError::bad_request(format!("invalid scheduledTime: {scheduled_time}"))
+        })?;
+    }
+
+    let Some(recurrence) = mutation.payload.get("recurrence") else {
+        return Ok(());
+    };
+    let frequency = recurrence
+        .get("frequency")
+        .and_then(Value::as_str)
+        .unwrap_or("none");
+    if !["none", "daily", "weekly", "monthly", "yearly"].contains(&frequency) {
+        return Err(ApiError::bad_request("invalid recurrence frequency"));
+    }
+    let interval = recurrence
+        .get("interval")
+        .and_then(Value::as_i64)
+        .unwrap_or(1);
+    if interval < 1 {
+        return Err(ApiError::bad_request(
+            "recurrence interval must be greater than zero",
+        ));
+    }
+    let end_mode = recurrence
+        .get("endMode")
+        .and_then(Value::as_str)
+        .unwrap_or("never");
+    if !["never", "onDate", "afterCount"].contains(&end_mode) {
+        return Err(ApiError::bad_request("invalid recurrence endMode"));
+    }
+    if end_mode == "onDate" {
+        let until_date = recurrence
+            .get("untilDate")
+            .and_then(Value::as_str)
+            .ok_or_else(|| ApiError::bad_request("recurrence untilDate is required"))?;
+        NaiveDate::parse_from_str(until_date, "%Y-%m-%d")
+            .map_err(|_| ApiError::bad_request(format!("invalid untilDate: {until_date}")))?;
+    }
+    if end_mode == "afterCount"
+        && recurrence
+            .get("occurrenceCount")
+            .and_then(Value::as_i64)
+            .unwrap_or_default()
+            < 1
+    {
+        return Err(ApiError::bad_request(
+            "recurrence occurrenceCount must be greater than zero",
+        ));
+    }
+    if frequency == "weekly" {
+        let weekdays = recurrence
+            .get("weekdays")
+            .and_then(Value::as_array)
+            .ok_or_else(|| ApiError::bad_request("weekly recurrence weekdays must be an array"))?;
+        let mut seen = [false; 7];
+        for value in weekdays {
+            let weekday = value
+                .as_u64()
+                .ok_or_else(|| ApiError::bad_request("invalid recurrence weekday"))?;
+            if !(1..=7).contains(&weekday) || seen[weekday as usize - 1] {
+                return Err(ApiError::bad_request(
+                    "invalid or duplicate recurrence weekday",
+                ));
+            }
+            seen[weekday as usize - 1] = true;
+        }
+    }
+    Ok(())
+}
+
+fn validate_occurrence_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
+    let task_id = mutation
+        .payload
+        .get("taskId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::bad_request("occurrence taskId is required"))?;
+    Uuid::parse_str(task_id)
+        .map_err(|_| ApiError::bad_request(format!("invalid occurrence taskId: {task_id}")))?;
+    let occurrence_date = mutation
+        .payload
+        .get("occurrenceDate")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::bad_request("occurrenceDate is required"))?;
+    NaiveDate::parse_from_str(occurrence_date, "%Y-%m-%d")
+        .map_err(|_| ApiError::bad_request(format!("invalid occurrenceDate: {occurrence_date}")))?;
+    if mutation.entity_id != format!("{task_id}@{occurrence_date}") {
+        return Err(ApiError::bad_request(
+            "occurrence entityId must match taskId and occurrenceDate",
+        ));
+    }
+    if mutation.operation == "delete" {
+        return Ok(());
+    }
+    let status = mutation
+        .payload
+        .get("status")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !["pending", "completed", "skipped"].contains(&status) {
+        return Err(ApiError::bad_request("invalid occurrence status"));
+    }
     Ok(())
 }
 
@@ -308,18 +452,35 @@ mod tests {
 
     #[test]
     fn rejects_timestamp_instead_of_floating_date() {
+        let task_id = Uuid::new_v4().to_string();
         let mutation = SyncMutation {
             mutation_id: Uuid::new_v4().to_string(),
-            task_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
             operation: "upsert".to_owned(),
-            task: json!({}),
+            payload: json!({
+                "id": task_id,
+                "title": "Timezone invariant",
+                "scheduledDate": "2026-09-01T00:00:00Z"
+            }),
         };
-        let mut mutation = mutation;
-        mutation.task = json!({
-            "id": mutation.task_id,
-            "title": "Timezone invariant",
-            "scheduledDate": "2026-09-01T00:00:00Z"
-        });
+        assert!(validate_request(&request_with(vec![mutation])).is_err());
+    }
+    #[test]
+    fn rejects_timestamp_instead_of_floating_time() {
+        let task_id = Uuid::new_v4().to_string();
+        let mutation = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": task_id,
+                "title": "Timezone invariant",
+                "scheduledDate": "2026-09-01",
+                "scheduledTime": "09:30:00Z"
+            }),
+        };
         assert!(validate_request(&request_with(vec![mutation])).is_err());
     }
 
@@ -328,12 +489,38 @@ mod tests {
         let task_id = Uuid::new_v4().to_string();
         let mutation = SyncMutation {
             mutation_id: Uuid::new_v4().to_string(),
-            task_id: task_id.clone(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
             operation: "upsert".to_owned(),
-            task: json!({
+            payload: json!({
                 "id": task_id,
                 "title": "Plan month",
-                "scheduledDate": "2026-09-01"
+                "scheduledDate": "2026-09-01",
+                "scheduledTime": "09:30",
+                "recurrence": {
+                    "frequency": "weekly",
+                    "interval": 2,
+                    "weekdays": [1, 4],
+                    "endMode": "afterCount",
+                    "occurrenceCount": 12
+                }
+            }),
+        };
+        assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+    #[test]
+    fn accepts_occurrence_mutation_with_composite_identity() {
+        let task_id = Uuid::new_v4().to_string();
+        let occurrence_date = "2026-09-01";
+        let mutation = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "occurrence".to_owned(),
+            entity_id: format!("{task_id}@{occurrence_date}"),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "taskId": task_id,
+                "occurrenceDate": occurrence_date,
+                "status": "completed"
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());

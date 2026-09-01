@@ -13,7 +13,7 @@ Panel {
 
     property var anchorItem: null
     property var hostWidget: null
-    property var tasks: []
+    property var occurrences: []
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -24,8 +24,8 @@ Panel {
     property int viewMonth: selectedDate.getMonth()
 
     readonly property var barIdentity: hostWidget || root
-    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, tasks, holidays)
-    readonly property var selectedTasks: Model.tasksForDate(tasks, selectedDate)
+    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
+    readonly property var selectedTasks: Model.occurrencesForDate(occurrences, selectedDate)
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
@@ -70,7 +70,7 @@ Panel {
         viewYear = selectedDate.getFullYear();
         viewMonth = selectedDate.getMonth();
         if (hostWidget)
-            hostWidget.refresh();
+            hostWidget.refreshRange(viewYear, viewMonth);
         controller.show();
     }
 
@@ -89,6 +89,8 @@ Panel {
         const next = new Date(viewYear, viewMonth + delta, 1);
         viewYear = next.getFullYear();
         viewMonth = next.getMonth();
+        if (hostWidget)
+            hostWidget.refreshRange(viewYear, viewMonth);
     }
 
     function selectDay(date) {
@@ -96,6 +98,8 @@ Panel {
         if (date.getMonth() !== viewMonth || date.getFullYear() !== viewYear) {
             viewMonth = date.getMonth();
             viewYear = date.getFullYear();
+            if (hostWidget)
+                hostWidget.refreshRange(viewYear, viewMonth);
         }
         Qt.callLater(() => quickAdd.forceActiveFocus());
     }
@@ -522,7 +526,7 @@ Panel {
                             Rectangle {
                                 required property var modelData
                                 width: parent.width
-                                height: Style.space(36)
+                                height: Style.space(46)
                                 radius: Style.cornerRadius
                                 color: taskMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
 
@@ -540,15 +544,33 @@ Panel {
                                         font.pixelSize: Style.font.body
                                     }
 
-                                    Text {
+                                    Column {
                                         anchors.verticalCenter: parent.verticalCenter
                                         width: parent.width - Style.space(40)
-                                        text: modelData.title
-                                        color: modelData.completed ? Qt.darker(root.foreground, 1.8) : root.foreground
-                                        elide: Text.ElideRight
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.body
-                                        font.strikeout: modelData.completed
+                                        spacing: 1
+
+                                        Text {
+                                            width: parent.width
+                                            text: modelData.title
+                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8) : root.foreground
+                                            elide: Text.ElideRight
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.body
+                                            font.strikeout: modelData.completed
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: {
+                                                const time = String(modelData.scheduledTime || "");
+                                                const recurrence = String(modelData.recurrenceLabel || "");
+                                                return recurrence === "" ? time : time + " · " + recurrence;
+                                            }
+                                            color: Color.accent
+                                            elide: Text.ElideRight
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.caption
+                                            font.bold: true
+                                        }
                                     }
                                 }
 
@@ -558,7 +580,9 @@ Panel {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: if (root.hostWidget)
-                                        root.hostWidget.setTaskCompleted(modelData.id, !modelData.completed)
+                                        root.hostWidget.setOccurrenceCompleted(
+                                            modelData.taskId, modelData.occurrenceDate,
+                                            !modelData.completed)
                                 }
                             }
                         }

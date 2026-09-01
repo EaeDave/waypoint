@@ -7,6 +7,35 @@
 #include <QProcess>
 
 namespace waypoint {
+namespace {
+
+RecurrenceFrequency recurrenceFrequency(const QString &name) {
+  if (name == QStringLiteral("daily")) {
+    return RecurrenceFrequency::Daily;
+  }
+  if (name == QStringLiteral("weekly")) {
+    return RecurrenceFrequency::Weekly;
+  }
+  if (name == QStringLiteral("monthly")) {
+    return RecurrenceFrequency::Monthly;
+  }
+  if (name == QStringLiteral("yearly")) {
+    return RecurrenceFrequency::Yearly;
+  }
+  return RecurrenceFrequency::None;
+}
+
+RecurrenceEndMode recurrenceEndMode(const QString &name) {
+  if (name == QStringLiteral("onDate")) {
+    return RecurrenceEndMode::OnDate;
+  }
+  if (name == QStringLiteral("afterCount")) {
+    return RecurrenceEndMode::AfterCount;
+  }
+  return RecurrenceEndMode::Never;
+}
+
+} // namespace
 
 WaypointController::WaypointController(QObject *parent)
     : QObject(parent), m_client(this), m_todayTasks(this), m_selectedDateTasks(this), m_calendar(this),
@@ -15,6 +44,7 @@ WaypointController::WaypointController(QObject *parent)
   m_selectedDateTasks.setFocusDate(m_selectedDate);
   m_refreshTimer.setInterval(1000);
   connect(&m_refreshTimer, &QTimer::timeout, this, &WaypointController::refresh);
+  connect(&m_calendar, &CalendarModel::visibleMonthChanged, this, &WaypointController::refresh);
 }
 
 TaskListModel *WaypointController::todayTasks() { return &m_todayTasks; }
@@ -62,7 +92,6 @@ bool WaypointController::includeMunicipalHolidays() const { return m_includeMuni
 bool WaypointController::includeCommemorativeDates() const { return m_includeCommemorativeDates; }
 bool WaypointController::includeOptionalDates() const { return m_includeOptionalDates; }
 
-
 QVariantList WaypointController::municipalities() const { return m_municipalities; }
 
 QVariantList WaypointController::selectedDateHolidays() const {
@@ -88,21 +117,37 @@ void WaypointController::start() {
 
 void WaypointController::refresh() {
   QString error;
-  const QList<TaskRecord> tasks = m_client.listTasks(&error);
+  const QDate today = QDate::currentDate();
+  const QList<TaskOccurrence> todayOccurrences = m_client.listActionableOccurrences(today, &error);
   if (!error.isEmpty()) {
     updateConnection(false, error);
     startDaemonOnce();
     return;
   }
 
-  QJsonArray taskValues;
-  for (const TaskRecord &task : tasks) {
-    taskValues.append(task.toJson());
+  const QDate visibleMonth(m_calendar.visibleYear(), m_calendar.visibleMonth(), 1);
+  const QDate rangeStart = visibleMonth.addDays(-14);
+  const QDate rangeEnd = visibleMonth.addMonths(1).addDays(14);
+  const QList<TaskOccurrence> rangeOccurrences = m_client.listOccurrences(rangeStart, rangeEnd, &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
   }
-  const QByteArray signature = QJsonDocument(taskValues).toJson(QJsonDocument::Compact);
+
+  QJsonArray todayValues;
+  for (const TaskOccurrence &occurrence : todayOccurrences) {
+    todayValues.append(occurrence.toJson());
+  }
+  QJsonArray rangeValues;
+  for (const TaskOccurrence &occurrence : rangeOccurrences) {
+    rangeValues.append(occurrence.toJson());
+  }
+  const QByteArray signature = QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
+                                                         {QStringLiteral("range"), rangeValues}})
+                                   .toJson(QJsonDocument::Compact);
   if (signature != m_snapshotSignature) {
     m_snapshotSignature = signature;
-    publishTasks(tasks);
+    publishOccurrences(todayOccurrences, rangeOccurrences);
   }
   if (!refreshSyncDetails(&error)) {
     updateConnection(false, error);
@@ -115,14 +160,30 @@ void WaypointController::refresh() {
   updateConnection(true);
 }
 
-bool WaypointController::addTask(const QString &title, const QString &scheduledDateKey) {
+bool WaypointController::addTask(const QString &title, const QString &scheduledDateKey,
+                                 const QString &scheduledTimeKey, const QString &frequency,
+                                 const int interval, const QVariantList &weekdays, const QString &endMode,
+                                 const QString &untilDateKey, const int occurrenceCount) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
-  if (!scheduledDate.isValid()) {
-    updateConnection(m_online, QStringLiteral("Invalid scheduled date: %1").arg(scheduledDateKey));
+  const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
+  if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
+    updateConnection(
+        m_online,
+        QStringLiteral("Invalid scheduled date or time: %1 %2").arg(scheduledDateKey, scheduledTimeKey));
     return false;
   }
+  RecurrenceRule recurrence;
+  recurrence.frequency = recurrenceFrequency(frequency);
+  recurrence.interval = interval;
+  for (const QVariant &weekday : weekdays) {
+    recurrence.weekdays.append(weekday.toInt());
+  }
+  recurrence.endMode = recurrenceEndMode(endMode);
+  recurrence.untilDate = QDate::fromString(untilDateKey, Qt::ISODate);
+  recurrence.occurrenceCount = occurrenceCount;
+
   QString error;
-  if (!m_client.addTask(title, scheduledDate, &error)) {
+  if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -130,9 +191,11 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
   return true;
 }
 
-bool WaypointController::setTaskCompleted(const QString &taskId, bool completed) {
+bool WaypointController::setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
+                                                const bool completed) {
+  const QDate occurrenceDate = QDate::fromString(occurrenceDateKey, Qt::ISODate);
   QString error;
-  if (!m_client.setTaskCompleted(taskId, completed, &error)) {
+  if (!m_client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -140,14 +203,30 @@ bool WaypointController::setTaskCompleted(const QString &taskId, bool completed)
   return true;
 }
 
-bool WaypointController::rescheduleTask(const QString &taskId, const QString &scheduledDateKey) {
+bool WaypointController::deleteOccurrence(const QString &taskId, const QString &occurrenceDateKey,
+                                          const QString &scope) {
+  const QDate occurrenceDate = QDate::fromString(occurrenceDateKey, Qt::ISODate);
+  QString error;
+  if (!m_client.deleteOccurrence(taskId, occurrenceDate, scope, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::rescheduleTask(const QString &taskId, const QString &scheduledDateKey,
+                                        const QString &scheduledTimeKey) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
-  if (!scheduledDate.isValid()) {
-    updateConnection(m_online, QStringLiteral("Invalid scheduled date: %1").arg(scheduledDateKey));
+  const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
+  if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
+    updateConnection(
+        m_online,
+        QStringLiteral("Invalid scheduled date or time: %1 %2").arg(scheduledDateKey, scheduledTimeKey));
     return false;
   }
   QString error;
-  if (!m_client.rescheduleTask(taskId, scheduledDate, &error)) {
+  if (!m_client.rescheduleTask(taskId, scheduledDate, scheduledTime, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -258,11 +337,12 @@ void WaypointController::updateConnection(bool online, const QString &errorMessa
   }
 }
 
-void WaypointController::publishTasks(const QList<TaskRecord> &tasks) {
+void WaypointController::publishOccurrences(const QList<TaskOccurrence> &todayOccurrences,
+                                            const QList<TaskOccurrence> &rangeOccurrences) {
   m_todayTasks.setFocusDate(QDate::currentDate());
-  m_todayTasks.setSourceTasks(tasks);
-  m_selectedDateTasks.setSourceTasks(tasks);
-  m_calendar.setSourceTasks(tasks);
+  m_todayTasks.setSourceOccurrences(todayOccurrences);
+  m_selectedDateTasks.setSourceOccurrences(rangeOccurrences);
+  m_calendar.setSourceOccurrences(rangeOccurrences);
 }
 
 bool WaypointController::refreshSyncDetails(QString *errorMessage) {

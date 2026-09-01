@@ -11,6 +11,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControl
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
+    src/core/Recurrence.cpp
+    src/core/Recurrence.hpp
     src/core/TaskRecord.cpp
     src/core/TaskRecord.hpp
     src/core/SyncConfiguration.hpp

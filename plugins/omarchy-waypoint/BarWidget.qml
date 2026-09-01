@@ -9,17 +9,35 @@ BarWidget {
     id: root
     moduleName: "io.waypoint.bar"
 
-    property var tasks: []
+    property var occurrences: []
+    property var today: ({ pendingCount: 0, overdueCount: 0, occurrences: [] })
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
-    readonly property var summary: Model.todaySummary(tasks)
+    property string rangeFrom: ""
+    property string rangeTo: ""
+    property bool refreshPending: false
+    readonly property var summary: Model.todaySummary(today)
     readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
     function refresh() {
-        if (!snapshotProcess.running)
-            snapshotProcess.running = true;
+        if (snapshotProcess.running) {
+            refreshPending = true;
+            return;
+        }
+        const command = ["waypointctl", "snapshot"];
+        if (rangeFrom !== "" && rangeTo !== "")
+            command.push("--from", rangeFrom, "--to", rangeTo);
+        snapshotProcess.command = command;
+        snapshotProcess.running = true;
+    }
+
+    function refreshRange(year, month) {
+        const range = Model.monthRange(year, month);
+        rangeFrom = range.from;
+        rangeTo = range.to;
+        refresh();
     }
 
     function runAction(arguments) {
@@ -30,11 +48,14 @@ BarWidget {
     }
 
     function addTask(title, date) {
-        runAction(["add", "--date", Model.dateKey(date), "--title", title]);
+        runAction(["add", "--date", Model.dateKey(date),
+                   "--time", Qt.formatTime(new Date(), "HH:mm"),
+                   "--title", title]);
     }
 
-    function setTaskCompleted(taskId, completed) {
-        runAction([completed ? "complete" : "reopen", taskId]);
+    function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
+        runAction([completed ? "complete" : "reopen", taskId,
+                   "--date", occurrenceDate]);
     }
 
     function openSettings() {
@@ -51,7 +72,8 @@ BarWidget {
         target.bar = root.bar;
         target.anchorItem = button;
         target.hostWidget = root;
-        target.tasks = Qt.binding(() => root.tasks);
+        target.occurrences = Qt.binding(() => root.occurrences);
+        target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
@@ -94,6 +116,12 @@ BarWidget {
         command: ["waypointctl", "snapshot"]
         running: true
 
+        onExited: {
+            if (root.refreshPending) {
+                root.refreshPending = false;
+                root.refresh();
+            }
+        }
         stdout: StdioCollector {
             waitForEnd: true
             onStreamFinished: {
@@ -101,7 +129,8 @@ BarWidget {
                     const response = JSON.parse(String(text || "{}"));
                     if (!response.ok)
                         throw new Error(response.error || "snapshot failed");
-                    root.tasks = response.tasks || [];
+                    root.today = response.today || ({ pendingCount: 0, overdueCount: 0, occurrences: [] });
+                    root.occurrences = response.occurrences || [];
                     root.holidays = response.holidays || [];
                     root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });
                     root.loadError = "";

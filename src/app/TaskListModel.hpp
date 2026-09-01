@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/TaskRecord.hpp"
+#include "core/Recurrence.hpp"
 
 #include <QAbstractListModel>
 #include <QDate>
@@ -19,8 +19,11 @@ public:
     TaskIdRole = Qt::UserRole + 1,
     TitleRole,
     ScheduledDateRole,
+    ScheduledTimeRole,
     CompletedRole,
     OverdueRole,
+    RecurringRole,
+    RecurrenceLabelRole,
   };
   Q_ENUM(Role)
 
@@ -34,7 +37,7 @@ public:
   void setFocusDate(const QDate &date);
   [[nodiscard]] int pendingCount() const;
   [[nodiscard]] int overdueCount() const;
-  void setSourceTasks(const QList<TaskRecord> &tasks);
+  void setSourceOccurrences(const QList<TaskOccurrence> &occurrences);
 
 signals:
   void focusDateChanged();
@@ -44,8 +47,8 @@ private:
   void rebuildVisibleTasks();
 
   QDate m_focusDate;
-  QList<TaskRecord> m_sourceTasks;
-  QList<TaskRecord> m_visibleTasks;
+  QList<TaskOccurrence> m_sourceOccurrences;
+  QList<TaskOccurrence> m_visibleOccurrences;
 };
 
 } // namespace waypoint

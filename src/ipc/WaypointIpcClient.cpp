@@ -79,13 +79,69 @@ QList<TaskRecord> WaypointIpcClient::listTasks(QString *errorMessage) const {
   return tasks;
 }
 
-bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate,
-                                QString *errorMessage) const {
+QList<TaskOccurrence> WaypointIpcClient::listOccurrences(const QDate &from, const QDate &to,
+                                                         QString *errorMessage) const {
+  const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("occurrences")},
+                                        {QStringLiteral("from"), from.toString(Qt::ISODate)},
+                                        {QStringLiteral("to"), to.toString(Qt::ISODate)}},
+                                       errorMessage);
+  if (!responseSucceeded(response, errorMessage)) {
+    return {};
+  }
+  QList<TaskOccurrence> occurrences;
+  for (const QJsonValue &value : response.value(QStringLiteral("occurrences")).toArray()) {
+    const QJsonObject json = value.toObject();
+    TaskOccurrence occurrence;
+    occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
+    occurrence.title = json.value(QStringLiteral("title")).toString();
+    occurrence.occurrenceDate =
+        QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
+    occurrence.scheduledTime =
+        QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+    occurrence.completed = json.value(QStringLiteral("completed")).toBool();
+    occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
+    occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
+    occurrences.append(occurrence);
+  }
+  return occurrences;
+}
+
+QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &today,
+                                                                   QString *errorMessage) const {
+  const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("today")},
+                                        {QStringLiteral("date"), today.toString(Qt::ISODate)}},
+                                       errorMessage);
+  if (!responseSucceeded(response, errorMessage)) {
+    return {};
+  }
+  QList<TaskOccurrence> occurrences;
+  for (const QJsonValue &value : response.value(QStringLiteral("occurrences")).toArray()) {
+    const QJsonObject json = value.toObject();
+    TaskOccurrence occurrence;
+    occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
+    occurrence.title = json.value(QStringLiteral("title")).toString();
+    occurrence.occurrenceDate =
+        QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
+    occurrence.scheduledTime =
+        QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+    occurrence.completed = json.value(QStringLiteral("completed")).toBool();
+    occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
+    occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
+    occurrences.append(occurrence);
+  }
+  return occurrences;
+}
+
+bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
+                                const RecurrenceRule &recurrence, QString *errorMessage) const {
   const QJsonObject response = request(
       {
           {QStringLiteral("command"), QStringLiteral("add")},
           {QStringLiteral("title"), title},
           {QStringLiteral("scheduledDate"), scheduledDate.toString(Qt::ISODate)},
+          {QStringLiteral("scheduledTime"),
+           scheduledTime.isValid() ? scheduledTime.toString(QStringLiteral("HH:mm")) : QString()},
+          {QStringLiteral("recurrence"), recurrence.toJson()},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);
@@ -102,13 +158,40 @@ bool WaypointIpcClient::setTaskCompleted(const QString &taskId, bool completed, 
   return responseSucceeded(response, errorMessage);
 }
 
+bool WaypointIpcClient::setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
+                                               const bool completed, QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("complete")},
+          {QStringLiteral("taskId"), taskId},
+          {QStringLiteral("occurrenceDate"), occurrenceDate.toString(Qt::ISODate)},
+          {QStringLiteral("completed"), completed},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage);
+}
+
+bool WaypointIpcClient::deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
+                                         const QString &scope, QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("delete-occurrence")},
+          {QStringLiteral("taskId"), taskId},
+          {QStringLiteral("occurrenceDate"), occurrenceDate.toString(Qt::ISODate)},
+          {QStringLiteral("scope"), scope},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage);
+}
+
 bool WaypointIpcClient::rescheduleTask(const QString &taskId, const QDate &scheduledDate,
-                                       QString *errorMessage) const {
+                                       const QTime &scheduledTime, QString *errorMessage) const {
   const QJsonObject response = request(
       {
           {QStringLiteral("command"), QStringLiteral("reschedule")},
           {QStringLiteral("taskId"), taskId},
           {QStringLiteral("scheduledDate"), scheduledDate.toString(Qt::ISODate)},
+          {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);

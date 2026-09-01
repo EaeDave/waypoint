@@ -100,8 +100,9 @@ int CalendarModel::weekNumberAtRow(int row) const {
   return m_cells.at(index).date.weekNumber();
 }
 
-void CalendarModel::setSourceTasks(const QList<TaskRecord> &tasks) {
-  m_sourceTasks = tasks;
+void CalendarModel::setSourceOccurrences(
+    const QList<TaskOccurrence> &occurrences) {
+  m_sourceOccurrences = occurrences;
   rebuildCells();
 }
 void CalendarModel::setSourceHolidays(const QJsonArray &holidays) {
@@ -141,15 +142,15 @@ void CalendarModel::rebuildCells() {
     cell.date = gridStart.addDays(index);
     cell.inVisibleMonth =
         cell.date.month() == m_visibleMonth.month() && cell.date.year() == m_visibleMonth.year();
-    for (const TaskRecord &task : m_sourceTasks) {
-      if (task.scheduledDate != cell.date) {
+    for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
+      if (occurrence.occurrenceDate != cell.date) {
         continue;
       }
-      if (task.completed) {
+      if (occurrence.completed) {
         ++cell.completedCount;
       } else {
         ++cell.pendingCount;
-        if (task.scheduledDate < today) {
+        if (occurrence.occurrenceDate < today) {
           ++cell.overdueCount;
         }
       }

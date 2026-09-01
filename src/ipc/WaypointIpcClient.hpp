@@ -17,12 +17,20 @@ public:
 
   [[nodiscard]] bool ping(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskRecord> listTasks(QString *errorMessage = nullptr) const;
-  [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate,
-                             QString *errorMessage = nullptr) const;
+  [[nodiscard]] QList<TaskOccurrence> listOccurrences(const QDate &from, const QDate &to,
+                                                      QString *errorMessage = nullptr) const;
+  [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
+                                                                QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
+                             const RecurrenceRule &recurrence, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed,
                                       QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
+                                            bool completed, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
+                                      const QString &scope, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
-                                    QString *errorMessage = nullptr) const;
+                                    const QTime &scheduledTime, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncConfiguration(QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncStatus(QString *errorMessage = nullptr) const;

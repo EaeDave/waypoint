@@ -8,8 +8,11 @@ Rectangle {
     required property string taskId
     required property string title
     required property string scheduledDateKey
+    required property string scheduledTimeKey
     required property bool completed
     required property bool overdue
+    required property bool recurring
+    required property string recurrenceLabel
     required property var controller
 
     readonly property date scheduledDateValue: {
@@ -17,7 +20,7 @@ Rectangle {
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: 50
+    implicitHeight: root.overdue || root.recurring ? 62 : 50
     radius: 7
     color: pointer.containsMouse ? "#151519" : "transparent"
 
@@ -47,7 +50,9 @@ Rectangle {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.controller.setTaskCompleted(root.taskId, !root.completed)
+                onClicked: root.controller.setOccurrenceCompleted(root.taskId,
+                                                                   root.scheduledDateKey,
+                                                                   !root.completed)
             }
         }
 
@@ -66,9 +71,15 @@ Rectangle {
             }
 
             Text {
-                visible: root.overdue
-                text: "ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM")
-                color: "#ff7085"
+                visible: root.overdue || root.recurring
+                text: {
+                    const recurrence = root.recurring ? root.recurrenceLabel : "";
+                    if (!root.overdue)
+                        return recurrence;
+                    const overdue = "ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM");
+                    return recurrence === "" ? overdue : overdue + " · " + recurrence;
+                }
+                color: root.overdue ? "#ff7085" : "#a997ff"
                 font.family: "monospace"
                 font.pixelSize: 9
                 font.bold: true
@@ -76,12 +87,73 @@ Rectangle {
             }
         }
 
-        ToolButton {
-            text: "×"
-            visible: pointer.containsMouse
-            onClicked: root.controller.deleteTask(root.taskId)
+        TextField {
+            id: timeEditor
+            Layout.preferredWidth: 58
+            text: root.scheduledTimeKey
+            color: root.completed ? "#716e77" : "#d7d3dc"
+            horizontalAlignment: TextInput.AlignHCenter
+            font.family: "monospace"
+            font.pixelSize: 11
+            selectByMouse: true
+            validator: RegularExpressionValidator {
+                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
+            }
+            background: Rectangle {
+                radius: 5
+                color: timeEditor.activeFocus ? "#24212c" : "transparent"
+                border.width: timeEditor.activeFocus ? 1 : 0
+                border.color: "#8f7fe1"
+            }
+            onEditingFinished: {
+                const normalizedTime = text.trim();
+                if (acceptableInput && normalizedTime !== root.scheduledTimeKey)
+                    root.controller.rescheduleTask(root.taskId,
+                                                   root.scheduledDateKey,
+                                                   normalizedTime);
+                else if (!acceptableInput)
+                    text = root.scheduledTimeKey;
+            }
             ToolTip.visible: hovered
-            ToolTip.text: "Excluir tarefa"
+            ToolTip.text: "Editar horário"
+        }
+
+        ToolButton {
+            text: root.recurring ? "⋯" : "×"
+            visible: pointer.containsMouse
+            onClicked: {
+                if (root.recurring)
+                    deleteMenu.open();
+                else
+                    root.controller.deleteOccurrence(root.taskId,
+                                                     root.scheduledDateKey,
+                                                     "series");
+            }
+            ToolTip.visible: hovered
+            ToolTip.text: root.recurring ? "Opções da recorrência" : "Excluir tarefa"
+
+            Menu {
+                id: deleteMenu
+                MenuItem {
+                    text: "Excluir esta ocorrência"
+                    onTriggered: root.controller.deleteOccurrence(root.taskId,
+                                                                  root.scheduledDateKey,
+                                                                  "occurrence")
+                }
+                MenuItem {
+                    text: "Excluir esta e as seguintes"
+                    onTriggered: root.controller.deleteOccurrence(root.taskId,
+                                                                  root.scheduledDateKey,
+                                                                  "following")
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Excluir toda a série"
+                    onTriggered: root.controller.deleteOccurrence(root.taskId,
+                                                                  root.scheduledDateKey,
+                                                                  "series")
+                }
+            }
         }
     }
 

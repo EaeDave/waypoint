@@ -8,25 +8,33 @@ TaskListModel::TaskListModel(QObject *parent)
     : QAbstractListModel(parent), m_focusDate(QDate::currentDate()) {}
 
 int TaskListModel::rowCount(const QModelIndex &parent) const {
-  return parent.isValid() ? 0 : m_visibleTasks.size();
+  return parent.isValid() ? 0 : m_visibleOccurrences.size();
 }
 
 QVariant TaskListModel::data(const QModelIndex &index, int role) const {
-  if (!index.isValid() || index.row() < 0 || index.row() >= m_visibleTasks.size()) {
+  if (!index.isValid() || index.row() < 0 || index.row() >= m_visibleOccurrences.size()) {
     return {};
   }
-  const TaskRecord &task = m_visibleTasks.at(index.row());
+  const TaskOccurrence &occurrence = m_visibleOccurrences.at(index.row());
   switch (role) {
   case TaskIdRole:
-    return task.id;
+    return occurrence.taskId;
   case TitleRole:
-    return task.title;
+    return occurrence.title;
   case ScheduledDateRole:
-    return task.scheduledDate.toString(Qt::ISODate);
+    return occurrence.occurrenceDate.toString(Qt::ISODate);
+  case ScheduledTimeRole:
+    return occurrence.scheduledTime.isValid() ? occurrence.scheduledTime.toString(QStringLiteral("HH:mm"))
+                                              : QString();
   case CompletedRole:
-    return task.completed;
+    return occurrence.completed;
   case OverdueRole:
-    return !task.completed && task.scheduledDate.isValid() && task.scheduledDate < QDate::currentDate();
+    return !occurrence.completed && occurrence.occurrenceDate.isValid() &&
+           occurrence.occurrenceDate < QDate::currentDate();
+  case RecurringRole:
+    return occurrence.recurring;
+  case RecurrenceLabelRole:
+    return occurrence.recurrenceLabel;
   default:
     return {};
   }
@@ -34,8 +42,14 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
 
 QHash<int, QByteArray> TaskListModel::roleNames() const {
   return {
-      {TaskIdRole, "taskId"},       {TitleRole, "title"},     {ScheduledDateRole, "scheduledDateKey"},
-      {CompletedRole, "completed"}, {OverdueRole, "overdue"},
+      {TaskIdRole, "taskId"},
+      {TitleRole, "title"},
+      {ScheduledDateRole, "scheduledDateKey"},
+      {ScheduledTimeRole, "scheduledTimeKey"},
+      {CompletedRole, "completed"},
+      {OverdueRole, "overdue"},
+      {RecurringRole, "recurring"},
+      {RecurrenceLabelRole, "recurrenceLabel"},
   };
 }
 
@@ -51,49 +65,56 @@ void TaskListModel::setFocusDate(const QDate &date) {
 }
 
 int TaskListModel::pendingCount() const {
-  return static_cast<int>(std::count_if(m_visibleTasks.cbegin(), m_visibleTasks.cend(),
-                                        [](const TaskRecord &task) { return !task.completed; }));
+  return static_cast<int>(
+      std::count_if(m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(),
+                    [](const TaskOccurrence &occurrence) { return !occurrence.completed; }));
 }
 
 int TaskListModel::overdueCount() const {
   const QDate today = QDate::currentDate();
-  return static_cast<int>(
-      std::count_if(m_visibleTasks.cbegin(), m_visibleTasks.cend(), [today](const TaskRecord &task) {
-        return !task.completed && task.scheduledDate < today;
-      }));
+  return static_cast<int>(std::count_if(m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(),
+                                        [today](const TaskOccurrence &occurrence) {
+                                          return !occurrence.completed && occurrence.occurrenceDate < today;
+                                        }));
 }
 
-void TaskListModel::setSourceTasks(const QList<TaskRecord> &tasks) {
-  m_sourceTasks = tasks;
+void TaskListModel::setSourceOccurrences(const QList<TaskOccurrence> &occurrences) {
+  m_sourceOccurrences = occurrences;
   rebuildVisibleTasks();
 }
 
 void TaskListModel::rebuildVisibleTasks() {
-  QList<TaskRecord> visible;
+  QList<TaskOccurrence> visible;
   const QDate today = QDate::currentDate();
-  for (const TaskRecord &task : m_sourceTasks) {
-    const bool belongsToFocusDate = task.scheduledDate == m_focusDate;
-    const bool overdueOnTodayView =
-        m_focusDate == today && !task.completed && task.scheduledDate.isValid() && task.scheduledDate < today;
+  for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
+    const bool belongsToFocusDate = occurrence.occurrenceDate == m_focusDate;
+    const bool overdueOnTodayView = m_focusDate == today && !occurrence.completed &&
+                                    occurrence.occurrenceDate.isValid() && occurrence.occurrenceDate < today;
     if (belongsToFocusDate || overdueOnTodayView) {
-      visible.append(task);
+      visible.append(occurrence);
     }
   }
 
-  std::ranges::sort(visible, [today](const TaskRecord &left, const TaskRecord &right) {
-    const bool leftOverdue = !left.completed && left.scheduledDate < today;
-    const bool rightOverdue = !right.completed && right.scheduledDate < today;
+  std::ranges::sort(visible, [today](const TaskOccurrence &left, const TaskOccurrence &right) {
+    const bool leftOverdue = !left.completed && left.occurrenceDate < today;
+    const bool rightOverdue = !right.completed && right.occurrenceDate < today;
     if (leftOverdue != rightOverdue) {
       return leftOverdue;
     }
     if (left.completed != right.completed) {
       return !left.completed;
     }
-    return left.createdAt < right.createdAt;
+    if (left.occurrenceDate != right.occurrenceDate) {
+      return left.occurrenceDate < right.occurrenceDate;
+    }
+    if (left.scheduledTime != right.scheduledTime) {
+      return left.scheduledTime < right.scheduledTime;
+    }
+    return left.taskId < right.taskId;
   });
 
   beginResetModel();
-  m_visibleTasks = std::move(visible);
+  m_visibleOccurrences = std::move(visible);
   endResetModel();
   emit summaryChanged();
 }

@@ -1,6 +1,8 @@
 #include "core/TaskStore.hpp"
 
 #include <QJsonArray>
+#include <QSqlDatabase>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QtTest>
 
@@ -14,6 +16,10 @@ private slots:
   void persistSyncConfiguration();
   void cacheHolidaySnapshotAtomically();
   void persistHolidayPreferencesAndMunicipalities();
+  void persistRecurrenceAndOccurrenceState();
+  void migrateLegacyTaskRowsAndOutbox();
+  void applyRemoteOccurrenceChangesIdempotently();
+  void applyRecurrenceDeletionScopes();
 };
 
 void TaskStoreTest::createCompleteAndRescheduleTask() {
@@ -24,21 +30,32 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
   QVERIFY2(store.open(&error), qPrintable(error));
 
   waypoint::TaskRecord created;
-  QVERIFY2(store.createTask(QStringLiteral("  Revisar calendário  "), QDate(2026, 9, 1), &created, &error),
+  QVERIFY2(store.createTask(QStringLiteral("  Revisar calendário  "), QDate(2026, 9, 1), QTime(9, 30), {},
+                            &created, &error),
            qPrintable(error));
   QCOMPARE(created.title, QStringLiteral("Revisar calendário"));
   QCOMPARE(created.scheduledDate, QDate(2026, 9, 1));
+  QCOMPARE(created.scheduledTime, QTime(9, 30));
 
   QVERIFY2(store.setTaskCompleted(created.id, true, &error), qPrintable(error));
-  QVERIFY2(store.rescheduleTask(created.id, QDate(2026, 9, 2), &error), qPrintable(error));
+  QVERIFY2(store.rescheduleTask(created.id, QDate(2026, 9, 2), QTime(11, 45), &error), qPrintable(error));
 
   const QList<waypoint::TaskRecord> tasks = store.listActiveTasks(&error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
   QCOMPARE(tasks.size(), 1);
   QCOMPARE(tasks.first().scheduledDate, QDate(2026, 9, 2));
+  QCOMPARE(tasks.first().scheduledTime, QTime(11, 45));
   QVERIFY(tasks.first().completed);
   QCOMPARE(tasks.first().version, 3);
-  QCOMPARE(store.pendingMutations(&error).size(), 3);
+  const QJsonArray mutations = store.pendingMutations(&error);
+  QCOMPARE(mutations.size(), 3);
+  QCOMPARE(mutations.last()
+               .toObject()
+               .value(QStringLiteral("payload"))
+               .toObject()
+               .value(QStringLiteral("scheduledTime"))
+               .toString(),
+           QStringLiteral("11:45"));
 }
 
 void TaskStoreTest::rejectInvisibleTitle() {
@@ -46,7 +63,7 @@ void TaskStoreTest::rejectInvisibleTitle() {
   waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
   QString error;
   QVERIFY2(store.open(&error), qPrintable(error));
-  QVERIFY(!store.createTask(QStringLiteral("   \t"), QDate::currentDate(), nullptr, &error));
+  QVERIFY(!store.createTask(QStringLiteral("   \t"), QDate::currentDate(), {}, {}, nullptr, &error));
   QVERIFY(error.contains(QStringLiteral("visible character")));
   QCOMPARE(store.listActiveTasks().size(), 0);
 }
@@ -57,9 +74,200 @@ void TaskStoreTest::preserveFloatingCalendarDate() {
   QString error;
   QVERIFY2(store.open(&error), qPrintable(error));
   const QDate expectedDate(2026, 9, 1);
-  QVERIFY2(store.createTask(QStringLiteral("Data flutuante"), expectedDate, nullptr, &error),
+  const QTime before = QTime(QTime::currentTime().hour(), QTime::currentTime().minute());
+  QVERIFY2(store.createTask(QStringLiteral("Data flutuante"), expectedDate, {}, {}, nullptr, &error),
            qPrintable(error));
-  QCOMPARE(store.listActiveTasks(&error).first().scheduledDate, expectedDate);
+  const QTime after = QTime(QTime::currentTime().hour(), QTime::currentTime().minute());
+  const waypoint::TaskRecord stored = store.listActiveTasks(&error).first();
+  QCOMPARE(stored.scheduledDate, expectedDate);
+  QVERIFY(stored.scheduledTime == before || stored.scheduledTime == after);
+}
+
+void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  waypoint::RecurrenceRule recurrence;
+  recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+  recurrence.interval = 1;
+  waypoint::TaskRecord created;
+  QVERIFY2(store.createTask(QStringLiteral("Caminhar"), QDate(2026, 1, 1), QTime(7, 15), recurrence, &created,
+                            &error),
+           qPrintable(error));
+
+  const auto tasks = store.listActiveTasks(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(tasks.size(), 1);
+  QCOMPARE(tasks.first().recurrence.frequency, waypoint::RecurrenceFrequency::Daily);
+  QCOMPARE(tasks.first().scheduledTime, QTime(7, 15));
+  QCOMPARE(store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 3), &error).size(), 3);
+
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), true, &error), qPrintable(error));
+  auto states = store.listOccurrenceStates(&error);
+  QCOMPARE(states.size(), 1);
+  QCOMPARE(states.first().occurrenceDate, QDate(2026, 1, 2));
+  QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Completed);
+
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), false, &error), qPrintable(error));
+  states = store.listOccurrenceStates(&error);
+  QCOMPARE(states.size(), 1);
+  QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Pending);
+  QCOMPARE(states.first().version, 2);
+
+  const QJsonArray mutations = store.pendingMutations(&error);
+  QCOMPARE(mutations.size(), 3);
+  QCOMPARE(mutations.at(0).toObject().value(QStringLiteral("entityType")).toString(), QStringLiteral("task"));
+  QCOMPARE(mutations.at(1).toObject().value(QStringLiteral("entityType")).toString(),
+           QStringLiteral("occurrence"));
+}
+
+void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {
+  QTemporaryDir directory;
+  const QString path = directory.filePath(QStringLiteral("legacy.sqlite3"));
+  const QString connection = QStringLiteral("legacy-setup");
+  {
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connection);
+    database.setDatabaseName(path);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(
+        QStringLiteral("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, scheduled_date TEXT, "
+                       "completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, "
+                       "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)")));
+    QVERIFY(query.exec(QStringLiteral("INSERT INTO tasks VALUES "
+                                      "('legacy-task', 'Legado', '2026-09-01', 0, "
+                                      "'2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', 1, NULL)")));
+    QVERIFY(query.exec(
+        QStringLiteral("CREATE TABLE outbox (mutation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, "
+                       "operation TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)")));
+    QVERIFY(query.exec(
+        QStringLiteral("INSERT INTO outbox VALUES "
+                       "('legacy-mutation', 'legacy-task', 'upsert', "
+                       "'{\"id\":\"legacy-task\",\"title\":\"Legado\",\"scheduledDate\":\"2026-09-01\"}', "
+                       "'2026-08-01T00:00:00.000Z')")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connection);
+
+  waypoint::TaskStore store(path);
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const auto tasks = store.listActiveTasks(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(tasks.size(), 1);
+  QCOMPARE(tasks.first().id, QStringLiteral("legacy-task"));
+  QVERIFY(!tasks.first().recurrence.isRecurring());
+  QVERIFY(!tasks.first().scheduledTime.isValid());
+
+  const QJsonArray mutations = store.pendingMutations(&error);
+  QCOMPARE(mutations.size(), 1);
+  QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
+           QStringLiteral("task"));
+  QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityId")).toString(),
+           QStringLiteral("legacy-task"));
+}
+
+void TaskStoreTest::applyRemoteOccurrenceChangesIdempotently() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  waypoint::RecurrenceRule recurrence;
+  recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+  waypoint::TaskRecord task;
+  QVERIFY2(store.createTask(QStringLiteral("Sincronizar"), QDate(2026, 1, 1), QTime(8, 0), recurrence, &task,
+                            &error),
+           qPrintable(error));
+  const QString acceptedTaskMutation =
+      store.pendingMutations(&error).first().toObject().value(QStringLiteral("mutationId")).toString();
+  waypoint::TaskRecord remoteTask = task;
+  remoteTask.scheduledTime = QTime(9, 30);
+  remoteTask.version = 2;
+  remoteTask.updatedAt = remoteTask.updatedAt.addSecs(1);
+  const QJsonObject taskChange{
+      {QStringLiteral("entityType"), QStringLiteral("task")},
+      {QStringLiteral("entityId"), task.id},
+      {QStringLiteral("operation"), QStringLiteral("upsert")},
+      {QStringLiteral("payload"), remoteTask.toJson()},
+  };
+
+  const auto occurrenceChange = [&task](const QDate &date, const QString &status, const qint64 version) {
+    const QString dateKey = date.toString(Qt::ISODate);
+    return QJsonObject{
+        {QStringLiteral("entityType"), QStringLiteral("occurrence")},
+        {QStringLiteral("entityId"), waypoint::occurrenceKey(task.id, date)},
+        {QStringLiteral("operation"), QStringLiteral("upsert")},
+        {QStringLiteral("payload"),
+         QJsonObject{{QStringLiteral("taskId"), task.id},
+                     {QStringLiteral("occurrenceDate"), dateKey},
+                     {QStringLiteral("status"), status},
+                     {QStringLiteral("completedAt"), status == QStringLiteral("completed")
+                                                         ? QStringLiteral("2026-01-02T12:00:00.000Z")
+                                                         : QString()},
+                     {QStringLiteral("updatedAt"), QStringLiteral("2026-01-02T12:00:00.000Z")},
+                     {QStringLiteral("version"), version}}},
+    };
+  };
+
+  QVERIFY2(store.applyRemoteChanges({taskChange,
+                                     occurrenceChange(QDate(2026, 1, 2), QStringLiteral("completed"), 5),
+                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("pending"), 1)},
+                                    QStringLiteral("2"), {acceptedTaskMutation}, &error),
+           qPrintable(error));
+  QCOMPARE(store.listOccurrenceStates(&error).size(), 2);
+  QCOMPARE(store.pendingMutations(&error).size(), 0);
+  QCOMPARE(store.listActiveTasks(&error).first().scheduledTime, QTime(9, 30));
+
+  QVERIFY2(store.applyRemoteChanges({occurrenceChange(QDate(2026, 1, 2), QStringLiteral("skipped"), 4),
+                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2)},
+                                    QStringLiteral("4"), {}, &error),
+           qPrintable(error));
+  const auto states = store.listOccurrenceStates(&error);
+  QCOMPARE(states.size(), 2);
+  QCOMPARE(states.at(0).occurrenceDate, QDate(2026, 1, 2));
+  QCOMPARE(states.at(0).status, waypoint::OccurrenceStatus::Completed);
+  QCOMPARE(states.at(0).version, 5);
+  QCOMPARE(states.at(1).occurrenceDate, QDate(2026, 1, 3));
+  QCOMPARE(states.at(1).status, waypoint::OccurrenceStatus::Completed);
+  QCOMPARE(states.at(1).version, 2);
+
+  QVERIFY2(store.applyRemoteChanges({occurrenceChange(QDate(2026, 1, 2), QStringLiteral("completed"), 5),
+                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2)},
+                                    QStringLiteral("6"), {}, &error),
+           qPrintable(error));
+  QCOMPARE(store.listOccurrenceStates(&error).size(), 2);
+}
+
+void TaskStoreTest::applyRecurrenceDeletionScopes() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  waypoint::RecurrenceRule recurrence;
+  recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+  waypoint::TaskRecord task;
+  QVERIFY2(
+      store.createTask(QStringLiteral("Escopo"), QDate(2026, 1, 1), QTime(8, 0), recurrence, &task, &error),
+      qPrintable(error));
+  QVERIFY2(
+      store.deleteOccurrence(task.id, QDate(2026, 1, 2), waypoint::RecurrenceEditScope::Occurrence, &error),
+      qPrintable(error));
+  auto occurrences = store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 4), &error);
+  QCOMPARE(occurrences.size(), 3);
+  QCOMPARE(occurrences.at(0).occurrenceDate, QDate(2026, 1, 1));
+  QCOMPARE(occurrences.at(1).occurrenceDate, QDate(2026, 1, 3));
+
+  QVERIFY2(
+      store.deleteOccurrence(task.id, QDate(2026, 1, 3), waypoint::RecurrenceEditScope::Following, &error),
+      qPrintable(error));
+  occurrences = store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 5), &error);
+  QCOMPARE(occurrences.size(), 1);
+  QCOMPARE(occurrences.first().occurrenceDate, QDate(2026, 1, 1));
+  QCOMPARE(store.listActiveTasks(&error).first().recurrence.untilDate, QDate(2026, 1, 2));
 }
 
 void TaskStoreTest::persistSyncConfiguration() {

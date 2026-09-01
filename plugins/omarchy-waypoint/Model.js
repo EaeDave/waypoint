@@ -26,7 +26,7 @@ function holidayPriority(kind) {
 }
 
 
-function monthCells(year, month, tasks, holidays) {
+function monthCells(year, month, occurrences, holidays) {
     const first = new Date(year, month, 1)
     const start = new Date(year, month, 1 - mondayIndex(first.getDay()))
     const today = dateKey(new Date())
@@ -38,10 +38,10 @@ function monthCells(year, month, tasks, holidays) {
         let pending = 0
         let completed = 0
         let overdue = 0
-        for (const task of tasks || []) {
-            if (task.scheduledDate !== key)
+        for (const occurrence of occurrences || []) {
+            if (occurrence.occurrenceDate !== key)
                 continue
-            if (task.completed) {
+            if (occurrence.completed) {
                 ++completed
             } else {
                 ++pending
@@ -81,8 +81,8 @@ function isoWeek(date) {
     return Math.ceil(((value.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 }
 
-function monthWeeks(year, month, tasks, holidays) {
-    const cells = monthCells(year, month, tasks, holidays)
+function monthWeeks(year, month, occurrences, holidays) {
+    const cells = monthCells(year, month, occurrences, holidays)
     const weeks = []
     for (let index = 0; index < 6; ++index) {
         const days = cells.slice(index * 7, index * 7 + 7)
@@ -101,9 +101,9 @@ function yearProgress(date) {
     return Math.max(0, Math.min(1, (dayOfYear - 1) / daysInYear))
 }
 
-function tasksForDate(tasks, date) {
+function occurrencesForDate(occurrences, date) {
     const key = dateKey(date)
-    return (tasks || []).filter(task => task.scheduledDate === key)
+    return (occurrences || []).filter(occurrence => occurrence.occurrenceDate === key)
 }
 function holidaysForDate(holidays, date) {
     const key = dateKey(date)
@@ -111,17 +111,16 @@ function holidaysForDate(holidays, date) {
 }
 
 
-function todaySummary(tasks) {
-    const today = dateKey(new Date())
-    let pending = 0
-    let overdue = 0
-    for (const task of tasks || []) {
-        if (task.completed)
-            continue
-        if (task.scheduledDate === today)
-            ++pending
-        else if (task.scheduledDate < today)
-            ++overdue
+function todaySummary(today) {
+    return {
+        pending: Number(today && today.pendingCount || 0),
+        overdue: Number(today && today.overdueCount || 0)
     }
-    return { pending: pending, overdue: overdue }
+}
+
+function monthRange(year, month) {
+    const first = new Date(year, month, 1)
+    const from = new Date(year, month, 1 - mondayIndex(first.getDay()))
+    const to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 41)
+    return { from: dateKey(from), to: dateKey(to) }
 }
