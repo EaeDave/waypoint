@@ -632,7 +632,7 @@ Panel {
                                 Row {
                                     anchors.fill: parent
                                     anchors.leftMargin: Style.space(8)
-                                    anchors.rightMargin: Style.space(8)
+                                    anchors.rightMargin: Style.space(50)
                                     spacing: Style.space(8)
 
                                     Text {
@@ -645,7 +645,7 @@ Panel {
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - Style.space(82)
+                                        width: parent.width - Style.space(40)
                                         spacing: 1
 
                                         Text {
@@ -671,22 +671,38 @@ Panel {
                                             font.bold: true
                                         }
                                     }
+                                }
+                                ToolButton {
+                                    id: taskActions
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Style.space(8)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Style.space(34)
+                                    height: Style.space(34)
+                                    z: 2
+                                    text: "⋯"
+                                    onClicked: root.openTaskEditor(modelData)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Editar ou excluir tarefa"
 
-                                    ToolButton {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Style.space(34)
-                                        height: Style.space(34)
-                                        text: "⋯"
-                                        onClicked: root.openTaskEditor(modelData)
-                                        ToolTip.visible: hovered
-                                        ToolTip.text: "Editar ou excluir tarefa"
+                                    background: Rectangle {
+                                        radius: Style.cornerRadius
+                                        color: taskActions.hovered
+                                            ? Style.hoverFillFor(root.foreground, Color.accent)
+                                            : "transparent"
+                                        border.width: Style.spacing.hairline
+                                        border.color: taskActions.hovered || taskActions.activeFocus
+                                            ? Color.accent
+                                            : Qt.rgba(root.foreground.r, root.foreground.g,
+                                                      root.foreground.b, 0.38)
                                     }
                                 }
+
 
                                 MouseArea {
                                     id: taskMouse
                                     anchors.fill: parent
-                                    anchors.rightMargin: Style.space(42)
+                                    anchors.rightMargin: Style.space(50)
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: if (root.hostWidget)
