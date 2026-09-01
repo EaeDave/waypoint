@@ -33,10 +33,12 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 spacing: 16
 
-                Text {
-                    text: "▣"
+                AppIcon {
+                    Layout.preferredWidth: 30
+                    Layout.preferredHeight: 30
+                    name: "calendar"
                     color: "#f6f4f8"
-                    font.pixelSize: 31
+                    strokeWidth: 2.2
                 }
 
                 Text {

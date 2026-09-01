@@ -70,6 +70,7 @@ qt_add_qml_module(waypoint
     QML_FILES
         qml/Main.qml
         qml/components/CalendarDay.qml
+        qml/components/AppIcon.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml
         qml/components/TaskRow.qml

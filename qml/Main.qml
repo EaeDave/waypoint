@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "views"
+import "components"
 
 ApplicationWindow {
     id: root
@@ -62,7 +63,12 @@ ApplicationWindow {
                 ToolButton {
                     id: todayButton
                     Layout.alignment: Qt.AlignHCenter
-                    text: "✓"
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    contentItem: AppIcon {
+                        name: "tasks"
+                        color: todayButton.checked ? "#f6f4f8" : "#8f8c95"
+                    }
                     checked: root.activePage === 0
                     onClicked: root.activePage = 0
                     ToolTip.visible: hovered
@@ -76,7 +82,12 @@ ApplicationWindow {
                 ToolButton {
                     id: monthButton
                     Layout.alignment: Qt.AlignHCenter
-                    text: "▦"
+                    Layout.preferredWidth: 40
+                    Layout.preferredHeight: 40
+                    contentItem: AppIcon {
+                        name: "calendar"
+                        color: monthButton.checked ? "#f6f4f8" : "#8f8c95"
+                    }
                     checked: root.activePage === 1
                     onClicked: root.activePage = 1
                     ToolTip.visible: hovered
