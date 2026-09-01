@@ -41,6 +41,8 @@ function monthCells(year, month, occurrences, holidays) {
         for (const occurrence of occurrences || []) {
             if (occurrence.occurrenceDate !== key)
                 continue
+            if (occurrence.recurring === true && key !== today)
+                continue
             if (occurrence.completed) {
                 ++completed
             } else {

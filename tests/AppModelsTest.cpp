@@ -8,6 +8,7 @@ class AppModelsTest final : public QObject {
 
 private slots:
   void aggregateTaskMarkersByCalendarDate();
+  void showRecurringTaskMarkerOnlyForToday();
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
   void sortTasksByFloatingLocalTime();
@@ -51,6 +52,32 @@ void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
     QCOMPARE(model.data(index, waypoint::CalendarModel::CompletedCountRole).toInt(), 1);
   }
   QVERIFY(foundToday);
+}
+
+void AppModelsTest::showRecurringTaskMarkerOnlyForToday() {
+  waypoint::CalendarModel model;
+  const QDate today = QDate::currentDate();
+  const QDate tomorrow = today.addDays(1);
+  model.setSourceOccurrences({
+      occurrence(QStringLiteral("recurring-today"), today, false, true),
+      occurrence(QStringLiteral("recurring-tomorrow"), tomorrow, false, true),
+      occurrence(QStringLiteral("completed-recurring-tomorrow"), tomorrow, true, true),
+      occurrence(QStringLiteral("one-off-tomorrow"), tomorrow, false),
+  });
+
+  const auto countForDate = [&model](const QDate &date, const waypoint::CalendarModel::Role role) {
+    for (int row = 0; row < model.rowCount(); ++row) {
+      const QModelIndex index = model.index(row, 0);
+      if (model.data(index, waypoint::CalendarModel::DateRole).toString() == date.toString(Qt::ISODate)) {
+        return model.data(index, role).toInt();
+      }
+    }
+    return -1;
+  };
+
+  QCOMPARE(countForDate(today, waypoint::CalendarModel::PendingCountRole), 1);
+  QCOMPARE(countForDate(tomorrow, waypoint::CalendarModel::PendingCountRole), 1);
+  QCOMPARE(countForDate(tomorrow, waypoint::CalendarModel::CompletedCountRole), 0);
 }
 
 void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {

@@ -146,6 +146,9 @@ void CalendarModel::rebuildCells() {
       if (occurrence.occurrenceDate != cell.date) {
         continue;
       }
+      if (occurrence.recurring && cell.date != today) {
+        continue;
+      }
       if (occurrence.completed) {
         ++cell.completedCount;
       } else {
