@@ -24,6 +24,7 @@ public:
     OverdueRole,
     RecurringRole,
     RecurrenceLabelRole,
+    RecurrenceRole,
   };
   Q_ENUM(Role)
 

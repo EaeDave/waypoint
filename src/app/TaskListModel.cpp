@@ -35,6 +35,8 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
     return occurrence.recurring;
   case RecurrenceLabelRole:
     return occurrence.recurrenceLabel;
+  case RecurrenceRole:
+    return occurrence.recurrence.toJson().toVariantMap();
   default:
     return {};
   }
@@ -50,6 +52,7 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
       {OverdueRole, "overdue"},
       {RecurringRole, "recurring"},
       {RecurrenceLabelRole, "recurrenceLabel"},
+      {RecurrenceRole, "recurrence"},
   };
 }
 

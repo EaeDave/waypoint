@@ -57,6 +57,24 @@ BarWidget {
         runAction([completed ? "complete" : "reopen", taskId,
                    "--date", occurrenceDate]);
     }
+    function editTask(taskId, title, scheduledTime, recurrence) {
+        const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
+                           "--frequency", recurrence.frequency || "none",
+                           "--interval", String(recurrence.interval || 1),
+                           "--end-mode", recurrence.endMode || "never",
+                           "--count", String(recurrence.occurrenceCount || 0)];
+        const weekdays = (recurrence.weekdays || []).join(",");
+        if (weekdays !== "")
+            arguments.push("--weekdays", weekdays);
+        if (recurrence.untilDate)
+            arguments.push("--until", recurrence.untilDate);
+        runAction(arguments);
+    }
+
+    function deleteTask(taskId) {
+        runAction(["delete", taskId]);
+    }
+
 
     function openSettings() {
         if (!settingsProcess.running) {

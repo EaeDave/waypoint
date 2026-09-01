@@ -51,6 +51,7 @@ struct TaskOccurrence final {
   bool completed = false;
   bool recurring = false;
   QString recurrenceLabel;
+  RecurrenceRule recurrence;
 
   [[nodiscard]] QString key() const;
   [[nodiscard]] QJsonObject toJson() const;

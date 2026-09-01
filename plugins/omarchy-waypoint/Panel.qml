@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -22,6 +24,12 @@ Panel {
     property date selectedDate: new Date()
     property int viewYear: selectedDate.getFullYear()
     property int viewMonth: selectedDate.getMonth()
+    property bool taskEditorVisible: false
+    property string editingTaskId: ""
+    property bool editingRecurringTask: false
+    property var editingRecurrence: ({ frequency: "none", interval: 1, weekdays: [],
+                                       endMode: "never", untilDate: "", occurrenceCount: 0 })
+    property int editingWeekdayMask: 0
 
     readonly property var barIdentity: hostWidget || root
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
@@ -103,6 +111,97 @@ Panel {
         }
         Qt.callLater(() => quickAdd.forceActiveFocus());
     }
+    function taskAnchorWeekdayIndex() {
+        return (selectedDate.getDay() + 6) % 7;
+    }
+
+    function taskRecurrencePresetIndex() {
+        const frequency = String(editingRecurrence.frequency || "none");
+        if (frequency === "none")
+            return 0;
+        const standard = Number(editingRecurrence.interval || 1) === 1
+                      && (editingRecurrence.weekdays || []).length === 0
+                      && String(editingRecurrence.endMode || "never") === "never";
+        if (!standard)
+            return 5;
+        return frequency === "daily" ? 1
+             : frequency === "weekly" ? 2
+             : frequency === "monthly" ? 3 : 4;
+    }
+
+    function selectedTaskWeekdays() {
+        if (taskRecurrenceInput.currentIndex !== 5
+                || taskCustomFrequency.currentValue !== "weekly")
+            return [];
+        const selected = [];
+        for (let index = 0; index < 7; ++index) {
+            if ((editingWeekdayMask & (1 << index)) !== 0)
+                selected.push(index + 1);
+        }
+        return selected;
+    }
+
+    function openTaskEditor(task) {
+        editingTaskId = String(task.taskId || "");
+        taskTitleInput.text = String(task.title || "");
+        taskTimeInput.text = String(task.scheduledTime || "");
+        editingRecurrence = task.recurrence || ({ frequency: "none", interval: 1, weekdays: [],
+                                                  endMode: "never", untilDate: "",
+                                                  occurrenceCount: 0 });
+        const frequency = String(editingRecurrence.frequency || "none");
+        taskCustomFrequency.currentIndex = Math.max(
+            0, taskCustomFrequency.indexOfValue(frequency === "none" ? "daily" : frequency));
+        taskCustomInterval.value = Number(editingRecurrence.interval || 1);
+        editingWeekdayMask = 0;
+        for (const weekday of (editingRecurrence.weekdays || []))
+            editingWeekdayMask |= 1 << (Number(weekday) - 1);
+        if (frequency === "weekly" && editingWeekdayMask === 0)
+            editingWeekdayMask = 1 << taskAnchorWeekdayIndex();
+        taskCustomEnding.currentIndex = Math.max(
+            0, taskCustomEnding.indexOfValue(String(editingRecurrence.endMode || "never")));
+        taskCustomUntilDate.text = String(editingRecurrence.untilDate || Model.dateKey(selectedDate));
+        taskCustomOccurrenceCount.value =
+            Math.max(1, Number(editingRecurrence.occurrenceCount || 10));
+        taskRecurrenceInput.currentIndex = taskRecurrencePresetIndex();
+        editingRecurringTask = task.recurring === true;
+        taskEditorVisible = true;
+        Qt.callLater(() => {
+            taskTitleInput.forceActiveFocus();
+            taskTitleInput.selectAll();
+        });
+    }
+
+    function closeTaskEditor() {
+        taskEditorVisible = false;
+    }
+
+    function saveTaskEdit() {
+        const title = taskTitleInput.text.trim();
+        const time = taskTimeInput.text.trim();
+        if (title === "" || !taskTimeInput.acceptableInput || !hostWidget)
+            return;
+        const custom = taskRecurrenceInput.currentIndex === 5;
+        const frequency = custom ? taskCustomFrequency.currentValue
+                                 : taskRecurrenceInput.currentValue;
+        const endMode = custom ? taskCustomEnding.currentValue : "never";
+        const recurrence = {
+            frequency: frequency,
+            interval: custom ? taskCustomInterval.value : 1,
+            weekdays: selectedTaskWeekdays(),
+            endMode: endMode,
+            untilDate: endMode === "onDate" ? taskCustomUntilDate.text.trim() : "",
+            occurrenceCount: endMode === "afterCount" ? taskCustomOccurrenceCount.value : 0
+        };
+        hostWidget.editTask(editingTaskId, title, time, recurrence);
+        closeTaskEditor();
+    }
+    function deleteEditedTask() {
+        if (!hostWidget)
+            return;
+        hostWidget.deleteTask(editingTaskId);
+        closeTaskEditor();
+    }
+
 
     KeyboardPanel {
         id: popup
@@ -546,7 +645,7 @@ Panel {
 
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - Style.space(40)
+                                        width: parent.width - Style.space(82)
                                         spacing: 1
 
                                         Text {
@@ -572,11 +671,22 @@ Panel {
                                             font.bold: true
                                         }
                                     }
+
+                                    ToolButton {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Style.space(34)
+                                        height: Style.space(34)
+                                        text: "⋯"
+                                        onClicked: root.openTaskEditor(modelData)
+                                        ToolTip.visible: hovered
+                                        ToolTip.text: "Editar ou excluir tarefa"
+                                    }
                                 }
 
                                 MouseArea {
                                     id: taskMouse
                                     anchors.fill: parent
+                                    anchors.rightMargin: Style.space(42)
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: if (root.hostWidget)
@@ -630,6 +740,226 @@ Panel {
                             fontFamily: root.fontFamily
                             onClicked: if (root.hostWidget)
                                 root.hostWidget.openSettings()
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 100
+                visible: root.taskEditorVisible
+                color: Qt.rgba(0, 0, 0, 0.58)
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.closeTaskEditor()
+                }
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(460))
+                    height: taskEditorColumn.implicitHeight + Style.space(28)
+                    radius: Style.cornerRadius
+                    color: Qt.darker(root.foreground, 4.8)
+                    border.width: Style.spacing.hairline
+                    border.color: Style.normalBorderFor(root.foreground, Color.accent)
+
+                    MouseArea {
+                        anchors.fill: parent
+                    }
+
+                    ColumnLayout {
+                        id: taskEditorColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: Style.space(14)
+                        anchors.rightMargin: Style.space(14)
+                        spacing: Style.space(8)
+
+                        Text {
+                            text: "EDITAR TAREFA"
+                            color: root.foreground
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.body
+                            font.bold: true
+                        }
+
+                        TextField {
+                            id: taskTitleInput
+                            Layout.fillWidth: true
+                            text: ""
+                            placeholderText: "Título"
+                            color: root.foreground
+                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                            font.family: root.fontFamily
+                            selectByMouse: true
+                            onAccepted: taskTimeInput.forceActiveFocus()
+                        }
+
+                        TextField {
+                            id: taskTimeInput
+                            Layout.fillWidth: true
+                            text: ""
+                            placeholderText: "HH:mm"
+                            color: root.foreground
+                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                            font.family: root.fontFamily
+                            selectByMouse: true
+                            inputMethodHints: Qt.ImhTime
+                            validator: RegularExpressionValidator {
+                                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
+                            }
+                            onAccepted: root.saveTaskEdit()
+                        }
+
+                        ComboBox {
+                            id: taskRecurrenceInput
+                            Layout.fillWidth: true
+                            textRole: "text"
+                            valueRole: "value"
+                            model: [
+                                { text: "Não repetir", value: "none" },
+                                { text: "Diariamente", value: "daily" },
+                                { text: "Semanalmente", value: "weekly" },
+                                { text: "Mensalmente", value: "monthly" },
+                                { text: "Anualmente", value: "yearly" },
+                                { text: "Personalizado", value: "custom" }
+                            ]
+                        }
+
+                        GridLayout {
+                            visible: taskRecurrenceInput.currentIndex === 5
+                            Layout.fillWidth: true
+                            columns: 2
+                            columnSpacing: Style.space(8)
+                            rowSpacing: Style.space(6)
+
+                            Label {
+                                text: "Frequência"
+                            }
+                            ComboBox {
+                                id: taskCustomFrequency
+                                Layout.fillWidth: true
+                                textRole: "text"
+                                valueRole: "value"
+                                model: [
+                                    { text: "Diária", value: "daily" },
+                                    { text: "Semanal", value: "weekly" },
+                                    { text: "Mensal", value: "monthly" },
+                                    { text: "Anual", value: "yearly" }
+                                ]
+                                onCurrentValueChanged: {
+                                    if (currentValue === "weekly" && root.editingWeekdayMask === 0)
+                                        root.editingWeekdayMask = 1 << root.taskAnchorWeekdayIndex();
+                                }
+                            }
+
+                            Label {
+                                text: "A cada"
+                            }
+                            RowLayout {
+                                SpinBox {
+                                    id: taskCustomInterval
+                                    from: 1
+                                    to: 99
+                                    value: 1
+                                }
+                                Label {
+                                    text: taskCustomFrequency.currentValue === "daily" ? "dia(s)"
+                                        : taskCustomFrequency.currentValue === "weekly" ? "semana(s)"
+                                        : taskCustomFrequency.currentValue === "monthly" ? "mês(es)"
+                                        : "ano(s)"
+                                }
+                            }
+
+                            Label {
+                                visible: taskCustomFrequency.currentValue === "weekly"
+                                text: "Somente em"
+                            }
+                            RowLayout {
+                                visible: taskCustomFrequency.currentValue === "weekly"
+                                spacing: 1
+                                Repeater {
+                                    model: ["S", "T", "Q", "Q", "S", "S", "D"]
+                                    CheckBox {
+                                        required property int index
+                                        required property string modelData
+                                        text: modelData
+                                        checked: (root.editingWeekdayMask & (1 << index)) !== 0
+                                        padding: 1
+                                        onToggled: {
+                                            if (checked)
+                                                root.editingWeekdayMask |= 1 << index;
+                                            else
+                                                root.editingWeekdayMask &= ~(1 << index);
+                                        }
+                                    }
+                                }
+                            }
+
+                            Label {
+                                text: "Termina"
+                            }
+                            ComboBox {
+                                id: taskCustomEnding
+                                Layout.fillWidth: true
+                                textRole: "text"
+                                valueRole: "value"
+                                model: [
+                                    { text: "Nunca", value: "never" },
+                                    { text: "Em uma data", value: "onDate" },
+                                    { text: "Após ocorrências", value: "afterCount" }
+                                ]
+                            }
+
+                            Label {
+                                visible: taskCustomEnding.currentValue === "onDate"
+                                text: "Data final"
+                            }
+                            TextField {
+                                id: taskCustomUntilDate
+                                visible: taskCustomEnding.currentValue === "onDate"
+                                Layout.fillWidth: true
+                                placeholderText: "AAAA-MM-DD"
+                                color: root.foreground
+                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                                font.family: root.fontFamily
+                            }
+
+                            Label {
+                                visible: taskCustomEnding.currentValue === "afterCount"
+                                text: "Ocorrências"
+                            }
+                            SpinBox {
+                                id: taskCustomOccurrenceCount
+                                visible: taskCustomEnding.currentValue === "afterCount"
+                                from: 1
+                                to: 999
+                                value: 10
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Button {
+                                text: root.editingRecurringTask ? "Excluir série" : "Excluir tarefa"
+                                onClicked: root.deleteEditedTask()
+                            }
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: "Cancelar"
+                                onClicked: root.closeTaskEditor()
+                            }
+                            Button {
+                                text: "Salvar"
+                                enabled: taskTitleInput.text.trim() !== "" && taskTimeInput.acceptableInput
+                                onClicked: root.saveTaskEdit()
+                            }
                         }
                     }
                 }

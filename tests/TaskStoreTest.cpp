@@ -11,6 +11,7 @@ class TaskStoreTest final : public QObject {
 
 private slots:
   void createCompleteAndRescheduleTask();
+  void editTaskTitleAndTimeAtomically();
   void rejectInvisibleTitle();
   void preserveFloatingCalendarDate();
   void persistSyncConfiguration();
@@ -56,6 +57,54 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
                .value(QStringLiteral("scheduledTime"))
                .toString(),
            QStringLiteral("11:45"));
+}
+void TaskStoreTest::editTaskTitleAndTimeAtomically() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  waypoint::TaskRecord created;
+  QVERIFY2(store.createTask(QStringLiteral("Teste"), QDate(2026, 9, 1), QTime(17, 38), {}, &created, &error),
+           qPrintable(error));
+  waypoint::RecurrenceRule recurrence;
+  recurrence.frequency = waypoint::RecurrenceFrequency::Weekly;
+  recurrence.interval = 2;
+  recurrence.weekdays = {1, 3};
+  recurrence.endMode = waypoint::RecurrenceEndMode::AfterCount;
+  recurrence.occurrenceCount = 5;
+  QVERIFY2(store.editTask(created.id, QStringLiteral("  Teste editado  "), QTime(18, 25), recurrence, &error),
+           qPrintable(error));
+
+  const QList<waypoint::TaskRecord> tasks = store.listActiveTasks(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(tasks.size(), 1);
+  QCOMPARE(tasks.first().title, QStringLiteral("Teste editado"));
+  QCOMPARE(tasks.first().scheduledDate, QDate(2026, 9, 1));
+  QCOMPARE(tasks.first().scheduledTime, QTime(18, 25));
+  QCOMPARE(tasks.first().version, 2);
+  QCOMPARE(tasks.first().recurrence.frequency, waypoint::RecurrenceFrequency::Weekly);
+  QCOMPARE(tasks.first().recurrence.interval, 2);
+  QCOMPARE(tasks.first().recurrence.weekdays, QList<int>({1, 3}));
+  QCOMPARE(tasks.first().recurrence.endMode, waypoint::RecurrenceEndMode::AfterCount);
+  QCOMPARE(tasks.first().recurrence.occurrenceCount, 5);
+
+  const QJsonObject payload =
+      store.pendingMutations(&error).last().toObject().value(QStringLiteral("payload")).toObject();
+  QCOMPARE(payload.value(QStringLiteral("title")).toString(), QStringLiteral("Teste editado"));
+  QCOMPARE(payload.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("18:25"));
+  const QJsonObject payloadRecurrence = payload.value(QStringLiteral("recurrence")).toObject();
+  QCOMPARE(payloadRecurrence.value(QStringLiteral("frequency")).toString(), QStringLiteral("weekly"));
+  QCOMPARE(payloadRecurrence.value(QStringLiteral("interval")).toInt(), 2);
+  QCOMPARE(payloadRecurrence.value(QStringLiteral("endMode")).toString(), QStringLiteral("afterCount"));
+  QCOMPARE(payloadRecurrence.value(QStringLiteral("occurrenceCount")).toInt(), 5);
+
+  QVERIFY(!store.editTask(created.id, QStringLiteral(" \t "), QTime(19, 0), recurrence, &error));
+  QVERIFY(error.contains(QStringLiteral("visible character")));
+  const waypoint::TaskRecord unchanged = store.listActiveTasks().first();
+  QCOMPARE(unchanged.title, QStringLiteral("Teste editado"));
+  QCOMPARE(unchanged.scheduledTime, QTime(18, 25));
 }
 
 void TaskStoreTest::rejectInvisibleTitle() {

@@ -77,6 +77,9 @@ public:
                                     const QString &scope);
   Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey,
                                   const QString &scheduledTimeKey);
+  Q_INVOKABLE bool editTask(const QString &taskId, const QString &title, const QString &scheduledTimeKey,
+                            const QString &frequency, int interval, const QVariantList &weekdays,
+                            const QString &endMode, const QString &untilDateKey, int occurrenceCount);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();

@@ -233,6 +233,33 @@ bool WaypointController::rescheduleTask(const QString &taskId, const QString &sc
   refresh();
   return true;
 }
+bool WaypointController::editTask(const QString &taskId, const QString &title,
+                                  const QString &scheduledTimeKey, const QString &frequency,
+                                  const int interval, const QVariantList &weekdays, const QString &endMode,
+                                  const QString &untilDateKey, const int occurrenceCount) {
+  const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
+  if (!scheduledTime.isValid()) {
+    updateConnection(m_online, QStringLiteral("Invalid task time: %1").arg(scheduledTimeKey));
+    return false;
+  }
+  RecurrenceRule recurrence;
+  recurrence.frequency = recurrenceFrequency(frequency);
+  recurrence.interval = interval;
+  for (const QVariant &weekday : weekdays) {
+    recurrence.weekdays.append(weekday.toInt());
+  }
+  recurrence.endMode = recurrenceEndMode(endMode);
+  recurrence.untilDate = QDate::fromString(untilDateKey, Qt::ISODate);
+  recurrence.occurrenceCount = occurrenceCount;
+
+  QString error;
+  if (!m_client.editTask(taskId, title, scheduledTime, recurrence, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
 
 bool WaypointController::deleteTask(const QString &taskId) {
   QString error;

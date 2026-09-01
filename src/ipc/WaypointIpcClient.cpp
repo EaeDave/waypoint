@@ -101,6 +101,7 @@ QList<TaskOccurrence> WaypointIpcClient::listOccurrences(const QDate &from, cons
     occurrence.completed = json.value(QStringLiteral("completed")).toBool();
     occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
     occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
+    occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
     occurrences.append(occurrence);
   }
   return occurrences;
@@ -127,6 +128,7 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
     occurrence.completed = json.value(QStringLiteral("completed")).toBool();
     occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
     occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
+    occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
     occurrences.append(occurrence);
   }
   return occurrences;
@@ -192,6 +194,19 @@ bool WaypointIpcClient::rescheduleTask(const QString &taskId, const QDate &sched
           {QStringLiteral("taskId"), taskId},
           {QStringLiteral("scheduledDate"), scheduledDate.toString(Qt::ISODate)},
           {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage);
+}
+bool WaypointIpcClient::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
+                                 const RecurrenceRule &recurrence, QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("edit")},
+          {QStringLiteral("taskId"), taskId},
+          {QStringLiteral("title"), title},
+          {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
+          {QStringLiteral("recurrence"), recurrence.toJson()},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);

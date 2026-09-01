@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
   parser.addVersionOption();
   parser.addPositionalArgument(
       QStringLiteral("command"),
-      QStringLiteral("ping, snapshot, add, complete, reopen, reschedule, delete, sync-status, "
+      QStringLiteral("ping, snapshot, add, complete, reopen, edit, reschedule, delete, sync-status, "
                      "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
                      "holiday-preferences, configure-holidays, municipalities, holidays, or "
                      "refresh-holidays"));
@@ -47,6 +47,21 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("date")});
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
+  parser.addOption({QStringLiteral("frequency"),
+                    QStringLiteral("Recurrence frequency: none, daily, weekly, monthly, or yearly"),
+                    QStringLiteral("frequency"), QStringLiteral("none")});
+  parser.addOption({QStringLiteral("interval"), QStringLiteral("Recurrence interval"),
+                    QStringLiteral("count"), QStringLiteral("1")});
+  parser.addOption({QStringLiteral("weekdays"),
+                    QStringLiteral("Comma-separated ISO weekdays (1=Monday, 7=Sunday)"),
+                    QStringLiteral("days")});
+  parser.addOption({QStringLiteral("end-mode"),
+                    QStringLiteral("Recurrence ending: never, onDate, or afterCount"), QStringLiteral("mode"),
+                    QStringLiteral("never")});
+  parser.addOption({QStringLiteral("until"), QStringLiteral("Recurrence end date in YYYY-MM-DD format"),
+                    QStringLiteral("date")});
+  parser.addOption({QStringLiteral("count"), QStringLiteral("Recurrence occurrence count"),
+                    QStringLiteral("count"), QStringLiteral("0")});
   parser.addOption({QStringLiteral("endpoint"), QStringLiteral("Waypoint synchronization server URL"),
                     QStringLiteral("url")});
   parser.addOption({QStringLiteral("token"), QStringLiteral("Waypoint synchronization access token"),
@@ -290,6 +305,37 @@ int main(int argc, char *argv[]) {
     succeeded = occurrenceDate.isValid()
                     ? client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)
                     : client.setTaskCompleted(taskId, completed, &error);
+  } else if (command == QStringLiteral("edit")) {
+    const QString title = parser.value(QStringLiteral("title")).trimmed();
+    const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
+    const QString frequency = parser.value(QStringLiteral("frequency"));
+    const QStringList frequencies{QStringLiteral("none"), QStringLiteral("daily"), QStringLiteral("weekly"),
+                                  QStringLiteral("monthly"), QStringLiteral("yearly")};
+    if (title.isEmpty() || !time.isValid()) {
+      return printError(QStringLiteral("edit requires --title and --time HH:mm"));
+    }
+    if (!frequencies.contains(frequency)) {
+      return printError(QStringLiteral("--frequency must be none, daily, weekly, monthly, or yearly"));
+    }
+    QJsonArray weekdays;
+    const QStringList weekdayValues =
+        parser.value(QStringLiteral("weekdays")).split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &weekdayValue : weekdayValues) {
+      bool validWeekday = false;
+      const int weekday = weekdayValue.toInt(&validWeekday);
+      if (!validWeekday || weekday < 1 || weekday > 7) {
+        return printError(QStringLiteral("--weekdays must contain values from 1 through 7"));
+      }
+      weekdays.append(weekday);
+    }
+    const waypoint::RecurrenceRule recurrence = waypoint::RecurrenceRule::fromJson(
+        {{QStringLiteral("frequency"), frequency},
+         {QStringLiteral("interval"), parser.value(QStringLiteral("interval")).toInt()},
+         {QStringLiteral("weekdays"), weekdays},
+         {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
+         {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
+         {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
+    succeeded = client.editTask(taskId, title, time, recurrence, &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

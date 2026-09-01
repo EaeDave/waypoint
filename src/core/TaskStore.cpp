@@ -558,6 +558,14 @@ bool TaskStore::rescheduleTask(const QString &taskId, const QDate &scheduledDate
                      {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))}},
                     errorMessage);
 }
+bool TaskStore::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
+                         const RecurrenceRule &recurrence, QString *errorMessage) {
+  return mutateTask(taskId, QStringLiteral("upsert"),
+                    {{QStringLiteral("title"), title},
+                     {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
+                     {QStringLiteral("recurrence"), recurrence.toJson()}},
+                    errorMessage);
+}
 
 bool TaskStore::deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                  const RecurrenceEditScope scope, QString *errorMessage) {
@@ -616,6 +624,13 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   }
 
   TaskRecord task = taskFromQuery(select);
+  if (fields.contains(QStringLiteral("title"))) {
+    task.title = fields.value(QStringLiteral("title")).toString().trimmed();
+  }
+  if (task.title.isEmpty()) {
+    setError(errorMessage, QStringLiteral("Task title must contain at least one visible character"));
+    return false;
+  }
   if (fields.contains(QStringLiteral("completed"))) {
     task.completed = fields.value(QStringLiteral("completed")).toBool();
   }
@@ -649,10 +664,11 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   }
   QSqlQuery update(m_database);
   update.prepare(
-      QStringLiteral("UPDATE tasks SET scheduled_date = ?, completed = ?, updated_at = ?, version = ?, "
-                     "recurrence_frequency = ?, recurrence_interval = ?, recurrence_weekdays = ?, "
-                     "recurrence_end_mode = ?, recurrence_until = ?, recurrence_count = ?, "
-                     "scheduled_time = ? WHERE id = ? AND deleted_at IS NULL"));
+      QStringLiteral("UPDATE tasks SET title = ?, scheduled_date = ?, completed = ?, updated_at = ?, "
+                     "version = ?, recurrence_frequency = ?, recurrence_interval = ?, "
+                     "recurrence_weekdays = ?, recurrence_end_mode = ?, recurrence_until = ?, "
+                     "recurrence_count = ?, scheduled_time = ? WHERE id = ? AND deleted_at IS NULL"));
+  update.addBindValue(task.title);
   update.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
   update.addBindValue(task.completed);
   update.addBindValue(task.updatedAt.toString(Qt::ISODateWithMs));

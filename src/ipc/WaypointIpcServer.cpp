@@ -173,6 +173,18 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     return {{QStringLiteral("ok"), true}};
   }
+  if (command == QStringLiteral("edit")) {
+    const QString taskId = request.value(QStringLiteral("taskId")).toString();
+    const QString title = request.value(QStringLiteral("title")).toString();
+    const QTime time =
+        QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+    const RecurrenceRule recurrence =
+        RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
+    if (!m_taskStore->editTask(taskId, title, time, recurrence, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
   if (command == QStringLiteral("reschedule")) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const QDate date =

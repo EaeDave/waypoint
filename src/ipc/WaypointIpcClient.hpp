@@ -31,6 +31,8 @@ public:
                                       const QString &scope, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
+                              const RecurrenceRule &recurrence, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncConfiguration(QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncStatus(QString *errorMessage = nullptr) const;

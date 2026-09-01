@@ -51,6 +51,8 @@ public:
                                     QString *errorMessage = nullptr);
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr);
+  [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
+                              const RecurrenceRule &recurrence, QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                       RecurrenceEditScope scope, QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr);

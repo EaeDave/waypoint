@@ -132,6 +132,7 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.completed = state != nullptr && state->status == OccurrenceStatus::Completed;
   occurrence.recurring = task.recurrence.isRecurring();
   occurrence.recurrenceLabel = task.recurrence.label();
+  occurrence.recurrence = task.recurrence;
   return occurrence;
 }
 
@@ -273,6 +274,7 @@ QJsonObject TaskOccurrence::toJson() const {
       {QStringLiteral("completed"), completed},
       {QStringLiteral("recurring"), recurring},
       {QStringLiteral("recurrenceLabel"), recurrenceLabel},
+      {QStringLiteral("recurrence"), recurrence.toJson()},
   };
 }
 

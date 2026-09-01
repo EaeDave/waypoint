@@ -25,6 +25,9 @@ waypoint::TaskOccurrence occurrence(QString id, const QDate &date, bool complete
   value.completed = completed;
   value.recurring = recurring;
   value.recurrenceLabel = recurring ? QStringLiteral("DIÁRIA") : QString();
+  if (recurring) {
+    value.recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+  }
   return value;
 }
 
@@ -96,6 +99,11 @@ void AppModelsTest::includeOverdueTasksOnlyInTodayView() {
   QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::RecurringRole).toBool(), true);
   QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::RecurrenceLabelRole).toString(),
            QStringLiteral("DIÁRIA"));
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::RecurrenceRole)
+               .toMap()
+               .value(QStringLiteral("frequency"))
+               .toString(),
+           QStringLiteral("daily"));
 }
 void AppModelsTest::sortTasksByFloatingLocalTime() {
   const QDate today = QDate::currentDate();
