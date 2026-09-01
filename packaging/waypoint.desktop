@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Waypoint
+Comment=Tasks and calendar, kept in sync
+Exec=waypoint
+Icon=view-calendar-tasks
+Terminal=false
+Categories=Office;Calendar;ProjectManagement;
+StartupNotify=true

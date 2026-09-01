@@ -1,0 +1,8 @@
+/build/
+/target/
+/.cache/
+*.user
+/graphify-out/
+.env
+.env.*
+!.env.example

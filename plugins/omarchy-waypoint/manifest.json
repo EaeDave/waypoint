@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "io.waypoint.bar",
+  "name": "Waypoint",
+  "version": "0.1.0",
+  "author": "Waypoint",
+  "description": "Tasks and calendar in the Omarchy bar",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Waypoint",
+    "description": "Today's tasks and an interactive month calendar",
+    "category": "Productivity",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
