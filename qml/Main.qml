@@ -94,8 +94,7 @@ ApplicationWindow {
                 ToolButton {
                     id: settingsButton
                     Layout.alignment: Qt.AlignHCenter
-                    text: "⚙"
-                    checked: root.activePage === 2
+                    text: "⋯"
                     onClicked: root.activePage = 2
                     ToolTip.visible: hovered
                     ToolTip.text: "Configurações"
