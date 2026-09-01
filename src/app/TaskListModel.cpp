@@ -26,6 +26,8 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
   case ScheduledTimeRole:
     return occurrence.scheduledTime.isValid() ? occurrence.scheduledTime.toString(QStringLiteral("HH:mm"))
                                               : QString();
+  case EmojiRole:
+    return occurrence.emoji;
   case CompletedRole:
     return occurrence.completed;
   case OverdueRole:
@@ -48,6 +50,7 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
       {TitleRole, "title"},
       {ScheduledDateRole, "scheduledDateKey"},
       {ScheduledTimeRole, "scheduledTimeKey"},
+      {EmojiRole, "emoji"},
       {CompletedRole, "completed"},
       {OverdueRole, "overdue"},
       {RecurringRole, "recurring"},

@@ -48,6 +48,7 @@ struct TaskOccurrence final {
   QString title;
   QDate occurrenceDate;
   QTime scheduledTime;
+  QString emoji;
   bool completed = false;
   bool recurring = false;
   QString recurrenceLabel;

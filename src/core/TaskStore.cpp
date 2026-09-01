@@ -9,6 +9,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QStandardPaths>
+#include <QTextBoundaryFinder>
 #include <QUuid>
 
 namespace waypoint {
@@ -26,6 +27,18 @@ void setError(QString *destination, const QString &message) {
 
 QString newIdentifier() { return QUuid::createUuid().toString(QUuid::WithoutBraces); }
 
+bool isValidTaskEmoji(const QString &emoji) {
+  if (emoji.isEmpty()) {
+    return true;
+  }
+  if (emoji.size() > 64 || emoji.trimmed() != emoji) {
+    return false;
+  }
+  QTextBoundaryFinder finder(QTextBoundaryFinder::Grapheme, emoji);
+  finder.toStart();
+  return finder.toNextBoundary() == emoji.size();
+}
+
 QString encodeJson(const QJsonObject &json) {
   return QString::fromUtf8(QJsonDocument(json).toJson(QJsonDocument::Compact));
 }
@@ -40,6 +53,7 @@ TaskRecord taskFromQuery(const QSqlQuery &query) {
   task.updatedAt = QDateTime::fromString(query.value(5).toString(), Qt::ISODateWithMs);
   task.version = query.value(6).toLongLong();
   task.scheduledTime = QTime::fromString(query.value(13).toString(), QStringLiteral("HH:mm"));
+  task.emoji = query.value(14).toString();
 
   QJsonArray weekdays;
   const QJsonDocument weekdayDocument = QJsonDocument::fromJson(query.value(9).toByteArray());
@@ -148,7 +162,8 @@ bool TaskStore::migrate(QString *errorMessage) {
           "recurrence_interval INTEGER NOT NULL DEFAULT 1, "
           "recurrence_weekdays TEXT NOT NULL DEFAULT '[]', "
           "recurrence_end_mode TEXT NOT NULL DEFAULT 'never', recurrence_until TEXT, "
-          "recurrence_count INTEGER NOT NULL DEFAULT 0, scheduled_time TEXT)"),
+          "recurrence_count INTEGER NOT NULL DEFAULT 0, scheduled_time TEXT, "
+          "emoji TEXT NOT NULL DEFAULT '')"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS tasks_schedule_idx "
                      "ON tasks(scheduled_date, completed) WHERE deleted_at IS NULL"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS outbox ("
@@ -215,6 +230,7 @@ bool TaskStore::migrate(QString *errorMessage) {
       {QStringLiteral("recurrence_until"), QStringLiteral("TEXT")},
       {QStringLiteral("recurrence_count"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")},
       {QStringLiteral("scheduled_time"), QStringLiteral("TEXT")},
+      {QStringLiteral("emoji"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
   };
   for (const auto &[name, definition] : recurrenceColumns) {
     if (taskColumns.contains(name)) {
@@ -297,7 +313,7 @@ QList<TaskRecord> TaskStore::listActiveTasks(QString *errorMessage) const {
   query.prepare(
       QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
                      "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time "
+                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji "
                      "FROM tasks WHERE deleted_at IS NULL "
                      "ORDER BY scheduled_date IS NULL, scheduled_date, completed, created_at"));
   if (!query.exec()) {
@@ -365,10 +381,15 @@ QList<TaskOccurrence> TaskStore::listActionableOccurrences(const QDate &today, Q
 }
 
 bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                           const RecurrenceRule &recurrence, TaskRecord *createdTask, QString *errorMessage) {
+                           const RecurrenceRule &recurrence, const QString &emoji, TaskRecord *createdTask,
+                           QString *errorMessage) {
   const QString normalizedTitle = title.trimmed();
   if (normalizedTitle.isEmpty()) {
     setError(errorMessage, QStringLiteral("Task title must contain at least one visible character"));
+    return false;
+  }
+  if (!isValidTaskEmoji(emoji)) {
+    setError(errorMessage, QStringLiteral("Task emoji must be empty or contain one grapheme"));
     return false;
   }
   QString recurrenceError;
@@ -387,6 +408,7 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
   const QTime now = QTime::currentTime();
   task.scheduledTime = scheduledTime.isValid() ? QTime(scheduledTime.hour(), scheduledTime.minute())
                                                : QTime(now.hour(), now.minute());
+  task.emoji = emoji.isNull() ? QStringLiteral("") : emoji;
   task.recurrence = recurrence;
   task.createdAt = QDateTime::currentDateTimeUtc();
   task.updatedAt = task.createdAt;
@@ -400,8 +422,8 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
   query.prepare(QStringLiteral("INSERT INTO tasks "
                                "(id, title, scheduled_date, completed, created_at, updated_at, version, "
                                "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                               "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time) "
-                               "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+                               "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, "
+                               "emoji) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
   query.addBindValue(task.id);
   query.addBindValue(task.title);
   query.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
@@ -410,6 +432,7 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
   query.addBindValue(task.version);
   addRecurrenceBindValues(query, task.recurrence);
   query.addBindValue(task.scheduledTime.toString(QStringLiteral("HH:mm")));
+  query.addBindValue(task.emoji);
   if (!query.exec()) {
     rollbackTransaction();
     setError(errorMessage,
@@ -459,7 +482,7 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
   selectTask.prepare(
       QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
                      "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time "
+                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji "
                      "FROM tasks WHERE id = ? AND deleted_at IS NULL"));
   selectTask.addBindValue(taskId);
   if (!selectTask.exec() || !selectTask.next()) {
@@ -559,11 +582,12 @@ bool TaskStore::rescheduleTask(const QString &taskId, const QDate &scheduledDate
                     errorMessage);
 }
 bool TaskStore::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                         const RecurrenceRule &recurrence, QString *errorMessage) {
+                         const RecurrenceRule &recurrence, const QString &emoji, QString *errorMessage) {
   return mutateTask(taskId, QStringLiteral("upsert"),
                     {{QStringLiteral("title"), title},
                      {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
-                     {QStringLiteral("recurrence"), recurrence.toJson()}},
+                     {QStringLiteral("recurrence"), recurrence.toJson()},
+                     {QStringLiteral("emoji"), emoji}},
                     errorMessage);
 }
 
@@ -573,7 +597,7 @@ bool TaskStore::deleteOccurrence(const QString &taskId, const QDate &occurrenceD
   select.prepare(
       QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
                      "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time "
+                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji "
                      "FROM tasks WHERE id = ? AND deleted_at IS NULL"));
   select.addBindValue(taskId);
   if (!select.exec() || !select.next()) {
@@ -613,7 +637,7 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   select.prepare(
       QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
                      "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time "
+                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji "
                      "FROM tasks WHERE id = ? AND deleted_at IS NULL"));
   select.addBindValue(taskId);
   if (!select.exec() || !select.next()) {
@@ -642,6 +666,13 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
     task.scheduledTime =
         QTime::fromString(fields.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
   }
+  if (fields.contains(QStringLiteral("emoji"))) {
+    task.emoji = fields.value(QStringLiteral("emoji")).toString(QStringLiteral(""));
+  }
+  if (!isValidTaskEmoji(task.emoji)) {
+    setError(errorMessage, QStringLiteral("Task emoji must be empty or contain one grapheme"));
+    return false;
+  }
   if (!task.scheduledTime.isValid()) {
     setError(errorMessage, QStringLiteral("Task time must use HH:mm local wall-clock format"));
     return false;
@@ -667,7 +698,8 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
       QStringLiteral("UPDATE tasks SET title = ?, scheduled_date = ?, completed = ?, updated_at = ?, "
                      "version = ?, recurrence_frequency = ?, recurrence_interval = ?, "
                      "recurrence_weekdays = ?, recurrence_end_mode = ?, recurrence_until = ?, "
-                     "recurrence_count = ?, scheduled_time = ? WHERE id = ? AND deleted_at IS NULL"));
+                     "recurrence_count = ?, scheduled_time = ?, emoji = ? "
+                     "WHERE id = ? AND deleted_at IS NULL"));
   update.addBindValue(task.title);
   update.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
   update.addBindValue(task.completed);
@@ -675,6 +707,7 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   update.addBindValue(task.version);
   addRecurrenceBindValues(update, task.recurrence);
   update.addBindValue(task.scheduledTime.toString(QStringLiteral("HH:mm")));
+  update.addBindValue(task.emoji);
   update.addBindValue(task.id);
   if (!update.exec()) {
     rollbackTransaction();
@@ -1142,15 +1175,21 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         apply.addBindValue(version);
       } else {
         const TaskRecord task = TaskRecord::fromJson(payload);
+        if (!isValidTaskEmoji(task.emoji)) {
+          rollbackTransaction();
+          setError(errorMessage,
+                   QStringLiteral("Remote task emoji must be empty or contain one grapheme"));
+          return false;
+        }
         apply.prepare(QStringLiteral(
             "INSERT INTO tasks "
             "(id, title, scheduled_date, completed, created_at, updated_at, version, deleted_at, "
             "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-            "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?) "
+            "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET title=excluded.title, "
             "scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, "
-            "completed=excluded.completed, "
+            "emoji=excluded.emoji, completed=excluded.completed, "
             "updated_at=excluded.updated_at, version=excluded.version, deleted_at=NULL, "
             "recurrence_frequency=excluded.recurrence_frequency, "
             "recurrence_interval=excluded.recurrence_interval, "
@@ -1170,6 +1209,7 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         addRecurrenceBindValues(apply, task.recurrence);
         apply.addBindValue(task.scheduledTime.isValid() ? task.scheduledTime.toString(QStringLiteral("HH:mm"))
                                                         : QVariant());
+        apply.addBindValue(task.emoji);
       }
     } else {
       const TaskOccurrenceState state = TaskOccurrenceState::fromJson(payload);

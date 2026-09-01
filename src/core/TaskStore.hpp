@@ -42,8 +42,8 @@ public:
                                            QString *errorMessage = nullptr);
 
   [[nodiscard]] bool createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                                const RecurrenceRule &recurrence, TaskRecord *createdTask = nullptr,
-                                QString *errorMessage = nullptr);
+                                const RecurrenceRule &recurrence, const QString &emoji,
+                                TaskRecord *createdTask = nullptr, QString *errorMessage = nullptr);
   [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, QString *errorMessage = nullptr);
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
                                             bool completed, QString *errorMessage = nullptr);
@@ -52,7 +52,8 @@ public:
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr);
   [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                              const RecurrenceRule &recurrence, QString *errorMessage = nullptr);
+                              const RecurrenceRule &recurrence, const QString &emoji,
+                              QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                       RecurrenceEditScope scope, QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr);

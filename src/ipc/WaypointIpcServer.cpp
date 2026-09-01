@@ -130,13 +130,14 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   if (command == QStringLiteral("add")) {
     TaskRecord task;
     const QString title = request.value(QStringLiteral("title")).toString();
+    const QString emoji = request.value(QStringLiteral("emoji")).toString();
     const QDate date =
         QDate::fromString(request.value(QStringLiteral("scheduledDate")).toString(), Qt::ISODate);
     const QTime time =
         QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
     const RecurrenceRule recurrence =
         RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
-    if (!m_taskStore->createTask(title, date, time, recurrence, &task, &error)) {
+    if (!m_taskStore->createTask(title, date, time, recurrence, emoji, &task, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("task"), task.toJson()}};
@@ -176,11 +177,12 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   if (command == QStringLiteral("edit")) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const QString title = request.value(QStringLiteral("title")).toString();
+    const QString emoji = request.value(QStringLiteral("emoji")).toString();
     const QTime time =
         QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
     const RecurrenceRule recurrence =
         RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
-    if (!m_taskStore->editTask(taskId, title, time, recurrence, &error)) {
+    if (!m_taskStore->editTask(taskId, title, time, recurrence, emoji, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};

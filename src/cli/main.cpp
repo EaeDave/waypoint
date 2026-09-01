@@ -47,6 +47,7 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("date")});
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
+  parser.addOption({QStringLiteral("emoji"), QStringLiteral("Optional task emoji"), QStringLiteral("emoji")});
   parser.addOption({QStringLiteral("frequency"),
                     QStringLiteral("Recurrence frequency: none, daily, weekly, monthly, or yearly"),
                     QStringLiteral("frequency"), QStringLiteral("none")});
@@ -163,7 +164,8 @@ int main(int argc, char *argv[]) {
     if (parser.isSet(QStringLiteral("time")) && !time.isValid()) {
       return printError(QStringLiteral("--time requires HH:mm"));
     }
-    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {}, &error)) {
+    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {},
+                        parser.value(QStringLiteral("emoji")), &error)) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});
@@ -335,7 +337,8 @@ int main(int argc, char *argv[]) {
          {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
          {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
          {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
-    succeeded = client.editTask(taskId, title, time, recurrence, &error);
+    succeeded = client.editTask(taskId, title, time, recurrence, parser.value(QStringLiteral("emoji")),
+                                &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

@@ -11,6 +11,7 @@ Rectangle {
     required property string scheduledDateKey
     property string placeholderText: "Nova tarefa…"
     property int weekdayMask: 0
+    property string selectedEmoji: ""
     readonly property bool compact: width < 520
 
     implicitHeight: 44
@@ -76,8 +77,10 @@ Rectangle {
                                     custom ? interval.value : 1,
                                     selectedWeekdays(), endMode,
                                     endMode === "onDate" ? untilDate.text.trim() : "",
-                                    endMode === "afterCount" ? occurrenceCount.value : 0)) {
+                                    endMode === "afterCount" ? occurrenceCount.value : 0,
+                                    root.selectedEmoji)) {
             input.text = "";
+            root.selectedEmoji = "";
             preset.currentIndex = 0;
             interval.value = 1;
             ending.currentIndex = 0;
@@ -98,6 +101,12 @@ Rectangle {
             color: WaypointTheme.accent
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.headingSize
+        }
+
+        AppEmojiPicker {
+            id: emojiInput
+            emoji: root.selectedEmoji
+            onSelectionAccepted: selectedEmoji => root.selectedEmoji = selectedEmoji
         }
 
         TextField {

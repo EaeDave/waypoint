@@ -20,6 +20,7 @@ public:
     TitleRole,
     ScheduledDateRole,
     ScheduledTimeRole,
+    EmojiRole,
     CompletedRole,
     OverdueRole,
     RecurringRole,

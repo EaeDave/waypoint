@@ -163,7 +163,8 @@ void WaypointController::refresh() {
 bool WaypointController::addTask(const QString &title, const QString &scheduledDateKey,
                                  const QString &scheduledTimeKey, const QString &frequency,
                                  const int interval, const QVariantList &weekdays, const QString &endMode,
-                                 const QString &untilDateKey, const int occurrenceCount) {
+                                 const QString &untilDateKey, const int occurrenceCount,
+                                 const QString &emoji) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
@@ -183,7 +184,7 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
   recurrence.occurrenceCount = occurrenceCount;
 
   QString error;
-  if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence, &error)) {
+  if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence, emoji, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -236,7 +237,8 @@ bool WaypointController::rescheduleTask(const QString &taskId, const QString &sc
 bool WaypointController::editTask(const QString &taskId, const QString &title,
                                   const QString &scheduledTimeKey, const QString &frequency,
                                   const int interval, const QVariantList &weekdays, const QString &endMode,
-                                  const QString &untilDateKey, const int occurrenceCount) {
+                                  const QString &untilDateKey, const int occurrenceCount,
+                                  const QString &emoji) {
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledTime.isValid()) {
     updateConnection(m_online, QStringLiteral("Invalid task time: %1").arg(scheduledTimeKey));
@@ -253,7 +255,7 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
   recurrence.occurrenceCount = occurrenceCount;
 
   QString error;
-  if (!m_client.editTask(taskId, title, scheduledTime, recurrence, &error)) {
+  if (!m_client.editTask(taskId, title, scheduledTime, recurrence, emoji, &error)) {
     updateConnection(false, error);
     return false;
   }

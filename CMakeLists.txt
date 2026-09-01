@@ -68,6 +68,7 @@ qt_add_executable(waypoint
     src/app/WaypointController.hpp
 )
 set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/data/EmojiCatalog.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
 
 qt_add_qml_module(waypoint
     URI Waypoint
@@ -85,12 +86,14 @@ qt_add_qml_module(waypoint
         qml/components/AppMenuItem.qml
         qml/components/AppTextField.qml
         qml/components/AppTimePicker.qml
+        qml/components/AppEmojiPicker.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml
         qml/components/TaskRow.qml
         qml/views/MonthView.qml
         qml/views/TodayView.qml
         qml/views/SettingsView.qml
+        qml/data/EmojiCatalog.js
 )
 target_include_directories(waypoint PRIVATE src)
 target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)

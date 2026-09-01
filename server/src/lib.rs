@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 use std::{sync::Arc, time::Duration};
+use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -299,6 +300,18 @@ fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
             ApiError::bad_request(format!("invalid scheduledTime: {scheduled_time}"))
         })?;
     }
+    if let Some(emoji_value) = mutation.payload.get("emoji") {
+        let emoji = emoji_value
+            .as_str()
+            .ok_or_else(|| ApiError::bad_request("task emoji must be a string"))?;
+        if emoji.chars().count() > 32 || emoji.trim() != emoji || emoji.graphemes(true).count() > 1
+        {
+            return Err(ApiError::bad_request(format!(
+                "task emoji must be empty or contain one bounded grapheme for mutation {}",
+                mutation.mutation_id
+            )));
+        }
+    }
 
     let Some(recurrence) = mutation.payload.get("recurrence") else {
         return Ok(());
@@ -507,6 +520,47 @@ mod tests {
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+
+    #[test]
+    fn accepts_compound_emoji_and_legacy_task_without_emoji() {
+        for emoji in [Some("👨‍💻"), None] {
+            let task_id = Uuid::new_v4().to_string();
+            let mut payload = json!({
+                "id": task_id,
+                "title": "Preserve emoji",
+                "scheduledDate": "2026-09-01"
+            });
+            if let Some(value) = emoji {
+                payload["emoji"] = Value::String(value.to_owned());
+            }
+            let mutation = SyncMutation {
+                mutation_id: Uuid::new_v4().to_string(),
+                entity_type: "task".to_owned(),
+                entity_id: task_id,
+                operation: "upsert".to_owned(),
+                payload,
+            };
+            assert!(validate_request(&request_with(vec![mutation])).is_ok());
+        }
+    }
+
+    #[test]
+    fn rejects_multiple_emoji_graphemes() {
+        let task_id = Uuid::new_v4().to_string();
+        let mutation = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": task_id,
+                "title": "Too many emoji",
+                "scheduledDate": "2026-09-01",
+                "emoji": "😀🚀"
+            }),
+        };
+        assert!(validate_request(&request_with(vec![mutation])).is_err());
     }
     #[test]
     fn accepts_occurrence_mutation_with_composite_identity() {

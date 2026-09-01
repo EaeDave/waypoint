@@ -31,6 +31,10 @@ Panel {
     property bool timePickerCreatesTask: false
     property string pendingQuickTitle: ""
     property date pendingQuickDate: new Date()
+    property string quickEmoji: ""
+    property string pendingQuickEmoji: ""
+    property string editingEmoji: ""
+    property string emojiPickerTarget: ""
     property int pickerHour: 0
     property int pickerMinute: 0
     property bool editingRecurringTask: false
@@ -171,6 +175,19 @@ Panel {
         pendingQuickTitle = "";
     }
 
+    function openEmojiPicker(target, currentEmoji) {
+        emojiPickerTarget = target;
+        emojiPicker.openPicker(currentEmoji);
+    }
+
+    function applyEmoji(selectedEmoji) {
+        if (emojiPickerTarget === "quick")
+            quickEmoji = selectedEmoji;
+        else if (emojiPickerTarget === "edit")
+            editingEmoji = selectedEmoji;
+        emojiPickerTarget = "";
+    }
+
     function applyTimePicker() {
         if (!timePickerInput.acceptableInput)
             return;
@@ -178,8 +195,10 @@ Panel {
         if (timePickerCreatesTask) {
             if (!hostWidget)
                 return;
-            hostWidget.addTask(pendingQuickTitle, pendingQuickDate, selectedTime);
+            hostWidget.addTask(pendingQuickTitle, pendingQuickDate, selectedTime,
+                               pendingQuickEmoji);
             quickAdd.text = "";
+            quickEmoji = "";
             quickAdd.forceActiveFocus();
         } else if (timePickerTarget) {
             timePickerTarget.text = selectedTime;
@@ -193,6 +212,7 @@ Panel {
             return;
         pendingQuickTitle = title;
         pendingQuickDate = new Date(selectedDate.getTime());
+        pendingQuickEmoji = quickEmoji;
         openTimePicker(null, currentTimeKey(), true);
     }
     function taskAnchorWeekdayIndex() {
@@ -225,6 +245,7 @@ Panel {
         editingTaskId = String(task.taskId || "");
         taskTitleInput.text = String(task.title || "");
         taskTimeInput.text = String(task.scheduledTime || "");
+        editingEmoji = String(task.emoji || "");
         editingRecurrence = task.recurrence || ({ frequency: "none", interval: 1, weekdays: [],
                                                   endMode: "never", untilDate: "",
                                                   occurrenceCount: 0 });
@@ -269,7 +290,7 @@ Panel {
             untilDate: endMode === "onDate" ? taskCustomUntilDate.text.trim() : "",
             occurrenceCount: endMode === "afterCount" ? taskCustomOccurrenceCount.value : 0
         };
-        hostWidget.editTask(editingTaskId, title, time, recurrence);
+        hostWidget.editTask(editingTaskId, title, time, recurrence, editingEmoji);
         closeTaskEditor();
     }
     function deleteEditedTask() {
@@ -613,17 +634,34 @@ Panel {
                         radius: Style.cornerRadius
                         color: Style.hoverFillFor(root.foreground, Color.accent)
 
-                        TextField {
-                            id: quickAdd
+                        RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: Style.space(10)
+                            anchors.leftMargin: Style.space(6)
                             anchors.rightMargin: Style.space(10)
-                            placeholderText: "New task on " + Qt.formatDate(root.selectedDate, "MMM d") + "…"
-                            color: root.foreground
-                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                            font.family: root.fontFamily
-                            background: Item {}
-                            onAccepted: root.beginQuickTask()
+                            spacing: Style.space(4)
+
+                            Button {
+                                text: root.quickEmoji === "" ? "☺" : root.quickEmoji
+                                tooltipText: "Escolher emoji"
+                                foreground: root.foreground
+                                accent: Color.accent
+                                bordered: false
+                                fontFamily: root.quickEmoji === ""
+                                            ? root.fontFamily : "Noto Color Emoji"
+                                horizontalPadding: Style.space(6)
+                                onClicked: root.openEmojiPicker("quick", root.quickEmoji)
+                            }
+
+                            TextField {
+                                id: quickAdd
+                                Layout.fillWidth: true
+                                placeholderText: "New task on " + Qt.formatDate(root.selectedDate, "MMM d") + "…"
+                                color: root.foreground
+                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                                font.family: root.fontFamily
+                                background: Item {}
+                                onAccepted: root.beginQuickTask()
+                            }
                         }
                     }
 
@@ -714,9 +752,21 @@ Panel {
                                         font.pixelSize: Style.font.body
                                     }
 
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Style.space(26)
+                                        visible: String(modelData.emoji || "") !== ""
+                                        text: modelData.emoji || ""
+                                        font.family: "Noto Color Emoji"
+                                        font.pixelSize: Style.font.body
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - Style.space(40)
+                                        width: parent.width
+                                               - Style.space(String(modelData.emoji || "") === ""
+                                                             ? 40 : 74)
                                         spacing: 1
 
                                         Text {
@@ -882,15 +932,32 @@ Panel {
                             font.letterSpacing: 1
                         }
 
-                        TextField {
-                            id: taskTitleInput
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: ""
-                            placeholderText: "Título"
-                            foreground: Color.popups.text
-                            accent: Color.accent
-                            selectByMouse: true
-                            onAccepted: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
+                            spacing: Style.space(8)
+
+                            Button {
+                                text: root.editingEmoji === "" ? "☺" : root.editingEmoji
+                                tooltipText: "Escolher emoji"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                fontFamily: root.editingEmoji === ""
+                                            ? root.fontFamily : "Noto Color Emoji"
+                                onClicked: root.openEmojiPicker("edit", root.editingEmoji)
+                            }
+
+                            TextField {
+                                id: taskTitleInput
+                                Layout.fillWidth: true
+                                text: ""
+                                placeholderText: "Título"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selectByMouse: true
+                                onAccepted: root.openTimePicker(taskTimeInput,
+                                                               taskTimeInput.text, false)
+                            }
                         }
 
                         TextField {
@@ -1270,6 +1337,15 @@ Panel {
                         }
                     }
                 }
+            }
+
+            EmojiPicker {
+                id: emojiPicker
+                anchors.fill: parent
+                z: 220
+                fontFamily: root.fontFamily
+                onEmojiSelected: selectedEmoji => root.applyEmoji(selectedEmoji)
+                onCancelled: root.emojiPickerTarget = ""
             }
         }
     }

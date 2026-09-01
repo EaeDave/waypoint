@@ -11,6 +11,7 @@ Rectangle {
     required property string title
     required property string scheduledDateKey
     required property string scheduledTimeKey
+    required property string emoji
     required property bool completed
     required property bool overdue
     required property bool recurring
@@ -61,6 +62,16 @@ Rectangle {
                                                                    root.scheduledDateKey,
                                                                    !root.completed)
             }
+        }
+
+        Text {
+            Layout.preferredWidth: 26
+            Layout.alignment: Qt.AlignVCenter
+            text: root.emoji
+            horizontalAlignment: Text.AlignHCenter
+            color: root.completed ? WaypointTheme.disabledText : WaypointTheme.foreground
+            font.family: "Noto Color Emoji"
+            font.pixelSize: 20
         }
 
         ColumnLayout {
@@ -227,6 +238,7 @@ Rectangle {
     function openEditor() {
         editTitle.text = root.title;
         editTime.text = root.scheduledTimeKey;
+        editEmoji.emoji = root.emoji;
         const frequency = String(root.recurrence.frequency || "none");
         customFrequency.currentIndex = Math.max(
             0, customFrequency.indexOfValue(frequency === "none" ? "daily" : frequency));
@@ -259,7 +271,8 @@ Rectangle {
                 root.taskId, normalizedTitle, normalizedTime, frequency,
                 custom ? customInterval.value : 1, root.selectedWeekdays(), endMode,
                 endMode === "onDate" ? customUntilDate.text.trim() : "",
-                endMode === "afterCount" ? customOccurrenceCount.value : 0))
+                endMode === "afterCount" ? customOccurrenceCount.value : 0,
+                editEmoji.emoji))
             editPopup.close();
     }
 
@@ -295,11 +308,19 @@ Rectangle {
                 font.bold: true
             }
 
-            AppTextField {
-                id: editTitle
+            RowLayout {
                 Layout.fillWidth: true
-                placeholderText: "Título"
-                onAccepted: editTime.forceActiveFocus()
+                spacing: WaypointTheme.controlGap
+
+                AppEmojiPicker {
+                    id: editEmoji
+                }
+                AppTextField {
+                    id: editTitle
+                    Layout.fillWidth: true
+                    placeholderText: "Título"
+                    onAccepted: editTime.forceActiveFocus()
+                }
             }
 
             AppTimePicker {

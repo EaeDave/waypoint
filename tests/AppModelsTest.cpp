@@ -11,6 +11,7 @@ private slots:
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
   void sortTasksByFloatingLocalTime();
+  void exposeEmojiRoleWithoutBreakingLegacyTasks();
 };
 
 namespace {
@@ -104,6 +105,20 @@ void AppModelsTest::includeOverdueTasksOnlyInTodayView() {
                .value(QStringLiteral("frequency"))
                .toString(),
            QStringLiteral("daily"));
+}
+
+void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
+  const QDate today = QDate::currentDate();
+  waypoint::TaskOccurrence decorated = occurrence(QStringLiteral("decorated"), today, false);
+  decorated.emoji = QStringLiteral("👨‍💻");
+  waypoint::TaskListModel model;
+  model.setSourceOccurrences(
+      {decorated, occurrence(QStringLiteral("legacy"), today, false, false, QTime(10, 0))});
+
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::EmojiRole).toString(),
+           QStringLiteral("👨‍💻"));
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::EmojiRole).toString(), QString());
+  QCOMPARE(model.roleNames().value(waypoint::TaskListModel::EmojiRole), QByteArrayLiteral("emoji"));
 }
 void AppModelsTest::sortTasksByFloatingLocalTime() {
   const QDate today = QDate::currentDate();

@@ -15,6 +15,7 @@ struct TaskRecord final {
   QString title;
   QDate scheduledDate;
   QTime scheduledTime;
+  QString emoji;
   bool completed = false;
   RecurrenceRule recurrence;
   QDateTime createdAt;

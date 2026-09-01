@@ -47,18 +47,19 @@ BarWidget {
         actionProcess.running = true;
     }
 
-    function addTask(title, date, scheduledTime) {
+    function addTask(title, date, scheduledTime, emoji) {
         const time = scheduledTime || Qt.formatTime(new Date(), "HH:mm");
         runAction(["add", "--date", Model.dateKey(date),
-                   "--time", time, "--title", title]);
+                   "--time", time, "--title", title, "--emoji", emoji || ""]);
     }
 
     function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
         runAction([completed ? "complete" : "reopen", taskId,
                    "--date", occurrenceDate]);
     }
-    function editTask(taskId, title, scheduledTime, recurrence) {
+    function editTask(taskId, title, scheduledTime, recurrence, emoji) {
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
+                           "--emoji", emoji || "",
                            "--frequency", recurrence.frequency || "none",
                            "--interval", String(recurrence.interval || 1),
                            "--end-mode", recurrence.endMode || "never",
