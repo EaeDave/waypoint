@@ -10,11 +10,13 @@
 
 ### Non-standard practices
 - Date-only tasks are floating calendar dates. Never convert `scheduled_date` through UTC.
+- Task times are floating local wall-clock `HH:mm` values. Never convert them through UTC.
 - QML owns presentation only; persistence, sync, and date rules stay in typed C++ models.
 
 ### Known failure points
 - `waypoint-ipc-v1` is single-instance. Never unlink its socket before probing a live daemon.
 - The Omarchy plugin runs inside `omarchy-shell`; never expose the persisted sync token through IPC/QML.
+- `rescanPlugins` does not replace an active bar-widget QML object reliably; use `omarchy restart shell` after plugin source changes.
 
 ### Style
 - Formatters and linters decide style; no manual style rules live here.
