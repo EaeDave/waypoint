@@ -2,4 +2,8 @@
 !Cargo.toml
 !Cargo.lock
 !server/
-!server/**
+!server/Cargo.toml
+!server/src/
+!server/src/**
+!server/migrations/
+!server/migrations/**
