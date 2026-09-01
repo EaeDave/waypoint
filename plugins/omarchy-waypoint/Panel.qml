@@ -16,18 +16,27 @@ Panel {
     property var tasks: []
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
+    property date today: new Date()
     property date selectedDate: new Date()
     property int viewYear: selectedDate.getFullYear()
     property int viewMonth: selectedDate.getMonth()
 
     readonly property var barIdentity: hostWidget || root
-    readonly property var cells: Model.monthCells(viewYear, viewMonth, tasks)
+    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, tasks)
     readonly property var selectedTasks: Model.tasksForDate(tasks, selectedDate)
+    readonly property real yearDone: Model.yearProgress(today)
+    readonly property int yearDonePercent: Math.round(yearDone * 100)
     readonly property color foreground: bar ? bar.foreground : Color.foreground
     readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+    readonly property int cellWidth: Style.space(52)
+    readonly property int cellHeight: Style.space(34)
+    readonly property int cellSpacing: Style.space(2)
+    readonly property int weekColumnWidth: Style.space(32)
+    readonly property int gutterWidth: Style.space(14)
 
     function open() {
-        selectedDate = new Date();
+        today = new Date();
+        selectedDate = today;
         viewYear = selectedDate.getFullYear();
         viewMonth = selectedDate.getMonth();
         if (hostWidget)
@@ -83,154 +92,294 @@ Panel {
             onCloseRequested: root.close()
 
             Flickable {
+                id: panelFlick
                 anchors.fill: parent
-                contentWidth: width
+                contentWidth: contentColumn.width
                 contentHeight: contentColumn.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
                 clip: true
 
                 Column {
                     id: contentColumn
-                    width: parent.width
-                    spacing: Style.space(10)
+                    width: Math.max(panelFlick.width, calendarGridColumn.width)
+                    spacing: Style.space(8)
 
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Style.space(12)
-
-                        Text {
-                            text: "󰃭"
-                            color: root.foreground
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.title
-                        }
-
-                        Text {
-                            text: Qt.formatDate(root.selectedDate, "MMMM d")
-                            color: root.foreground
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.hero
-                            font.bold: true
-                        }
-                    }
-
-                    Rectangle {
+                    Item {
                         width: parent.width
-                        height: Style.spacing.hairline
-                        color: Qt.darker(root.foreground, 2.6)
-                    }
+                        height: heroRow.height
 
-                    Row {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        spacing: Style.space(4)
-
-                        Item {
-                            width: Style.space(26)
-                            height: Style.space(16)
-                        }
-
-                        Repeater {
-                            model: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+                        Row {
+                            id: heroRow
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: Style.space(22)
 
                             Text {
-                                required property string modelData
-                                width: Style.space(52)
-                                height: Style.space(16)
-                                text: modelData
-                                color: Qt.darker(root.foreground, 1.7)
-                                horizontalAlignment: Text.AlignHCenter
+                                anchors.baseline: heroDate.baseline
+                                text: "󰃭"
+                                color: root.foreground
                                 font.family: root.fontFamily
-                                font.pixelSize: Style.font.caption
+                                font.pixelSize: 48
+                            }
+
+                            Text {
+                                id: heroDate
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: Qt.formatDate(root.selectedDate, "MMMM d")
+                                color: root.foreground
+                                font.family: root.fontFamily
+                                font.pixelSize: 52
                                 font.bold: true
-                                font.letterSpacing: 1
                             }
                         }
                     }
 
-                    Grid {
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        columns: 7
-                        columnSpacing: Style.space(4)
-                        rowSpacing: Style.space(3)
+                    Item {
+                        width: parent.width
+                        height: yearBlock.y + yearBlock.height
 
-                        Repeater {
-                            model: root.cells
+                        Item {
+                            id: yearBlock
+                            y: Style.space(6)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: calendarGridColumn.width
+                            height: Math.max(yearLabel.implicitHeight, Style.space(10))
+
+                            Text {
+                                id: yearLabel
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.today.getFullYear()
+                                color: Qt.darker(root.foreground, 1.5)
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.bodySmall
+                                font.letterSpacing: 1
+                            }
+
+                            Text {
+                                id: yearPercent
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.yearDonePercent + "%"
+                                color: root.foreground
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.bodySmall
+                            }
 
                             Rectangle {
-                                required property var modelData
-                                width: Style.space(52)
-                                height: Style.space(38)
-                                radius: Style.cornerRadius
-                                color: cellMouse.containsMouse || Model.dateKey(root.selectedDate) === modelData.key ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-                                border.width: modelData.today ? Style.spacing.hairline : 0
-                                border.color: Style.normalBorderFor(root.foreground, Color.accent)
+                                anchors.left: yearLabel.right
+                                anchors.right: yearPercent.left
+                                anchors.leftMargin: Style.space(12)
+                                anchors.rightMargin: Style.space(12)
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: Style.space(6)
+                                radius: Style.cornerRadius > 0 ? height / 2 : 0
+                                color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
 
-                                Text {
-                                    anchors.centerIn: parent
-                                    anchors.verticalCenterOffset: -2
-                                    text: modelData.day
-                                    color: modelData.inMonth ? (modelData.weekend ? Qt.darker(root.foreground, 1.45) : root.foreground) : Qt.darker(root.foreground, 2.2)
-                                    font.family: root.fontFamily
-                                    font.pixelSize: Style.font.body
-                                    font.bold: modelData.today
-                                }
+                                Rectangle {
+                                    width: Math.round(parent.width * root.yearDone)
+                                    height: parent.height
+                                    radius: parent.radius
+                                    color: Style.selectedStateColor(root.foreground, Color.accent)
 
-                                Row {
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.bottom: parent.bottom
-                                    anchors.bottomMargin: Style.space(4)
-                                    spacing: Style.space(2)
-
-                                    Repeater {
-                                        model: Math.min(modelData.pending, 3)
-                                        Rectangle {
-                                            required property int index
-                                            width: Style.space(3)
-                                            height: width
-                                            radius: width / 2
-                                            color: index < modelData.overdue ? Color.urgent : Color.accent
+                                    Behavior on width {
+                                        NumberAnimation {
+                                            duration: 160
+                                            easing.type: Easing.OutCubic
                                         }
                                     }
                                 }
-
-                                MouseArea {
-                                    id: cellMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.selectDay(modelData.date)
-                                }
                             }
                         }
                     }
 
-                    RowLayout {
+                    Item {
                         width: parent.width
+                        height: calendarGridColumn.y + calendarGridColumn.height
 
-                        ToolButton {
-                            text: "‹"
-                            onClicked: root.moveMonth(-1)
+                        WheelHandler {
+                            onWheel: function (event) {
+                                if (event.angleDelta.y === 0)
+                                    return;
+                                root.moveMonth(event.angleDelta.y > 0 ? -1 : 1);
+                            }
                         }
+
+                        Column {
+                            id: calendarGridColumn
+                            y: Style.space(18)
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: Style.space(3)
+
+                            Row {
+                                id: headerRow
+                                spacing: root.cellSpacing
+
+                                Text {
+                                    width: root.weekColumnWidth
+                                    height: Style.space(16)
+                                    text: "W"
+                                    color: Qt.darker(root.foreground, 1.9)
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
+                                    font.bold: true
+                                    font.letterSpacing: 1
+                                }
+
+                                Item {
+                                    width: root.gutterWidth
+                                    height: Style.space(16)
+                                }
+
+                                Repeater {
+                                    model: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+
+                                    Text {
+                                        required property string modelData
+                                        width: root.cellWidth
+                                        height: Style.space(16)
+                                        text: modelData
+                                        color: Qt.darker(root.foreground, 1.5)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.bold: true
+                                        font.letterSpacing: 1
+                                    }
+                                }
+                            }
+
+                            Repeater {
+                                model: root.weeks
+
+                                Row {
+                                    required property var modelData
+                                    spacing: root.cellSpacing
+
+                                    Text {
+                                        width: root.weekColumnWidth
+                                        height: root.cellHeight
+                                        text: modelData.week
+                                        color: Qt.darker(root.foreground, 1.9)
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                    }
+
+                                    Item {
+                                        width: root.gutterWidth
+                                        height: root.cellHeight
+                                    }
+
+                                    Repeater {
+                                        model: modelData.days
+
+                                        Rectangle {
+                                            required property var modelData
+                                            width: root.cellWidth
+                                            height: root.cellHeight
+                                            radius: Style.cornerRadius
+                                            color: dayMouse.containsMouse || Model.dateKey(root.selectedDate) === modelData.key
+                                                ? Style.hoverFillFor(root.foreground, Color.accent)
+                                                : "transparent"
+                                            border.width: modelData.today ? Style.spacing.hairline : 0
+                                            border.color: Style.normalBorderFor(root.foreground, Color.accent)
+
+                                            Text {
+                                                anchors.centerIn: parent
+                                                anchors.verticalCenterOffset: -2
+                                                text: modelData.day
+                                                color: modelData.inMonth
+                                                    ? (modelData.weekend ? Qt.darker(root.foreground, 1.45) : root.foreground)
+                                                    : Qt.darker(root.foreground, 2.2)
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.body
+                                                font.bold: modelData.today
+                                            }
+
+                                            Row {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.bottom: parent.bottom
+                                                anchors.bottomMargin: Style.space(3)
+                                                spacing: Style.space(2)
+
+                                                Repeater {
+                                                    model: Math.min(modelData.pending, 3)
+
+                                                    Rectangle {
+                                                        required property int index
+                                                        width: Style.space(3)
+                                                        height: width
+                                                        radius: width / 2
+                                                        color: index < modelData.overdue ? Color.urgent : Color.accent
+                                                    }
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: dayMouse
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.selectDay(modelData.date)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            x: calendarGridColumn.x + root.weekColumnWidth + root.cellSpacing + Math.round((root.gutterWidth - width) / 2)
+                            y: calendarGridColumn.y + headerRow.height + calendarGridColumn.spacing
+                            width: Style.spacing.hairline
+                            height: calendarGridColumn.height - headerRow.height - calendarGridColumn.spacing
+                            color: root.foreground
+                            opacity: 0.1
+                        }
+                    }
+
+                    Item {
+                        width: parent.width
+                        height: monthNavigation.height
 
                         Item {
-                            Layout.fillWidth: true
-                        }
+                            id: monthNavigation
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: calendarGridColumn.width
+                            height: monthLabel.implicitHeight + Style.space(10)
 
-                        Text {
-                            text: Qt.formatDate(new Date(root.viewYear, root.viewMonth, 1), "MMMM yyyy").toUpperCase()
-                            color: Qt.darker(root.foreground, 1.25)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            font.letterSpacing: 1
-                        }
+                            Text {
+                                id: monthLabel
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Style.space(130)
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Qt.formatDate(new Date(root.viewYear, root.viewMonth, 1), "MMMM yyyy").toUpperCase()
+                                color: Qt.darker(root.foreground, 1.4)
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.body
+                                font.letterSpacing: 1
+                            }
 
-                        Item {
-                            Layout.fillWidth: true
-                        }
+                            ToolButton {
+                                anchors.left: parent.left
+                                anchors.leftMargin: -Style.space(8)
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "‹"
+                                onClicked: root.moveMonth(-1)
+                            }
 
-                        ToolButton {
-                            text: "›"
-                            onClicked: root.moveMonth(1)
+                            ToolButton {
+                                anchors.right: parent.right
+                                anchors.rightMargin: -Style.space(8)
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "›"
+                                onClicked: root.moveMonth(1)
+                            }
                         }
                     }
 
@@ -347,8 +496,11 @@ Panel {
                             Layout.fillWidth: true
                         }
 
-                        ToolButton {
-                            text: "Settings"
+                        PanelActionButton {
+                            iconText: "󰒓"
+                            tooltipText: "Waypoint settings"
+                            foreground: root.foreground
+                            fontFamily: root.fontFamily
                             onClicked: if (root.hostWidget)
                                 root.hostWidget.openSettings()
                         }

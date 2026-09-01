@@ -54,6 +54,34 @@ function monthCells(year, month, tasks) {
     return cells
 }
 
+function isoWeek(date) {
+    const value = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+    const weekday = value.getUTCDay() || 7
+    value.setUTCDate(value.getUTCDate() + 4 - weekday)
+    const yearStart = new Date(Date.UTC(value.getUTCFullYear(), 0, 1))
+    return Math.ceil(((value.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+}
+
+function monthWeeks(year, month, tasks) {
+    const cells = monthCells(year, month, tasks)
+    const weeks = []
+    for (let index = 0; index < 6; ++index) {
+        const days = cells.slice(index * 7, index * 7 + 7)
+        weeks.push({
+            week: isoWeek(days[3].date),
+            days: days
+        })
+    }
+    return weeks
+}
+
+function yearProgress(date) {
+    const year = date.getFullYear()
+    const dayOfYear = Math.round((Date.UTC(year, date.getMonth(), date.getDate()) - Date.UTC(year, 0, 1)) / 86400000) + 1
+    const daysInYear = Math.round((Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86400000)
+    return Math.max(0, Math.min(1, (dayOfYear - 1) / daysInYear))
+}
+
 function tasksForDate(tasks, date) {
     const key = dateKey(date)
     return (tasks || []).filter(task => task.scheduledDate === key)
