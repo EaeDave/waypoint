@@ -65,6 +65,7 @@ Rectangle {
         }
 
         Text {
+            visible: root.emoji !== ""
             Layout.preferredWidth: 26
             Layout.alignment: Qt.AlignVCenter
             text: root.emoji
