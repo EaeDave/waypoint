@@ -11,8 +11,6 @@ Rectangle {
     required property string scheduledDateKey
     property string placeholderText: "Nova tarefa…"
     property int weekdayMask: 0
-    property string scheduledTimeKey: currentTimeKey()
-    property bool scheduledTimeEdited: false
     readonly property bool compact: width < 520
 
     implicitHeight: 44
@@ -60,17 +58,19 @@ Rectangle {
         return selected;
     }
 
-    function submit() {
-        const normalizedTitle = input.text.trim();
-        if (normalizedTitle.length === 0)
+    function beginSubmit() {
+        if (input.text.trim() === "")
             return;
-        if (!timeInput.acceptableInput)
+        timeInput.text = currentTimeKey();
+        timeInput.openPicker();
+    }
+
+    function submit(scheduledTime) {
+        const normalizedTitle = input.text.trim();
+        if (normalizedTitle === "")
             return;
         const custom = preset.currentIndex === 5;
         const endMode = custom ? ending.currentValue : "never";
-        const scheduledTime = scheduledTimeEdited
-                              ? timeInput.text.trim()
-                              : currentTimeKey();
         if (root.controller.addTask(normalizedTitle, root.scheduledDateKey,
                                     scheduledTime, selectedFrequency(),
                                     custom ? interval.value : 1,
@@ -78,8 +78,6 @@ Rectangle {
                                     endMode === "onDate" ? untilDate.text.trim() : "",
                                     endMode === "afterCount" ? occurrenceCount.value : 0)) {
             input.text = "";
-            timeInput.text = root.currentTimeKey();
-            scheduledTimeEdited = false;
             preset.currentIndex = 0;
             interval.value = 1;
             ending.currentIndex = 0;
@@ -113,16 +111,14 @@ Rectangle {
             background: Item {}
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.bodySize
-            onAccepted: root.submit()
+            onAccepted: root.beginSubmit()
         }
 
         AppTimePicker {
             id: timeInput
-            Layout.preferredWidth: 116
-            Layout.preferredHeight: 30
-            text: root.scheduledTimeKey
-            onTextEdited: root.scheduledTimeEdited = true
-            onAccepted: root.submit()
+            showInlineButton: false
+            text: root.currentTimeKey()
+            onSelectionAccepted: selectedTime => root.submit(selectedTime)
         }
 
         AppButton {

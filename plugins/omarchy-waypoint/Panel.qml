@@ -28,9 +28,11 @@ Panel {
     property string editingTaskId: ""
     property bool timePickerVisible: false
     property var timePickerTarget: null
+    property bool timePickerCreatesTask: false
+    property string pendingQuickTitle: ""
+    property date pendingQuickDate: new Date()
     property int pickerHour: 0
     property int pickerMinute: 0
-    readonly property var pickerMinuteOptions: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
     property bool editingRecurringTask: false
     property var editingRecurrence: ({ frequency: "none", interval: 1, weekdays: [],
                                        endMode: "never", untilDate: "", occurrenceCount: 0 })
@@ -125,17 +127,23 @@ Panel {
         return Qt.formatTime(new Date(), "HH:mm");
     }
 
-    function openTimePicker(target) {
+    function syncPickerSelectionFromText() {
+        if (!timePickerInput.acceptableInput)
+            return;
+        const parts = timePickerInput.text.split(":");
+        pickerHour = Number(parts[0]);
+        pickerMinute = Number(parts[1]);
+    }
+
+    function updatePickerText() {
+        timePickerInput.text = padTimePart(pickerHour) + ":" + padTimePart(pickerMinute);
+    }
+
+    function openTimePicker(target, initialTime, createsTask) {
         timePickerTarget = target;
-        if (target.acceptableInput) {
-            const parts = target.text.split(":");
-            pickerHour = Number(parts[0]);
-            pickerMinute = Number(parts[1]);
-        } else {
-            const now = new Date();
-            pickerHour = now.getHours();
-            pickerMinute = now.getMinutes();
-        }
+        timePickerCreatesTask = createsTask === true;
+        timePickerInput.text = initialTime || currentTimeKey();
+        syncPickerSelectionFromText();
         timePickerVisible = true;
     }
 
@@ -143,28 +151,49 @@ Panel {
         const now = new Date();
         pickerHour = now.getHours();
         pickerMinute = now.getMinutes();
+        updatePickerText();
+    }
+
+    function choosePickerHour(hour) {
+        pickerHour = hour;
+        updatePickerText();
+    }
+
+    function choosePickerMinute(minute) {
+        pickerMinute = minute;
+        updatePickerText();
     }
 
     function closeTimePicker() {
         timePickerVisible = false;
         timePickerTarget = null;
+        timePickerCreatesTask = false;
+        pendingQuickTitle = "";
     }
 
     function applyTimePicker() {
-        if (timePickerTarget)
-            timePickerTarget.text = padTimePart(pickerHour) + ":" + padTimePart(pickerMinute);
+        if (!timePickerInput.acceptableInput)
+            return;
+        const selectedTime = timePickerInput.text;
+        if (timePickerCreatesTask) {
+            if (!hostWidget)
+                return;
+            hostWidget.addTask(pendingQuickTitle, pendingQuickDate, selectedTime);
+            quickAdd.text = "";
+            quickAdd.forceActiveFocus();
+        } else if (timePickerTarget) {
+            timePickerTarget.text = selectedTime;
+        }
         closeTimePicker();
     }
 
-    function submitQuickTask() {
+    function beginQuickTask() {
         const title = quickAdd.text.trim();
-        const time = quickAddTimeInput.text.trim();
-        if (title === "" || !quickAddTimeInput.acceptableInput || !hostWidget)
+        if (title === "" || !hostWidget)
             return;
-        hostWidget.addTask(title, selectedDate, time);
-        quickAdd.text = "";
-        quickAddTimeInput.text = currentTimeKey();
-        quickAdd.forceActiveFocus();
+        pendingQuickTitle = title;
+        pendingQuickDate = new Date(selectedDate.getTime());
+        openTimePicker(null, currentTimeKey(), true);
     }
     function taskAnchorWeekdayIndex() {
         return (selectedDate.getDay() + 6) % 7;
@@ -584,49 +613,17 @@ Panel {
                         radius: Style.cornerRadius
                         color: Style.hoverFillFor(root.foreground, Color.accent)
 
-                        RowLayout {
+                        TextField {
+                            id: quickAdd
                             anchors.fill: parent
-                            anchors.leftMargin: Style.space(6)
-                            anchors.rightMargin: Style.space(6)
-                            spacing: Style.space(4)
-
-                            TextField {
-                                id: quickAdd
-                                Layout.fillWidth: true
-                                placeholderText: "New task on " + Qt.formatDate(root.selectedDate, "MMM d") + "…"
-                                color: root.foreground
-                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                                font.family: root.fontFamily
-                                background: Item {}
-                                onAccepted: root.submitQuickTask()
-                            }
-
-                            TextField {
-                                id: quickAddTimeInput
-                                Layout.preferredWidth: Style.space(64)
-                                text: root.currentTimeKey()
-                                placeholderText: "HH:mm"
-                                color: root.foreground
-                                horizontalAlignment: TextInput.AlignHCenter
-                                font.family: root.fontFamily
-                                background: Item {}
-                                inputMethodHints: Qt.ImhTime
-                                validator: RegularExpressionValidator {
-                                    regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
-                                }
-                                onAccepted: root.submitQuickTask()
-                            }
-
-                            Button {
-                                text: "◷"
-                                foreground: root.foreground
-                                accent: Color.accent
-                                bordered: true
-                                horizontalPadding: Style.space(7)
-                                verticalPadding: Style.space(3)
-                                tooltipText: "Selecionar horário"
-                                onClicked: root.openTimePicker(quickAddTimeInput)
-                            }
+                            anchors.leftMargin: Style.space(10)
+                            anchors.rightMargin: Style.space(10)
+                            placeholderText: "New task on " + Qt.formatDate(root.selectedDate, "MMM d") + "…"
+                            color: root.foreground
+                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                            font.family: root.fontFamily
+                            background: Item {}
+                            onAccepted: root.beginQuickTask()
                         }
                     }
 
@@ -893,36 +890,29 @@ Panel {
                             foreground: Color.popups.text
                             accent: Color.accent
                             selectByMouse: true
-                            onAccepted: taskTimeInput.forceActiveFocus()
+                            onAccepted: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
                         }
 
-                        RowLayout {
+                        TextField {
+                            id: taskTimeInput
+                            visible: false
+                            text: ""
+                            inputMethodHints: Qt.ImhTime
+                            validator: RegularExpressionValidator {
+                                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
+                            }
+                        }
+
+                        Button {
                             Layout.fillWidth: true
-                            spacing: Style.space(4)
-
-                            TextField {
-                                id: taskTimeInput
-                                Layout.fillWidth: true
-                                text: ""
-                                placeholderText: "HH:mm"
-                                foreground: Color.popups.text
-                                accent: Color.accent
-                                selectByMouse: true
-                                inputMethodHints: Qt.ImhTime
-                                validator: RegularExpressionValidator {
-                                    regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
-                                }
-                                onAccepted: root.saveTaskEdit()
-                            }
-
-                            Button {
-                                text: "◷"
-                                foreground: Color.popups.text
-                                accent: Color.accent
-                                bordered: true
-                                tooltipText: "Selecionar horário"
-                                onClicked: root.openTimePicker(taskTimeInput)
-                            }
+                            text: (taskTimeInput.acceptableInput
+                                   ? taskTimeInput.text
+                                   : "Selecionar horário") + "  ◷"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            tooltipText: "Selecionar horário"
+                            onClicked: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
                         }
 
                         Dropdown {
@@ -1132,7 +1122,7 @@ Panel {
                 BorderSurface {
                     id: timePickerCard
                     anchors.centerIn: parent
-                    width: Math.min(parent.width - Style.space(32), Style.space(460))
+                    width: Math.min(parent.width - Style.space(32), Style.space(500))
                     height: contentTopInset + contentBottomInset + timePickerColumn.implicitHeight
                     padding: Style.space(18)
                     radius: Style.cornerRadius
@@ -1162,14 +1152,25 @@ Panel {
                             font.bold: true
                         }
 
-                        Text {
+                        TextInput {
+                            id: timePickerInput
+                            Layout.fillWidth: true
                             Layout.alignment: Qt.AlignHCenter
-                            text: root.padTimePart(root.pickerHour) + ":"
-                                + root.padTimePart(root.pickerMinute)
+                            text: root.currentTimeKey()
                             color: Color.popups.text
+                            selectionColor: Color.accent
+                            selectedTextColor: Color.popups.text
+                            horizontalAlignment: TextInput.AlignHCenter
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.display
                             font.bold: true
+                            selectByMouse: true
+                            inputMethodHints: Qt.ImhTime
+                            validator: RegularExpressionValidator {
+                                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
+                            }
+                            onTextEdited: root.syncPickerSelectionFromText()
+                            onAccepted: root.applyTimePicker()
                         }
 
                         Text {
@@ -1197,9 +1198,9 @@ Panel {
                                     foreground: Color.popups.text
                                     accent: Color.accent
                                     selected: root.pickerHour === index
-                                    horizontalPadding: Style.space(5)
-                                    verticalPadding: Style.space(3)
-                                    onClicked: root.pickerHour = index
+                                    horizontalPadding: Style.space(3)
+                                    verticalPadding: Style.space(2)
+                                    onClicked: root.choosePickerHour(index)
                                 }
                             }
                         }
@@ -1215,24 +1216,23 @@ Panel {
 
                         GridLayout {
                             Layout.fillWidth: true
-                            columns: 6
-                            columnSpacing: Style.space(4)
-                            rowSpacing: Style.space(4)
+                            columns: 10
+                            columnSpacing: Style.space(3)
+                            rowSpacing: Style.space(3)
 
                             Repeater {
-                                model: root.pickerMinuteOptions
+                                model: 60
 
                                 Button {
                                     required property int index
-                                    required property int modelData
                                     Layout.fillWidth: true
-                                    text: root.padTimePart(modelData)
+                                    text: root.padTimePart(index)
                                     foreground: Color.popups.text
                                     accent: Color.accent
-                                    selected: root.pickerMinute === modelData
-                                    horizontalPadding: Style.space(5)
-                                    verticalPadding: Style.space(3)
-                                    onClicked: root.pickerMinute = modelData
+                                    selected: root.pickerMinute === index
+                                    horizontalPadding: Style.space(3)
+                                    verticalPadding: Style.space(2)
+                                    onClicked: root.choosePickerMinute(index)
                                 }
                             }
                         }
@@ -1264,6 +1264,7 @@ Panel {
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
+                                enabled: timePickerInput.acceptableInput
                                 onClicked: root.applyTimePicker()
                             }
                         }

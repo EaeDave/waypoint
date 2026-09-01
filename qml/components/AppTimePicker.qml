@@ -7,17 +7,18 @@ import QtQuick.Layouts
 Item {
     id: root
 
-    property alias text: input.text
-    readonly property bool acceptableInput: input.acceptableInput
+    property alias text: pickerInput.text
+    property bool showInlineButton: true
+    readonly property bool acceptableInput: pickerInput.acceptableInput
     property int pendingHour: 0
     property int pendingMinute: 0
-    readonly property var minuteOptions: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]
+    property string originalText: ""
+    property bool committing: false
 
-    signal accepted()
-    signal textEdited()
+    signal selectionAccepted(string selectedTime)
 
-    implicitWidth: 116
-    implicitHeight: WaypointTheme.controlHeight
+    implicitWidth: showInlineButton ? 132 : 0
+    implicitHeight: showInlineButton ? WaypointTheme.controlHeight : 0
 
     function pad(value) {
         return String(value).padStart(2, "0");
@@ -28,23 +29,32 @@ Item {
         return { hour: now.getHours(), minute: now.getMinutes() };
     }
 
-    function forceActiveFocus() {
-        input.forceActiveFocus();
+    function updateTextFromSelection() {
+        pickerInput.text = pad(pendingHour) + ":" + pad(pendingMinute);
     }
 
-    function selectAll() {
-        input.selectAll();
+    function syncSelectionFromText() {
+        if (!pickerInput.acceptableInput)
+            return;
+        const parts = pickerInput.text.split(":");
+        pendingHour = Number(parts[0]);
+        pendingMinute = Number(parts[1]);
+    }
+
+    function forceActiveFocus() {
+        openPicker();
     }
 
     function openPicker() {
-        if (input.acceptableInput) {
-            const parts = input.text.split(":");
-            pendingHour = Number(parts[0]);
-            pendingMinute = Number(parts[1]);
+        originalText = pickerInput.text;
+        committing = false;
+        if (pickerInput.acceptableInput) {
+            syncSelectionFromText();
         } else {
             const now = currentTime();
             pendingHour = now.hour;
             pendingMinute = now.minute;
+            updateTextFromSelection();
         }
         picker.open();
     }
@@ -53,41 +63,39 @@ Item {
         const now = currentTime();
         pendingHour = now.hour;
         pendingMinute = now.minute;
+        updateTextFromSelection();
     }
 
-    function applySelection() {
-        input.text = pad(pendingHour) + ":" + pad(pendingMinute);
-        root.textEdited();
+    function chooseHour(hour) {
+        pendingHour = hour;
+        updateTextFromSelection();
+    }
+
+    function chooseMinute(minute) {
+        pendingMinute = minute;
+        updateTextFromSelection();
+    }
+
+    function cancelSelection() {
+        pickerInput.text = originalText;
         picker.close();
     }
 
-    RowLayout {
+    function applySelection() {
+        if (!pickerInput.acceptableInput)
+            return;
+        syncSelectionFromText();
+        committing = true;
+        const selectedTime = pickerInput.text;
+        picker.close();
+        root.selectionAccepted(selectedTime);
+    }
+
+    AppButton {
         anchors.fill: parent
-        spacing: 4
-
-        AppTextField {
-            id: input
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            placeholderText: "HH:mm"
-            horizontalAlignment: TextInput.AlignHCenter
-            inputMethodHints: Qt.ImhTime
-            validator: RegularExpressionValidator {
-                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
-            }
-            onTextEdited: root.textEdited()
-            onAccepted: root.accepted()
-        }
-
-        AppButton {
-            Layout.preferredWidth: WaypointTheme.controlHeight
-            Layout.fillHeight: true
-            square: true
-            text: "◷"
-            onClicked: root.openPicker()
-            ToolTip.visible: hovered
-            ToolTip.text: "Selecionar horário"
-        }
+        visible: root.showInlineButton
+        text: root.acceptableInput ? pickerInput.text + "  ◷" : "Selecionar horário  ◷"
+        onClicked: root.openPicker()
     }
 
     Popup {
@@ -95,10 +103,15 @@ Item {
         parent: Overlay.overlay
         x: Math.round((parent.width - width) / 2)
         y: Math.round((parent.height - height) / 2)
-        width: Math.min(380, parent.width - 24)
+        width: Math.min(460, parent.width - 24)
         padding: WaypointTheme.popupPadding
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: {
+            if (!root.committing)
+                pickerInput.text = root.originalText;
+            root.committing = false;
+        }
 
         Overlay.modal: Rectangle {
             color: WaypointTheme.scrim
@@ -122,13 +135,27 @@ Item {
                 font.bold: true
             }
 
-            Text {
+            TextField {
+                id: pickerInput
                 Layout.alignment: Qt.AlignHCenter
-                text: root.pad(root.pendingHour) + ":" + root.pad(root.pendingMinute)
+                Layout.preferredWidth: 160
+                placeholderText: "HH:mm"
                 color: WaypointTheme.foreground
+                placeholderTextColor: WaypointTheme.disabledText
+                selectionColor: WaypointTheme.accent
+                selectedTextColor: WaypointTheme.background
+                horizontalAlignment: TextInput.AlignHCenter
+                inputMethodHints: Qt.ImhTime
+                selectByMouse: true
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.displayLargeSize
                 font.bold: true
+                validator: RegularExpressionValidator {
+                    regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
+                }
+                background: Item {}
+                onTextEdited: root.syncSelectionFromText()
+                onAccepted: root.applySelection()
             }
 
             Text {
@@ -140,7 +167,7 @@ Item {
             }
 
             GridLayout {
-                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
                 columns: 6
                 columnSpacing: 4
                 rowSpacing: 4
@@ -150,10 +177,10 @@ Item {
 
                     AppButton {
                         required property int index
-                        Layout.fillWidth: true
+                        square: true
                         text: root.pad(index)
                         selected: root.pendingHour === index
-                        onClicked: root.pendingHour = index
+                        onClicked: root.chooseHour(index)
                     }
                 }
             }
@@ -167,21 +194,20 @@ Item {
             }
 
             GridLayout {
-                Layout.fillWidth: true
-                columns: 6
+                Layout.alignment: Qt.AlignHCenter
+                columns: 10
                 columnSpacing: 4
                 rowSpacing: 4
 
                 Repeater {
-                    model: root.minuteOptions
+                    model: 60
 
                     AppButton {
                         required property int index
-                        required property int modelData
-                        Layout.fillWidth: true
-                        text: root.pad(modelData)
-                        selected: root.pendingMinute === modelData
-                        onClicked: root.pendingMinute = modelData
+                        square: true
+                        text: root.pad(index)
+                        selected: root.pendingMinute === index
+                        onClicked: root.chooseMinute(index)
                     }
                 }
             }
@@ -200,11 +226,12 @@ Item {
                 }
                 AppButton {
                     text: "Cancelar"
-                    onClicked: picker.close()
+                    onClicked: root.cancelSelection()
                 }
                 AppButton {
                     text: "Concluir"
                     selected: true
+                    enabled: root.acceptableInput
                     onClicked: root.applySelection()
                 }
             }

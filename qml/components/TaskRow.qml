@@ -305,7 +305,6 @@ Rectangle {
             AppTimePicker {
                 id: editTime
                 Layout.fillWidth: true
-                onAccepted: root.saveEdit()
             }
 
             AppComboBox {
