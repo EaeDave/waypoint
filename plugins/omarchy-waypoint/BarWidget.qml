@@ -81,9 +81,10 @@ BarWidget {
     }
 
     function open() {
-        refresh();
         if (panelLoader.item)
             panelLoader.item.open();
+        else
+            refresh();
     }
 
     function close() {

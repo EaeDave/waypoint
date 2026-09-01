@@ -98,8 +98,9 @@ int main(int argc, char *argv[]) {
     if (hasRange && (!requestedFrom.isValid() || !requestedTo.isValid() || requestedFrom > requestedTo)) {
       return printError(QStringLiteral("snapshot range requires ordered --from and --to dates"));
     }
-    QJsonArray occurrences;
+    QJsonArray occurrences = todaySummary.value(QStringLiteral("occurrences")).toArray();
     if (hasRange) {
+      occurrences = {};
       for (const waypoint::TaskOccurrence &occurrence :
            client.listOccurrences(requestedFrom, requestedTo, &error)) {
         occurrences.append(occurrence.toJson());
