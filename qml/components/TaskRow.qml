@@ -108,7 +108,7 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             square: true
             text: "⋯"
-            onClicked: actionsMenu.open()
+            onClicked: root.openActionsMenuFromButton()
             ToolTip.visible: hovered
             ToolTip.text: "Editar ou excluir tarefa"
 
@@ -169,6 +169,24 @@ Rectangle {
                 }
             }
         }
+    }
+
+    function openActionsMenuFromButton() {
+        actionsMenu.x = 0;
+        actionsMenu.y = taskActions.height + 4;
+        actionsMenu.open();
+    }
+
+    function openActionsMenuAt(rowPosition) {
+        const popupPosition = root.mapToItem(taskActions, rowPosition.x, rowPosition.y);
+        actionsMenu.x = popupPosition.x;
+        actionsMenu.y = popupPosition.y;
+        actionsMenu.open();
+    }
+
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: eventPoint => root.openActionsMenuAt(eventPoint.position)
     }
 
     function anchorWeekdayIndex() {

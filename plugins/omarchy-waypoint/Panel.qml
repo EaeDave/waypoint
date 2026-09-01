@@ -691,6 +691,11 @@ Panel {
                                     }
                                 }
 
+                                TapHandler {
+                                    acceptedButtons: Qt.RightButton
+                                    onTapped: root.openTaskEditor(modelData)
+                                }
+
 
                                 MouseArea {
                                     id: taskMouse
