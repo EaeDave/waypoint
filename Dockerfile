@@ -8,6 +8,8 @@ COPY server ./server
 RUN cargo build --locked --release -p waypoint-api
 
 FROM debian:bookworm-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/EaeDave/waypoint" \
+      org.opencontainers.image.description="Waypoint self-hosted synchronization API"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
