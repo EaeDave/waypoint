@@ -115,23 +115,19 @@ Panel {
         return (selectedDate.getDay() + 6) % 7;
     }
 
-    function taskRecurrencePresetIndex() {
+    function taskRecurrencePresetValue() {
         const frequency = String(editingRecurrence.frequency || "none");
         if (frequency === "none")
-            return 0;
+            return "none";
         const standard = Number(editingRecurrence.interval || 1) === 1
                       && (editingRecurrence.weekdays || []).length === 0
                       && String(editingRecurrence.endMode || "never") === "never";
-        if (!standard)
-            return 5;
-        return frequency === "daily" ? 1
-             : frequency === "weekly" ? 2
-             : frequency === "monthly" ? 3 : 4;
+        return standard ? frequency : "custom";
     }
 
     function selectedTaskWeekdays() {
-        if (taskRecurrenceInput.currentIndex !== 5
-                || taskCustomFrequency.currentValue !== "weekly")
+        if (taskRecurrenceInput.value !== "custom"
+                || taskCustomFrequency.value !== "weekly")
             return [];
         const selected = [];
         for (let index = 0; index < 7; ++index) {
@@ -149,20 +145,18 @@ Panel {
                                                   endMode: "never", untilDate: "",
                                                   occurrenceCount: 0 });
         const frequency = String(editingRecurrence.frequency || "none");
-        taskCustomFrequency.currentIndex = Math.max(
-            0, taskCustomFrequency.indexOfValue(frequency === "none" ? "daily" : frequency));
+        taskCustomFrequency.value = frequency === "none" ? "daily" : frequency;
         taskCustomInterval.value = Number(editingRecurrence.interval || 1);
         editingWeekdayMask = 0;
         for (const weekday of (editingRecurrence.weekdays || []))
             editingWeekdayMask |= 1 << (Number(weekday) - 1);
         if (frequency === "weekly" && editingWeekdayMask === 0)
             editingWeekdayMask = 1 << taskAnchorWeekdayIndex();
-        taskCustomEnding.currentIndex = Math.max(
-            0, taskCustomEnding.indexOfValue(String(editingRecurrence.endMode || "never")));
+        taskCustomEnding.value = String(editingRecurrence.endMode || "never");
         taskCustomUntilDate.text = String(editingRecurrence.untilDate || Model.dateKey(selectedDate));
         taskCustomOccurrenceCount.value =
             Math.max(1, Number(editingRecurrence.occurrenceCount || 10));
-        taskRecurrenceInput.currentIndex = taskRecurrencePresetIndex();
+        taskRecurrenceInput.value = taskRecurrencePresetValue();
         editingRecurringTask = task.recurring === true;
         taskEditorVisible = true;
         Qt.callLater(() => {
@@ -180,10 +174,9 @@ Panel {
         const time = taskTimeInput.text.trim();
         if (title === "" || !taskTimeInput.acceptableInput || !hostWidget)
             return;
-        const custom = taskRecurrenceInput.currentIndex === 5;
-        const frequency = custom ? taskCustomFrequency.currentValue
-                                 : taskRecurrenceInput.currentValue;
-        const endMode = custom ? taskCustomEnding.currentValue : "never";
+        const custom = taskRecurrenceInput.value === "custom";
+        const frequency = custom ? taskCustomFrequency.value : taskRecurrenceInput.value;
+        const endMode = custom ? taskCustomEnding.value : "never";
         const recurrence = {
             frequency: frequency,
             interval: custom ? taskCustomInterval.value : 1,
@@ -765,21 +758,24 @@ Panel {
                 anchors.fill: parent
                 z: 100
                 visible: root.taskEditorVisible
-                color: Qt.rgba(0, 0, 0, 0.58)
+                color: Color.menu.scrim
 
                 MouseArea {
                     anchors.fill: parent
                     onClicked: root.closeTaskEditor()
                 }
 
-                Rectangle {
+                BorderSurface {
+                    id: taskEditorCard
                     anchors.centerIn: parent
                     width: Math.min(parent.width - Style.space(32), Style.space(460))
-                    height: taskEditorColumn.implicitHeight + Style.space(28)
+                    height: contentTopInset + contentBottomInset + taskEditorColumn.implicitHeight
+                    padding: Style.space(18)
                     radius: Style.cornerRadius
-                    color: Qt.darker(root.foreground, 4.8)
-                    border.width: Style.spacing.hairline
-                    border.color: Style.normalBorderFor(root.foreground, Color.accent)
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
 
                     MouseArea {
                         anchors.fill: parent
@@ -790,16 +786,17 @@ Panel {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Style.space(14)
-                        anchors.rightMargin: Style.space(14)
-                        spacing: Style.space(8)
+                        anchors.leftMargin: taskEditorCard.contentLeftInset
+                        anchors.rightMargin: taskEditorCard.contentRightInset
+                        spacing: Style.space(10)
 
                         Text {
                             text: "EDITAR TAREFA"
-                            color: root.foreground
+                            color: Color.popups.text
                             font.family: root.fontFamily
-                            font.pixelSize: Style.font.body
+                            font.pixelSize: Style.font.caption
                             font.bold: true
+                            font.letterSpacing: 1
                         }
 
                         TextField {
@@ -807,9 +804,8 @@ Panel {
                             Layout.fillWidth: true
                             text: ""
                             placeholderText: "Título"
-                            color: root.foreground
-                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                            font.family: root.fontFamily
+                            foreground: Color.popups.text
+                            accent: Color.accent
                             selectByMouse: true
                             onAccepted: taskTimeInput.forceActiveFocus()
                         }
@@ -819,9 +815,8 @@ Panel {
                             Layout.fillWidth: true
                             text: ""
                             placeholderText: "HH:mm"
-                            color: root.foreground
-                            placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                            font.family: root.fontFamily
+                            foreground: Color.popups.text
+                            accent: Color.accent
                             selectByMouse: true
                             inputMethodHints: Qt.ImhTime
                             validator: RegularExpressionValidator {
@@ -830,138 +825,175 @@ Panel {
                             onAccepted: root.saveTaskEdit()
                         }
 
-                        ComboBox {
+                        Dropdown {
                             id: taskRecurrenceInput
                             Layout.fillWidth: true
-                            textRole: "text"
-                            valueRole: "value"
-                            model: [
-                                { text: "Não repetir", value: "none" },
-                                { text: "Diariamente", value: "daily" },
-                                { text: "Semanalmente", value: "weekly" },
-                                { text: "Mensalmente", value: "monthly" },
-                                { text: "Anualmente", value: "yearly" },
-                                { text: "Personalizado", value: "custom" }
+                            showLabel: false
+                            foreground: Color.popups.text
+                            background: Color.popups.background
+                            accent: Color.accent
+                            options: [
+                                { label: "Não repetir", value: "none" },
+                                { label: "Diariamente", value: "daily" },
+                                { label: "Semanalmente", value: "weekly" },
+                                { label: "Mensalmente", value: "monthly" },
+                                { label: "Anualmente", value: "yearly" },
+                                { label: "Personalizado", value: "custom" }
                             ]
                         }
 
                         GridLayout {
-                            visible: taskRecurrenceInput.currentIndex === 5
+                            visible: taskRecurrenceInput.value === "custom"
                             Layout.fillWidth: true
                             columns: 2
-                            columnSpacing: Style.space(8)
-                            rowSpacing: Style.space(6)
+                            columnSpacing: Style.space(10)
+                            rowSpacing: Style.space(8)
 
-                            Label {
+                            Text {
                                 text: "Frequência"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
-                            ComboBox {
+                            Dropdown {
                                 id: taskCustomFrequency
                                 Layout.fillWidth: true
-                                textRole: "text"
-                                valueRole: "value"
-                                model: [
-                                    { text: "Diária", value: "daily" },
-                                    { text: "Semanal", value: "weekly" },
-                                    { text: "Mensal", value: "monthly" },
-                                    { text: "Anual", value: "yearly" }
+                                showLabel: false
+                                foreground: Color.popups.text
+                                background: Color.popups.background
+                                accent: Color.accent
+                                options: [
+                                    { label: "Diária", value: "daily" },
+                                    { label: "Semanal", value: "weekly" },
+                                    { label: "Mensal", value: "monthly" },
+                                    { label: "Anual", value: "yearly" }
                                 ]
-                                onCurrentValueChanged: {
-                                    if (currentValue === "weekly" && root.editingWeekdayMask === 0)
+                                onChanged: function(value) {
+                                    if (value === "weekly" && root.editingWeekdayMask === 0)
                                         root.editingWeekdayMask = 1 << root.taskAnchorWeekdayIndex();
                                 }
                             }
 
-                            Label {
+                            Text {
                                 text: "A cada"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
                             RowLayout {
-                                SpinBox {
+                                NumberField {
                                     id: taskCustomInterval
                                     from: 1
                                     to: 99
                                     value: 1
+                                    foreground: Color.popups.text
+                                    accent: Color.accent
                                 }
-                                Label {
-                                    text: taskCustomFrequency.currentValue === "daily" ? "dia(s)"
-                                        : taskCustomFrequency.currentValue === "weekly" ? "semana(s)"
-                                        : taskCustomFrequency.currentValue === "monthly" ? "mês(es)"
+                                Text {
+                                    text: taskCustomFrequency.value === "daily" ? "dia(s)"
+                                        : taskCustomFrequency.value === "weekly" ? "semana(s)"
+                                        : taskCustomFrequency.value === "monthly" ? "mês(es)"
                                         : "ano(s)"
+                                    color: Color.popups.text
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
                                 }
                             }
 
-                            Label {
-                                visible: taskCustomFrequency.currentValue === "weekly"
+                            Text {
+                                visible: taskCustomFrequency.value === "weekly"
                                 text: "Somente em"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
                             RowLayout {
-                                visible: taskCustomFrequency.currentValue === "weekly"
-                                spacing: 1
+                                visible: taskCustomFrequency.value === "weekly"
+                                spacing: Style.space(2)
                                 Repeater {
                                     model: ["S", "T", "Q", "Q", "S", "S", "D"]
-                                    CheckBox {
+                                    Button {
                                         required property int index
                                         required property string modelData
                                         text: modelData
-                                        checked: (root.editingWeekdayMask & (1 << index)) !== 0
-                                        padding: 1
-                                        onToggled: {
-                                            if (checked)
-                                                root.editingWeekdayMask |= 1 << index;
-                                            else
+                                        selected: (root.editingWeekdayMask & (1 << index)) !== 0
+                                        foreground: Color.popups.text
+                                        accent: Color.accent
+                                        horizontalPadding: Style.space(4)
+                                        verticalPadding: Style.space(2)
+                                        onClicked: {
+                                            if (selected)
                                                 root.editingWeekdayMask &= ~(1 << index);
+                                            else
+                                                root.editingWeekdayMask |= 1 << index;
                                         }
                                     }
                                 }
                             }
 
-                            Label {
+                            Text {
                                 text: "Termina"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
-                            ComboBox {
+                            Dropdown {
                                 id: taskCustomEnding
                                 Layout.fillWidth: true
-                                textRole: "text"
-                                valueRole: "value"
-                                model: [
-                                    { text: "Nunca", value: "never" },
-                                    { text: "Em uma data", value: "onDate" },
-                                    { text: "Após ocorrências", value: "afterCount" }
+                                showLabel: false
+                                foreground: Color.popups.text
+                                background: Color.popups.background
+                                accent: Color.accent
+                                options: [
+                                    { label: "Nunca", value: "never" },
+                                    { label: "Em uma data", value: "onDate" },
+                                    { label: "Após ocorrências", value: "afterCount" }
                                 ]
                             }
 
-                            Label {
-                                visible: taskCustomEnding.currentValue === "onDate"
+                            Text {
+                                visible: taskCustomEnding.value === "onDate"
                                 text: "Data final"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
                             TextField {
                                 id: taskCustomUntilDate
-                                visible: taskCustomEnding.currentValue === "onDate"
+                                visible: taskCustomEnding.value === "onDate"
                                 Layout.fillWidth: true
                                 placeholderText: "AAAA-MM-DD"
-                                color: root.foreground
-                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                                font.family: root.fontFamily
+                                foreground: Color.popups.text
+                                accent: Color.accent
                             }
 
-                            Label {
-                                visible: taskCustomEnding.currentValue === "afterCount"
+                            Text {
+                                visible: taskCustomEnding.value === "afterCount"
                                 text: "Ocorrências"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
                             }
-                            SpinBox {
+                            NumberField {
                                 id: taskCustomOccurrenceCount
-                                visible: taskCustomEnding.currentValue === "afterCount"
+                                visible: taskCustomEnding.value === "afterCount"
                                 from: 1
                                 to: 999
                                 value: 10
+                                foreground: Color.popups.text
+                                accent: Color.accent
                             }
                         }
 
                         RowLayout {
                             Layout.fillWidth: true
+                            spacing: Style.space(8)
 
                             Button {
                                 text: root.editingRecurringTask ? "Excluir série" : "Excluir tarefa"
+                                foreground: Color.urgent
+                                accent: Color.urgent
+                                bordered: true
                                 onClicked: root.deleteEditedTask()
                             }
                             Item {
@@ -969,11 +1001,16 @@ Panel {
                             }
                             Button {
                                 text: "Cancelar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
                                 onClicked: root.closeTaskEditor()
                             }
                             Button {
                                 text: "Salvar"
-                                enabled: taskTitleInput.text.trim() !== "" && taskTimeInput.acceptableInput
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
                                 onClicked: root.saveTaskEdit()
                             }
                         }
