@@ -35,6 +35,8 @@ target_compile_options(waypoint_ipc PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(waypoint_sync STATIC
     src/sync/SyncEngine.cpp
+    src/sync/HolidaySyncEngine.cpp
+    src/sync/HolidaySyncEngine.hpp
     src/sync/SyncEngine.hpp
 )
 target_include_directories(waypoint_sync PUBLIC src)

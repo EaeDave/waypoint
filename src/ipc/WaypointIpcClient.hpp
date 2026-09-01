@@ -2,6 +2,7 @@
 
 #include "core/TaskRecord.hpp"
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
 #include <QObject>
@@ -28,6 +29,14 @@ public:
   [[nodiscard]] bool saveSyncConfiguration(const QString &endpoint, const QString &token, bool replaceToken,
                                            QString *errorMessage = nullptr) const;
   [[nodiscard]] bool syncNow(QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonObject holidayPreferences(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool saveHolidayPreferences(const QJsonObject &preferences,
+                                            QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonObject holidays(const QDate &from, const QDate &to,
+                                     QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonArray municipalities(const QString &stateCode, QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonObject holidayStatus(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool refreshHolidays(QString *errorMessage = nullptr) const;
 
   [[nodiscard]] QJsonObject request(const QJsonObject &message, QString *errorMessage = nullptr,
                                     int timeoutMilliseconds = 750) const;

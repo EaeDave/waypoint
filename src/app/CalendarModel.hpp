@@ -4,6 +4,7 @@
 
 #include <QAbstractListModel>
 #include <QDate>
+#include <QJsonArray>
 #include <QList>
 
 namespace waypoint {
@@ -25,6 +26,9 @@ public:
     CompletedCountRole,
     OverdueCountRole,
     WeekNumberRole,
+    HolidayCountRole,
+    LegalHolidayRole,
+    HolidayNamesRole,
   };
   Q_ENUM(Role)
 
@@ -38,6 +42,7 @@ public:
   [[nodiscard]] int visibleMonth() const;
   [[nodiscard]] QString monthLabel() const;
   void setSourceTasks(const QList<TaskRecord> &tasks);
+  void setSourceHolidays(const QJsonArray &holidays);
 
   Q_INVOKABLE void showPreviousMonth();
   Q_INVOKABLE void showNextMonth();
@@ -54,6 +59,9 @@ private:
     int pendingCount = 0;
     int completedCount = 0;
     int overdueCount = 0;
+    int holidayCount = 0;
+    bool legalHoliday = false;
+    QStringList holidayNames;
   };
 
   void setVisibleMonth(const QDate &month);
@@ -61,6 +69,7 @@ private:
 
   QDate m_visibleMonth;
   QList<TaskRecord> m_sourceTasks;
+  QJsonArray m_sourceHolidays;
   QList<CalendarCell> m_cells;
 };
 

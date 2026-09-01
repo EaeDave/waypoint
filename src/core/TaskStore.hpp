@@ -24,6 +24,17 @@ public:
   [[nodiscard]] SyncConfiguration syncConfiguration(QString *errorMessage = nullptr) const;
   [[nodiscard]] bool saveSyncConfiguration(const SyncConfiguration &configuration,
                                            QString *errorMessage = nullptr);
+  [[nodiscard]] QJsonObject holidayPreferences(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool saveHolidayPreferences(const QJsonObject &preferences, QString *errorMessage = nullptr);
+  [[nodiscard]] QJsonArray listHolidays(const QDate &from, const QDate &to,
+                                        QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonArray holidayCoverage(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool replaceHolidaySnapshot(const QDate &from, const QDate &to, const QJsonArray &holidays,
+                                            const QJsonArray &coverage, QString *errorMessage = nullptr);
+  [[nodiscard]] QJsonArray listMunicipalities(const QString &stateCode,
+                                              QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool replaceMunicipalities(const QString &stateCode, const QJsonArray &municipalities,
+                                           QString *errorMessage = nullptr);
 
   [[nodiscard]] bool createTask(const QString &title, const QDate &scheduledDate,
                                 TaskRecord *createdTask = nullptr, QString *errorMessage = nullptr);
@@ -37,6 +48,8 @@ public:
 
 signals:
   void tasksChanged();
+  void holidaysChanged();
+  void holidayPreferencesChanged();
 
 private:
   [[nodiscard]] bool migrate(QString *errorMessage);

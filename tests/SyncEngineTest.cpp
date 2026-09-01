@@ -1,5 +1,6 @@
 #include "sync/SyncEngine.hpp"
 #include "core/TaskStore.hpp"
+#include "sync/HolidaySyncEngine.hpp"
 
 #include <QTemporaryDir>
 #include <QtTest>
@@ -11,6 +12,7 @@ private slots:
   void normalizeAndPersistServerUrl();
   void rejectUnsafeServerUrl();
   void preserveExistingTokenWhenRequested();
+  void preserveHolidayPreferencesWithoutServer();
 };
 
 void SyncEngineTest::normalizeAndPersistServerUrl() {
@@ -62,6 +64,27 @@ void SyncEngineTest::preserveExistingTokenWhenRequested() {
   QCOMPARE(stored.token, QByteArrayLiteral("token"));
 
   QVERIFY2(engine.updateConfiguration({}, {}, true, &error), qPrintable(error));
+}
+
+void SyncEngineTest::preserveHolidayPreferencesWithoutServer() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  waypoint::HolidaySyncEngine engine(&store);
+
+  const QJsonObject preferences{
+      {QStringLiteral("stateCode"), QStringLiteral("MG")},
+      {QStringLiteral("cityCode"), QStringLiteral("3106200")},
+      {QStringLiteral("includeNational"), true},
+      {QStringLiteral("includeState"), true},
+      {QStringLiteral("includeMunicipal"), true},
+      {QStringLiteral("includeCommemorative"), true},
+  };
+  QVERIFY2(engine.updatePreferences(preferences, &error), qPrintable(error));
+  QCOMPARE(engine.status().value(QStringLiteral("state")).toString(), QStringLiteral("local-only"));
+  QCOMPARE(store.holidayPreferences(&error).value(QStringLiteral("cityCode")).toString(),
+           QStringLiteral("3106200"));
 }
 
 QTEST_MAIN(SyncEngineTest)

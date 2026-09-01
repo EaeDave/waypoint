@@ -2,6 +2,7 @@
 
 #include "core/TaskStore.hpp"
 #include "ipc/WaypointProtocol.hpp"
+#include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
 
 #include <QJsonArray>
@@ -9,8 +10,10 @@
 
 namespace waypoint {
 
-WaypointIpcServer::WaypointIpcServer(TaskStore *taskStore, SyncEngine *syncEngine, QObject *parent)
-    : QObject(parent), m_taskStore(taskStore), m_syncEngine(syncEngine) {
+WaypointIpcServer::WaypointIpcServer(TaskStore *taskStore, SyncEngine *syncEngine,
+                                     HolidaySyncEngine *holidaySyncEngine, QObject *parent)
+    : QObject(parent), m_taskStore(taskStore), m_syncEngine(syncEngine),
+      m_holidaySyncEngine(holidaySyncEngine) {
   connect(&m_server, &QLocalServer::newConnection, this, &WaypointIpcServer::acceptConnections);
 }
 
@@ -140,12 +143,63 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
                                            replaceToken, &error)) {
       return protocol::errorResponse(error);
     }
+    m_holidaySyncEngine->syncNow();
     QJsonObject response = m_syncEngine->publicConfiguration();
     response.insert(QStringLiteral("ok"), true);
     return response;
   }
   if (command == QStringLiteral("sync-now")) {
     m_syncEngine->syncNow();
+    m_holidaySyncEngine->syncNow();
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("holiday-preferences")) {
+    QJsonObject preferences = m_taskStore->holidayPreferences(&error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("preferences"), preferences}};
+  }
+  if (command == QStringLiteral("set-holiday-preferences")) {
+    if (!m_holidaySyncEngine->updatePreferences(request.value(QStringLiteral("preferences")).toObject(),
+                                                &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("holidays")) {
+    const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
+    const QDate to = QDate::fromString(request.value(QStringLiteral("to")).toString(), Qt::ISODate);
+    const QJsonArray holidays = m_taskStore->listHolidays(from, to, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    const QJsonArray coverage = m_taskStore->holidayCoverage(&error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("holidays"), holidays},
+            {QStringLiteral("coverage"), coverage}};
+  }
+  if (command == QStringLiteral("municipalities")) {
+    const QString stateCode = request.value(QStringLiteral("state")).toString();
+    const QJsonArray municipalities = m_taskStore->listMunicipalities(stateCode, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    if (municipalities.isEmpty()) {
+      m_holidaySyncEngine->refreshMunicipalities(stateCode);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("municipalities"), municipalities}};
+  }
+  if (command == QStringLiteral("holiday-status")) {
+    QJsonObject response = m_holidaySyncEngine->status();
+    response.insert(QStringLiteral("ok"), true);
+    return response;
+  }
+  if (command == QStringLiteral("refresh-holidays")) {
+    m_holidaySyncEngine->syncNow();
     return {{QStringLiteral("ok"), true}};
   }
   return protocol::errorResponse(QStringLiteral("Unknown Waypoint IPC command: '%1'").arg(command));

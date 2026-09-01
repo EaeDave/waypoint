@@ -32,6 +32,7 @@ void WaypointController::setSelectedDateKey(const QString &dateKey) {
   }
   m_selectedDate = date;
   m_selectedDateTasks.setFocusDate(date);
+  updateSelectedDateHolidays();
   emit selectedDateKeyChanged();
 }
 
@@ -48,6 +49,35 @@ QString WaypointController::syncState() const { return m_syncState; }
 QString WaypointController::syncLastError() const { return m_syncLastError; }
 
 QString WaypointController::lastSuccessfulSync() const { return m_lastSuccessfulSync; }
+QString WaypointController::holidayStateCode() const { return m_holidayStateCode; }
+
+QString WaypointController::holidayCityCode() const { return m_holidayCityCode; }
+
+bool WaypointController::includeNationalHolidays() const { return m_includeNationalHolidays; }
+
+bool WaypointController::includeStateHolidays() const { return m_includeStateHolidays; }
+
+bool WaypointController::includeMunicipalHolidays() const { return m_includeMunicipalHolidays; }
+
+bool WaypointController::includeCommemorativeDates() const { return m_includeCommemorativeDates; }
+
+QVariantList WaypointController::municipalities() const { return m_municipalities; }
+
+QVariantList WaypointController::selectedDateHolidays() const {
+  QVariantList selected;
+  const QString dateKey = selectedDateKey();
+  for (const QJsonValue &value : m_holidays) {
+    const QJsonObject holiday = value.toObject();
+    if (holiday.value(QStringLiteral("date")).toString() == dateKey) {
+      selected.append(holiday.toVariantMap());
+    }
+  }
+  return selected;
+}
+
+QString WaypointController::holidaySyncState() const { return m_holidaySyncState; }
+
+QString WaypointController::holidaySyncLastError() const { return m_holidaySyncLastError; }
 
 void WaypointController::start() {
   refresh();
@@ -73,6 +103,10 @@ void WaypointController::refresh() {
     publishTasks(tasks);
   }
   if (!refreshSyncDetails(&error)) {
+    updateConnection(false, error);
+    return;
+  }
+  if (!refreshHolidayDetails(&error)) {
     updateConnection(false, error);
     return;
   }
@@ -159,6 +193,55 @@ bool WaypointController::syncNow() {
   updateConnection(true);
   return true;
 }
+bool WaypointController::saveHolidayPreferences(const QString &stateCode, const QString &cityCode,
+                                                bool includeNational, bool includeState,
+                                                bool includeMunicipal, bool includeCommemorative) {
+  const QJsonObject preferences{
+      {QStringLiteral("stateCode"), stateCode},
+      {QStringLiteral("cityCode"), cityCode},
+      {QStringLiteral("includeNational"), includeNational},
+      {QStringLiteral("includeState"), includeState},
+      {QStringLiteral("includeMunicipal"), includeMunicipal},
+      {QStringLiteral("includeCommemorative"), includeCommemorative},
+  };
+  QString error;
+  if (!m_client.saveHolidayPreferences(preferences, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  if (!refreshHolidayDetails(&error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  updateConnection(true);
+  return true;
+}
+
+void WaypointController::loadMunicipalities(const QString &stateCode) {
+  QString error;
+  const QJsonArray values = m_client.municipalities(stateCode, &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
+  const QByteArray signature = QJsonDocument(values).toJson(QJsonDocument::Compact);
+  if (signature == m_municipalitySignature) {
+    return;
+  }
+  m_municipalitySignature = signature;
+  m_municipalities = values.toVariantList();
+  emit municipalitiesChanged();
+}
+
+bool WaypointController::refreshHolidays() {
+  QString error;
+  if (!m_client.refreshHolidays(&error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  updateConnection(true);
+  return true;
+}
 
 void WaypointController::updateConnection(bool online, const QString &errorMessage) {
   if (m_online != online) {
@@ -207,6 +290,62 @@ bool WaypointController::refreshSyncDetails(QString *errorMessage) {
   }
   return true;
 }
+bool WaypointController::refreshHolidayDetails(QString *errorMessage) {
+  const QDate today = QDate::currentDate();
+  const QJsonObject holidayData =
+      m_client.holidays(QDate(today.year() - 1, 1, 1), QDate(today.year() + 1, 12, 31), errorMessage);
+  if (holidayData.isEmpty()) {
+    return false;
+  }
+  const QJsonArray holidays = holidayData.value(QStringLiteral("holidays")).toArray();
+  const QByteArray signature = QJsonDocument(holidays).toJson(QJsonDocument::Compact);
+  if (signature != m_holidaySignature) {
+    m_holidaySignature = signature;
+    m_holidays = holidays;
+    m_calendar.setSourceHolidays(holidays);
+    updateSelectedDateHolidays();
+  }
+
+  const QJsonObject preferences = m_client.holidayPreferences(errorMessage);
+  if (preferences.isEmpty()) {
+    return false;
+  }
+  const QString stateCode = preferences.value(QStringLiteral("stateCode")).toString();
+  const QString cityCode = preferences.value(QStringLiteral("cityCode")).toString();
+  const bool includeNational = preferences.value(QStringLiteral("includeNational")).toBool(true);
+  const bool includeState = preferences.value(QStringLiteral("includeState")).toBool(true);
+  const bool includeMunicipal = preferences.value(QStringLiteral("includeMunicipal")).toBool(true);
+  const bool includeCommemorative = preferences.value(QStringLiteral("includeCommemorative")).toBool(false);
+  if (stateCode != m_holidayStateCode || cityCode != m_holidayCityCode ||
+      includeNational != m_includeNationalHolidays || includeState != m_includeStateHolidays ||
+      includeMunicipal != m_includeMunicipalHolidays || includeCommemorative != m_includeCommemorativeDates) {
+    m_holidayStateCode = stateCode;
+    m_holidayCityCode = cityCode;
+    m_includeNationalHolidays = includeNational;
+    m_includeStateHolidays = includeState;
+    m_includeMunicipalHolidays = includeMunicipal;
+    m_includeCommemorativeDates = includeCommemorative;
+    emit holidayConfigurationChanged();
+  }
+  if (!stateCode.isEmpty()) {
+    loadMunicipalities(stateCode);
+  }
+
+  const QJsonObject status = m_client.holidayStatus(errorMessage);
+  if (status.isEmpty()) {
+    return false;
+  }
+  const QString syncState = status.value(QStringLiteral("state")).toString();
+  const QString syncError = status.value(QStringLiteral("lastError")).toString();
+  if (syncState != m_holidaySyncState || syncError != m_holidaySyncLastError) {
+    m_holidaySyncState = syncState;
+    m_holidaySyncLastError = syncError;
+    emit holidayStatusChanged();
+  }
+  return true;
+}
+
+void WaypointController::updateSelectedDateHolidays() { emit selectedDateHolidaysChanged(); }
 
 void WaypointController::startDaemonOnce() {
   if (m_daemonStartAttempted) {

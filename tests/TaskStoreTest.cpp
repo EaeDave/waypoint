@@ -12,6 +12,8 @@ private slots:
   void rejectInvisibleTitle();
   void preserveFloatingCalendarDate();
   void persistSyncConfiguration();
+  void cacheHolidaySnapshotAtomically();
+  void persistHolidayPreferencesAndMunicipalities();
 };
 
 void TaskStoreTest::createCompleteAndRescheduleTask() {
@@ -84,6 +86,75 @@ void TaskStoreTest::persistSyncConfiguration() {
   QVERIFY(!disabled.enabled());
   QVERIFY(disabled.endpoint.isEmpty());
   QVERIFY(disabled.token.isEmpty());
+}
+
+void TaskStoreTest::cacheHolidaySnapshotAtomically() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate from(2026, 1, 1);
+  const QDate to(2026, 12, 31);
+  const QJsonArray holidays{
+      QJsonObject{{QStringLiteral("date"), QStringLiteral("2026-04-21")},
+                  {QStringLiteral("name"), QStringLiteral("Tiradentes")},
+                  {QStringLiteral("kind"), QStringLiteral("legal")},
+                  {QStringLiteral("scope"), QStringLiteral("national")},
+                  {QStringLiteral("source"), QStringLiteral("feriados-brasil/nacional")}},
+      QJsonObject{{QStringLiteral("date"), QStringLiteral("2026-04-21")},
+                  {QStringLiteral("name"), QStringLiteral("Aniversário municipal")},
+                  {QStringLiteral("kind"), QStringLiteral("legal")},
+                  {QStringLiteral("scope"), QStringLiteral("municipal")},
+                  {QStringLiteral("cityCode"), QStringLiteral("3550308")},
+                  {QStringLiteral("source"), QStringLiteral("feriados-brasil/municipal")}},
+  };
+  const QJsonArray coverage{
+      QJsonObject{{QStringLiteral("source"), QStringLiteral("feriados-brasil/nacional")},
+                  {QStringLiteral("year"), 2026},
+                  {QStringLiteral("status"), QStringLiteral("ready")}},
+  };
+  QVERIFY2(store.replaceHolidaySnapshot(from, to, holidays, coverage, &error), qPrintable(error));
+  QCOMPARE(store.listHolidays(QDate(2026, 4, 21), QDate(2026, 4, 21), &error).size(), 2);
+
+  const QJsonArray invalid{
+      QJsonObject{{QStringLiteral("date"), QStringLiteral("2027-01-01")},
+                  {QStringLiteral("name"), QStringLiteral("Out of range")}},
+  };
+  QVERIFY(!store.replaceHolidaySnapshot(from, to, invalid, {}, &error));
+  QCOMPARE(store.listHolidays(QDate(2026, 4, 21), QDate(2026, 4, 21)).size(), 2);
+}
+
+void TaskStoreTest::persistHolidayPreferencesAndMunicipalities() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  QJsonObject preferences = store.holidayPreferences(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QVERIFY(preferences.value(QStringLiteral("includeNational")).toBool());
+  QVERIFY(!preferences.value(QStringLiteral("includeCommemorative")).toBool());
+
+  preferences.insert(QStringLiteral("stateCode"), QStringLiteral(" sp "));
+  preferences.insert(QStringLiteral("cityCode"), QStringLiteral("3550308"));
+  preferences.insert(QStringLiteral("includeCommemorative"), true);
+  QVERIFY2(store.saveHolidayPreferences(preferences, &error), qPrintable(error));
+  const QJsonObject loaded = store.holidayPreferences(&error);
+  QCOMPARE(loaded.value(QStringLiteral("stateCode")).toString(), QStringLiteral("SP"));
+  QCOMPARE(loaded.value(QStringLiteral("cityCode")).toString(), QStringLiteral("3550308"));
+  QVERIFY(loaded.value(QStringLiteral("includeCommemorative")).toBool());
+
+  const QJsonArray municipalities{
+      QJsonObject{{QStringLiteral("code"), QStringLiteral("3550308")},
+                  {QStringLiteral("name"), QStringLiteral("São Paulo")}},
+      QJsonObject{{QStringLiteral("code"), QStringLiteral("3509502")},
+                  {QStringLiteral("name"), QStringLiteral("Campinas")}},
+  };
+  QVERIFY2(store.replaceMunicipalities(QStringLiteral("sp"), municipalities, &error), qPrintable(error));
+  const QJsonArray stored = store.listMunicipalities(QStringLiteral("SP"), &error);
+  QCOMPARE(stored.size(), 2);
+  QCOMPARE(stored.first().toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Campinas"));
 }
 
 QTEST_MAIN(TaskStoreTest)

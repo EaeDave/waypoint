@@ -1,5 +1,6 @@
 #include "core/TaskStore.hpp"
 #include "ipc/WaypointIpcServer.hpp"
+#include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
 
 #include <QCoreApplication>
@@ -36,12 +37,14 @@ int main(int argc, char *argv[]) {
   }
 
   waypoint::SyncEngine syncEngine(&taskStore);
-  waypoint::WaypointIpcServer server(&taskStore, &syncEngine);
+  waypoint::HolidaySyncEngine holidaySyncEngine(&taskStore);
+  waypoint::WaypointIpcServer server(&taskStore, &syncEngine, &holidaySyncEngine);
   if (!server.listen(&error)) {
     logJson(QStringLiteral("error"), error);
     return 1;
   }
   syncEngine.start();
+  holidaySyncEngine.start();
 
   logJson(QStringLiteral("info"), QStringLiteral("Waypoint daemon is ready"));
   return application.exec();

@@ -8,6 +8,7 @@ class AppModelsTest final : public QObject {
 
 private slots:
   void aggregateTaskMarkersByCalendarDate();
+  void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
 };
 
@@ -44,6 +45,31 @@ void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
     QCOMPARE(model.data(index, waypoint::CalendarModel::CompletedCountRole).toInt(), 1);
   }
   QVERIFY(foundToday);
+}
+
+void AppModelsTest::aggregateHolidayMarkersByCalendarDate() {
+  waypoint::CalendarModel model;
+  const QDate today = QDate::currentDate();
+  model.setSourceHolidays({
+      QJsonObject{{QStringLiteral("date"), today.toString(Qt::ISODate)},
+                  {QStringLiteral("name"), QStringLiteral("Feriado legal")},
+                  {QStringLiteral("kind"), QStringLiteral("legal")}},
+      QJsonObject{{QStringLiteral("date"), today.toString(Qt::ISODate)},
+                  {QStringLiteral("name"), QStringLiteral("Data comemorativa")},
+                  {QStringLiteral("kind"), QStringLiteral("commemorative")}},
+  });
+
+  for (int row = 0; row < model.rowCount(); ++row) {
+    const QModelIndex index = model.index(row, 0);
+    if (model.data(index, waypoint::CalendarModel::DateRole).toString() != today.toString(Qt::ISODate)) {
+      continue;
+    }
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayCountRole).toInt(), 2);
+    QVERIFY(model.data(index, waypoint::CalendarModel::LegalHolidayRole).toBool());
+    QCOMPARE(model.data(index, waypoint::CalendarModel::HolidayNamesRole).toStringList().size(), 2);
+    return;
+  }
+  QFAIL("today is absent from the visible calendar grid");
 }
 
 void AppModelsTest::includeOverdueTasksOnlyInTodayView() {

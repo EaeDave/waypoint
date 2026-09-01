@@ -152,5 +152,55 @@ bool WaypointIpcClient::syncNow(QString *errorMessage) const {
   return responseSucceeded(request({{QStringLiteral("command"), QStringLiteral("sync-now")}}, errorMessage),
                            errorMessage);
 }
+QJsonObject WaypointIpcClient::holidayPreferences(QString *errorMessage) const {
+  const QJsonObject response =
+      request({{QStringLiteral("command"), QStringLiteral("holiday-preferences")}}, errorMessage);
+  return responseSucceeded(response, errorMessage) ? response.value(QStringLiteral("preferences")).toObject()
+                                                   : QJsonObject{};
+}
+
+bool WaypointIpcClient::saveHolidayPreferences(const QJsonObject &preferences, QString *errorMessage) const {
+  return responseSucceeded(request(
+                               {
+                                   {QStringLiteral("command"), QStringLiteral("set-holiday-preferences")},
+                                   {QStringLiteral("preferences"), preferences},
+                               },
+                               errorMessage),
+                           errorMessage);
+}
+
+QJsonObject WaypointIpcClient::holidays(const QDate &from, const QDate &to, QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("holidays")},
+          {QStringLiteral("from"), from.toString(Qt::ISODate)},
+          {QStringLiteral("to"), to.toString(Qt::ISODate)},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage) ? response : QJsonObject{};
+}
+
+QJsonArray WaypointIpcClient::municipalities(const QString &stateCode, QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("municipalities")},
+          {QStringLiteral("state"), stateCode},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage)
+             ? response.value(QStringLiteral("municipalities")).toArray()
+             : QJsonArray{};
+}
+
+QJsonObject WaypointIpcClient::holidayStatus(QString *errorMessage) const {
+  const QJsonObject response =
+      request({{QStringLiteral("command"), QStringLiteral("holiday-status")}}, errorMessage);
+  return responseSucceeded(response, errorMessage) ? response : QJsonObject{};
+}
+
+bool WaypointIpcClient::refreshHolidays(QString *errorMessage) const {
+  return responseSucceeded(
+      request({{QStringLiteral("command"), QStringLiteral("refresh-holidays")}}, errorMessage), errorMessage);
+}
 
 } // namespace waypoint

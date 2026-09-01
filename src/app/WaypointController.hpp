@@ -5,8 +5,10 @@
 #include "ipc/WaypointIpcClient.hpp"
 
 #include <QDate>
+#include <QJsonArray>
 #include <QObject>
 #include <QTimer>
+#include <QVariantList>
 
 namespace waypoint {
 
@@ -24,6 +26,16 @@ class WaypointController final : public QObject {
   Q_PROPERTY(QString syncState READ syncState NOTIFY syncStatusChanged)
   Q_PROPERTY(QString syncLastError READ syncLastError NOTIFY syncStatusChanged)
   Q_PROPERTY(QString lastSuccessfulSync READ lastSuccessfulSync NOTIFY syncStatusChanged)
+  Q_PROPERTY(QString holidayStateCode READ holidayStateCode NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(QString holidayCityCode READ holidayCityCode NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(bool includeNationalHolidays READ includeNationalHolidays NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(bool includeStateHolidays READ includeStateHolidays NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(bool includeMunicipalHolidays READ includeMunicipalHolidays NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(bool includeCommemorativeDates READ includeCommemorativeDates NOTIFY holidayConfigurationChanged)
+  Q_PROPERTY(QVariantList municipalities READ municipalities NOTIFY municipalitiesChanged)
+  Q_PROPERTY(QVariantList selectedDateHolidays READ selectedDateHolidays NOTIFY selectedDateHolidaysChanged)
+  Q_PROPERTY(QString holidaySyncState READ holidaySyncState NOTIFY holidayStatusChanged)
+  Q_PROPERTY(QString holidaySyncLastError READ holidaySyncLastError NOTIFY holidayStatusChanged)
 
 public:
   explicit WaypointController(QObject *parent = nullptr);
@@ -40,6 +52,16 @@ public:
   [[nodiscard]] QString syncState() const;
   [[nodiscard]] QString syncLastError() const;
   [[nodiscard]] QString lastSuccessfulSync() const;
+  [[nodiscard]] QString holidayStateCode() const;
+  [[nodiscard]] QString holidayCityCode() const;
+  [[nodiscard]] bool includeNationalHolidays() const;
+  [[nodiscard]] bool includeStateHolidays() const;
+  [[nodiscard]] bool includeMunicipalHolidays() const;
+  [[nodiscard]] bool includeCommemorativeDates() const;
+  [[nodiscard]] QVariantList municipalities() const;
+  [[nodiscard]] QVariantList selectedDateHolidays() const;
+  [[nodiscard]] QString holidaySyncState() const;
+  [[nodiscard]] QString holidaySyncLastError() const;
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void refresh();
@@ -50,6 +72,11 @@ public:
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();
   Q_INVOKABLE bool syncNow();
+  Q_INVOKABLE bool saveHolidayPreferences(const QString &stateCode, const QString &cityCode,
+                                          bool includeNational, bool includeState, bool includeMunicipal,
+                                          bool includeCommemorative);
+  Q_INVOKABLE void loadMunicipalities(const QString &stateCode);
+  Q_INVOKABLE bool refreshHolidays();
 
 signals:
   void selectedDateKeyChanged();
@@ -57,12 +84,18 @@ signals:
   void errorMessageChanged();
   void syncConfigurationChanged();
   void syncStatusChanged();
+  void holidayConfigurationChanged();
+  void municipalitiesChanged();
+  void selectedDateHolidaysChanged();
+  void holidayStatusChanged();
 
 private:
   void updateConnection(bool online, const QString &errorMessage = {});
   void publishTasks(const QList<TaskRecord> &tasks);
   void startDaemonOnce();
   bool refreshSyncDetails(QString *errorMessage);
+  bool refreshHolidayDetails(QString *errorMessage);
+  void updateSelectedDateHolidays();
 
   WaypointIpcClient m_client;
   TaskListModel m_todayTasks;
@@ -71,6 +104,10 @@ private:
   QTimer m_refreshTimer;
   QDate m_selectedDate;
   QByteArray m_snapshotSignature;
+  QByteArray m_holidaySignature;
+  QByteArray m_municipalitySignature;
+  QJsonArray m_holidays;
+  QVariantList m_municipalities;
   bool m_online = false;
   bool m_daemonStartAttempted = false;
   QString m_errorMessage;
@@ -78,6 +115,14 @@ private:
   QString m_syncState = QStringLiteral("local-only");
   QString m_syncLastError;
   QString m_lastSuccessfulSync;
+  QString m_holidayStateCode;
+  QString m_holidayCityCode;
+  QString m_holidaySyncState = QStringLiteral("local-only");
+  QString m_holidaySyncLastError;
+  bool m_includeNationalHolidays = true;
+  bool m_includeStateHolidays = true;
+  bool m_includeMunicipalHolidays = true;
+  bool m_includeCommemorativeDates = false;
   bool m_syncConfigured = false;
 };
 

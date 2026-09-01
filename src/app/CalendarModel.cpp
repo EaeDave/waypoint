@@ -36,6 +36,12 @@ QVariant CalendarModel::data(const QModelIndex &index, int role) const {
     return cell.overdueCount;
   case WeekNumberRole:
     return cell.date.weekNumber();
+  case HolidayCountRole:
+    return cell.holidayCount;
+  case LegalHolidayRole:
+    return cell.legalHoliday;
+  case HolidayNamesRole:
+    return cell.holidayNames;
   default:
     return {};
   }
@@ -51,6 +57,9 @@ QHash<int, QByteArray> CalendarModel::roleNames() const {
       {PendingCountRole, "pendingCount"},
       {CompletedCountRole, "completedCount"},
       {OverdueCountRole, "overdueCount"},
+      {HolidayCountRole, "holidayCount"},
+      {LegalHolidayRole, "legalHoliday"},
+      {HolidayNamesRole, "holidayNames"},
       {WeekNumberRole, "weekNumber"},
   };
 }
@@ -76,6 +85,10 @@ int CalendarModel::weekNumberAtRow(int row) const {
 
 void CalendarModel::setSourceTasks(const QList<TaskRecord> &tasks) {
   m_sourceTasks = tasks;
+  rebuildCells();
+}
+void CalendarModel::setSourceHolidays(const QJsonArray &holidays) {
+  m_sourceHolidays = holidays;
   rebuildCells();
 }
 
@@ -123,6 +136,16 @@ void CalendarModel::rebuildCells() {
           ++cell.overdueCount;
         }
       }
+    }
+    for (const QJsonValue &value : m_sourceHolidays) {
+      const QJsonObject holiday = value.toObject();
+      if (holiday.value(QStringLiteral("date")).toString() != cell.date.toString(Qt::ISODate)) {
+        continue;
+      }
+      ++cell.holidayCount;
+      cell.legalHoliday =
+          cell.legalHoliday || holiday.value(QStringLiteral("kind")).toString() == QStringLiteral("legal");
+      cell.holidayNames.append(holiday.value(QStringLiteral("name")).toString());
     }
     cells.append(cell);
   }

@@ -34,7 +34,9 @@ int main(int argc, char *argv[]) {
   parser.addPositionalArgument(
       QStringLiteral("command"),
       QStringLiteral("ping, snapshot, add, complete, reopen, reschedule, delete, sync-status, "
-                     "sync-config, configure-sync, disable-sync, or sync-now"));
+                     "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
+                     "holiday-preferences, configure-holidays, municipalities, holidays, or "
+                     "refresh-holidays"));
   parser.addPositionalArgument(QStringLiteral("arguments"), QStringLiteral("Command arguments"),
                                QStringLiteral("[arguments...]"));
   parser.addOption({{QStringLiteral("t"), QStringLiteral("title")},
@@ -47,6 +49,21 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("url")});
   parser.addOption({QStringLiteral("token"), QStringLiteral("Waypoint synchronization access token"),
                     QStringLiteral("token")});
+  parser.addOption({QStringLiteral("state"), QStringLiteral("Brazilian state code"), QStringLiteral("UF")});
+  parser.addOption(
+      {QStringLiteral("city"), QStringLiteral("IBGE municipality code"), QStringLiteral("code")});
+  parser.addOption({QStringLiteral("national"), QStringLiteral("Include national holidays (on/off)"),
+                    QStringLiteral("on|off")});
+  parser.addOption({QStringLiteral("state-holidays"), QStringLiteral("Include state holidays (on/off)"),
+                    QStringLiteral("on|off")});
+  parser.addOption({QStringLiteral("municipal"), QStringLiteral("Include municipal holidays (on/off)"),
+                    QStringLiteral("on|off")});
+  parser.addOption({QStringLiteral("commemorative"), QStringLiteral("Include commemorative dates (on/off)"),
+                    QStringLiteral("on|off")});
+  parser.addOption(
+      {QStringLiteral("from"), QStringLiteral("Range start in YYYY-MM-DD format"), QStringLiteral("date")});
+  parser.addOption(
+      {QStringLiteral("to"), QStringLiteral("Range end in YYYY-MM-DD format"), QStringLiteral("date")});
   parser.process(application);
 
   const QStringList positional = parser.positionalArguments();
@@ -77,8 +94,27 @@ int main(int argc, char *argv[]) {
     if (!error.isEmpty()) {
       return printError(error);
     }
-    printJson(
-        {{QStringLiteral("ok"), true}, {QStringLiteral("tasks"), values}, {QStringLiteral("sync"), sync}});
+    const QDate today = QDate::currentDate();
+    const QJsonObject holidayData =
+        client.holidays(QDate(today.year() - 1, 1, 1), QDate(today.year() + 1, 12, 31), &error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    const QJsonObject holidayPreferences = client.holidayPreferences(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    const QJsonObject holidayStatus = client.holidayStatus(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true},
+               {QStringLiteral("tasks"), values},
+               {QStringLiteral("sync"), sync},
+               {QStringLiteral("holidays"), holidayData.value(QStringLiteral("holidays"))},
+               {QStringLiteral("holidayCoverage"), holidayData.value(QStringLiteral("coverage"))},
+               {QStringLiteral("holidayPreferences"), holidayPreferences},
+               {QStringLiteral("holidaySync"), holidayStatus}});
     return 0;
   }
   if (command == QStringLiteral("add")) {
@@ -129,6 +165,87 @@ int main(int argc, char *argv[]) {
   }
   if (command == QStringLiteral("sync-now")) {
     if (!client.syncNow(&error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("holiday-status")) {
+    const QJsonObject status = client.holidayStatus(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson(status);
+    return 0;
+  }
+  if (command == QStringLiteral("holiday-preferences")) {
+    const QJsonObject preferences = client.holidayPreferences(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson(preferences);
+    return 0;
+  }
+  if (command == QStringLiteral("configure-holidays")) {
+    QJsonObject preferences = client.holidayPreferences(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    if (parser.isSet(QStringLiteral("state"))) {
+      preferences.insert(QStringLiteral("stateCode"), parser.value(QStringLiteral("state")));
+    }
+    if (parser.isSet(QStringLiteral("city"))) {
+      preferences.insert(QStringLiteral("cityCode"), parser.value(QStringLiteral("city")));
+    }
+    const QList<QPair<QString, QString>> flags{
+        {QStringLiteral("national"), QStringLiteral("includeNational")},
+        {QStringLiteral("state-holidays"), QStringLiteral("includeState")},
+        {QStringLiteral("municipal"), QStringLiteral("includeMunicipal")},
+        {QStringLiteral("commemorative"), QStringLiteral("includeCommemorative")},
+    };
+    for (const auto &[option, field] : flags) {
+      if (!parser.isSet(option)) {
+        continue;
+      }
+      const QString value = parser.value(option).trimmed().toLower();
+      if (value != QStringLiteral("on") && value != QStringLiteral("off")) {
+        return printError(QStringLiteral("--%1 requires on or off").arg(option));
+      }
+      preferences.insert(field, value == QStringLiteral("on"));
+    }
+    if (!client.saveHolidayPreferences(preferences, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("municipalities")) {
+    const QString stateCode = parser.value(QStringLiteral("state"));
+    if (stateCode.isEmpty()) {
+      return printError(QStringLiteral("municipalities requires --state UF"));
+    }
+    const QJsonArray municipalities = client.municipalities(stateCode, &error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}, {QStringLiteral("municipalities"), municipalities}});
+    return 0;
+  }
+  if (command == QStringLiteral("holidays")) {
+    const QDate from = QDate::fromString(parser.value(QStringLiteral("from")), Qt::ISODate);
+    const QDate to = QDate::fromString(parser.value(QStringLiteral("to")), Qt::ISODate);
+    if (!from.isValid() || !to.isValid()) {
+      return printError(QStringLiteral("holidays requires --from and --to in YYYY-MM-DD format"));
+    }
+    const QJsonObject holidays = client.holidays(from, to, &error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson(holidays);
+    return 0;
+  }
+  if (command == QStringLiteral("refresh-holidays")) {
+    if (!client.refreshHolidays(&error)) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});

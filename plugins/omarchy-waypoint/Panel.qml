@@ -14,6 +14,8 @@ Panel {
     property var anchorItem: null
     property var hostWidget: null
     property var tasks: []
+    property var holidays: []
+    property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     property date today: new Date()
@@ -22,8 +24,9 @@ Panel {
     property int viewMonth: selectedDate.getMonth()
 
     readonly property var barIdentity: hostWidget || root
-    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, tasks)
+    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, tasks, holidays)
     readonly property var selectedTasks: Model.tasksForDate(tasks, selectedDate)
+    readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
     readonly property color foreground: bar ? bar.foreground : Color.foreground
@@ -293,12 +296,25 @@ Panel {
                                                 anchors.verticalCenterOffset: -2
                                                 text: modelData.day
                                                 color: modelData.inMonth
-                                                    ? (modelData.weekend ? Qt.darker(root.foreground, 1.45) : root.foreground)
+                                                    ? (modelData.legalHoliday ? Color.urgent
+                                                      : modelData.weekend ? Qt.darker(root.foreground, 1.45)
+                                                                          : root.foreground)
                                                     : Qt.darker(root.foreground, 2.2)
                                                 font.family: root.fontFamily
                                                 font.pixelSize: Style.font.body
                                                 font.bold: modelData.today
                                             }
+                                            Rectangle {
+                                                anchors.top: parent.top
+                                                anchors.right: parent.right
+                                                anchors.margins: Style.space(4)
+                                                visible: modelData.holidayCount > 0
+                                                width: modelData.holidayCount > 1 ? Style.space(10) : Style.space(6)
+                                                height: Style.spacing.hairline * 2
+                                                radius: height / 2
+                                                color: modelData.legalHoliday ? Color.urgent : Color.accent
+                                            }
+
 
                                             Row {
                                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -405,6 +421,55 @@ Panel {
                                     return;
                                 root.hostWidget.addTask(title, root.selectedDate);
                                 text = "";
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(3)
+                        visible: root.selectedHolidays.length > 0
+
+                        Repeater {
+                            model: root.selectedHolidays
+
+                            Rectangle {
+                                required property var modelData
+                                width: parent.width
+                                height: holidayDetails.implicitHeight + Style.space(14)
+                                radius: Style.cornerRadius
+                                color: Style.hoverFillFor(root.foreground,
+                                                         modelData.kind === "legal" ? Color.urgent : Color.accent)
+
+                                Column {
+                                    id: holidayDetails
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: Style.space(8)
+                                    anchors.rightMargin: Style.space(8)
+                                    spacing: Style.space(2)
+
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.name
+                                        color: modelData.kind === "legal" ? Color.urgent : Color.accent
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.body
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        visible: String(modelData.description || "") !== ""
+                                        text: modelData.description || ""
+                                        color: Qt.darker(root.foreground, 1.5)
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
                             }
                         }
                     }
