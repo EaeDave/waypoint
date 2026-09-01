@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../components"
 
 Item {
     id: root
@@ -71,12 +72,12 @@ Item {
 
     function stateColor() {
         if (controller.syncState === "ready")
-            return "#81d39a";
+            return WaypointTheme.success;
         if (controller.syncState === "syncing")
-            return "#a997ff";
+            return WaypointTheme.accent;
         if (controller.syncState === "error")
-            return "#ff7085";
-        return "#777780";
+            return WaypointTheme.urgent;
+        return WaypointTheme.subduedText;
     }
 
     Component.onCompleted: {
@@ -102,55 +103,58 @@ Item {
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: Math.min(parent.width - 96, 720)
+            width: Math.min(parent.width - 68, 720)
             anchors.horizontalCenter: parent.horizontalCenter
-            spacing: 20
+            spacing: 14
 
             Item {
-                Layout.preferredHeight: 38
+                Layout.preferredHeight: 24
             }
 
             Text {
                 text: "Configurações"
-                color: "#f2f0f5"
-                font.pixelSize: 30
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.displayLargeSize
                 font.bold: true
             }
 
             Text {
                 text: "Conecte este dispositivo ao seu servidor Waypoint self-hosted."
-                color: "#92909a"
-                font.pixelSize: 14
+                color: WaypointTheme.subduedText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySize
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: statusColumn.implicitHeight + 32
-                radius: 12
-                color: "#0d0d10"
+                Layout.preferredHeight: statusColumn.implicitHeight + 28
+                radius: WaypointTheme.radius
+                color: WaypointTheme.controlFill
                 border.width: 1
-                border.color: "#222228"
+                border.color: WaypointTheme.controlBorder
 
                 ColumnLayout {
                     id: statusColumn
                     anchors.fill: parent
-                    anchors.margins: 16
+                    anchors.margins: 14
                     spacing: 8
 
                     RowLayout {
                         spacing: 10
 
                         Rectangle {
-                            Layout.preferredWidth: 9
-                            Layout.preferredHeight: 9
-                            radius: 5
+                            Layout.preferredWidth: 8
+                            Layout.preferredHeight: 8
+                            radius: 4
                             color: root.stateColor()
                         }
 
                         Text {
                             text: root.stateLabel()
-                            color: "#f2f0f5"
-                            font.pixelSize: 15
+                            color: WaypointTheme.foreground
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.subtitleSize
                             font.bold: true
                         }
 
@@ -161,8 +165,9 @@ Item {
                         Text {
                             visible: root.controller.lastSuccessfulSync !== ""
                             text: "Última sincronização: " + Qt.formatDateTime(new Date(root.controller.lastSuccessfulSync), "dd/MM/yyyy HH:mm")
-                            color: "#777780"
-                            font.pixelSize: 12
+                            color: WaypointTheme.subduedText
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.captionSize
                         }
                     }
 
@@ -170,116 +175,114 @@ Item {
                         Layout.fillWidth: true
                         visible: root.controller.syncLastError !== ""
                         text: root.controller.syncLastError
-                        color: "#ff8395"
+                        color: WaypointTheme.urgent
                         wrapMode: Text.Wrap
-                        font.pixelSize: 12
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                     }
                 }
             }
 
-            ColumnLayout {
+            Rectangle {
                 Layout.fillWidth: true
-                spacing: 8
+                Layout.preferredHeight: syncColumn.implicitHeight + 28
+                radius: WaypointTheme.radius
+                color: WaypointTheme.surface
+                border.width: 1
+                border.color: WaypointTheme.divider
 
-                Text {
-                    text: "Servidor"
-                    color: "#d8d5de"
-                    font.pixelSize: 13
-                    font.bold: true
-                }
+                ColumnLayout {
+                    id: syncColumn
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 10
 
-                TextField {
-                    id: serverField
-                    Layout.fillWidth: true
-                    placeholderText: "https://waypoint.exemplo.com"
-                    color: "#f2f0f5"
-                    placeholderTextColor: "#65636c"
-                    selectByMouse: true
-                    background: Rectangle {
-                        implicitHeight: 46
-                        radius: 8
-                        color: "#111114"
-                        border.width: serverField.activeFocus ? 1 : 0
-                        border.color: "#a997ff"
+                    Text {
+                        text: "SINCRONIZAÇÃO"
+                        color: WaypointTheme.foreground
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.titleSize
+                        font.bold: true
                     }
-                }
 
-                Text {
-                    text: "Informe a URL base ou o endpoint /v1/sync."
-                    color: "#65636c"
-                    font.pixelSize: 11
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                Text {
-                    text: "Token de acesso"
-                    color: "#d8d5de"
-                    font.pixelSize: 13
-                    font.bold: true
-                }
-
-                TextField {
-                    id: tokenField
-                    Layout.fillWidth: true
-                    placeholderText: root.controller.syncConfigured ? "Deixe vazio para manter o token atual" : "Cole o token configurado no servidor"
-                    echoMode: TextInput.Password
-                    color: "#f2f0f5"
-                    placeholderTextColor: "#65636c"
-                    selectByMouse: true
-                    background: Rectangle {
-                        implicitHeight: 46
-                        radius: 8
-                        color: "#111114"
-                        border.width: tokenField.activeFocus ? 1 : 0
-                        border.color: "#a997ff"
+                    Text {
+                        text: "Servidor"
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                     }
-                }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 10
-
-                Button {
-                    text: "Salvar e sincronizar"
-                    enabled: serverField.text.trim() !== ""
-                    onClicked: {
-                        const saved = root.controller.saveSyncConfiguration(serverField.text, tokenField.text);
-                        root.feedbackError = !saved;
-                        root.feedbackMessage = saved ? "Configuração salva. Verificando a sincronização…" : root.controller.errorMessage;
-                        if (saved)
-                            tokenField.clear();
+                    AppTextField {
+                        id: serverField
+                        Layout.fillWidth: true
+                        placeholderText: "https://waypoint.exemplo.com"
                     }
-                }
 
-                Button {
-                    text: "Sincronizar agora"
-                    enabled: root.controller.syncConfigured && root.controller.syncState !== "syncing"
-                    onClicked: {
-                        const started = root.controller.syncNow();
-                        root.feedbackError = !started;
-                        root.feedbackMessage = started ? "Sincronização iniciada." : root.controller.errorMessage;
+                    Text {
+                        text: "Informe a URL base ou o endpoint /v1/sync."
+                        color: WaypointTheme.disabledText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.captionSize
                     }
-                }
 
-                Item {
-                    Layout.fillWidth: true
-                }
+                    Text {
+                        text: "Token de acesso"
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                    }
 
-                Button {
-                    text: "Usar somente local"
-                    visible: root.controller.syncConfigured
-                    onClicked: {
-                        const disabled = root.controller.disableRemoteSync();
-                        root.feedbackError = !disabled;
-                        root.feedbackMessage = disabled ? "Sincronização remota desativada." : root.controller.errorMessage;
-                        if (disabled) {
-                            serverField.clear();
-                            tokenField.clear();
+                    AppTextField {
+                        id: tokenField
+                        Layout.fillWidth: true
+                        placeholderText: root.controller.syncConfigured ? "Deixe vazio para manter o token atual" : "Cole o token configurado no servidor"
+                        echoMode: TextInput.Password
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        AppButton {
+                            text: "Salvar e sincronizar"
+                            selected: true
+                            enabled: serverField.text.trim() !== ""
+                            onClicked: {
+                                const saved = root.controller.saveSyncConfiguration(serverField.text, tokenField.text);
+                                root.feedbackError = !saved;
+                                root.feedbackMessage = saved ? "Configuração salva. Verificando a sincronização…" : root.controller.errorMessage;
+                                if (saved)
+                                    tokenField.clear();
+                            }
+                        }
+
+                        AppButton {
+                            text: "Sincronizar agora"
+                            enabled: root.controller.syncConfigured && root.controller.syncState !== "syncing"
+                            onClicked: {
+                                const started = root.controller.syncNow();
+                                root.feedbackError = !started;
+                                root.feedbackMessage = started ? "Sincronização iniciada." : root.controller.errorMessage;
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        AppButton {
+                            text: "Usar somente local"
+                            destructive: true
+                            visible: root.controller.syncConfigured
+                            onClicked: {
+                                const disabled = root.controller.disableRemoteSync();
+                                root.feedbackError = !disabled;
+                                root.feedbackMessage = disabled ? "Sincronização remota desativada." : root.controller.errorMessage;
+                                if (disabled) {
+                                    serverField.clear();
+                                    tokenField.clear();
+                                }
+                            }
                         }
                     }
                 }
@@ -287,38 +290,40 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: holidayColumn.implicitHeight + 32
-                radius: 12
-                color: "#0d0d10"
+                Layout.preferredHeight: holidayColumn.implicitHeight + 28
+                radius: WaypointTheme.radius
+                color: WaypointTheme.surface
                 border.width: 1
-                border.color: "#222228"
+                border.color: WaypointTheme.divider
 
                 ColumnLayout {
                     id: holidayColumn
                     anchors.fill: parent
-                    anchors.margins: 16
-                    spacing: 12
+                    anchors.margins: 14
+                    spacing: 10
 
                     Text {
-                        text: "Feriados brasileiros"
-                        color: "#f2f0f5"
-                        font.pixelSize: 17
+                        text: "FERIADOS BRASILEIROS"
+                        color: WaypointTheme.foreground
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.titleSize
                         font.bold: true
                     }
 
                     Text {
                         Layout.fillWidth: true
                         text: "Os eventos ficam no cache local e continuam visíveis sem conexão."
-                        color: "#777780"
-                        font.pixelSize: 12
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                         wrapMode: Text.Wrap
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: 10
+                        spacing: 8
 
-                        ComboBox {
+                        AppComboBox {
                             id: stateField
                             Layout.fillWidth: true
                             model: root.brazilianStates
@@ -331,7 +336,7 @@ Item {
                             }
                         }
 
-                        ComboBox {
+                        AppComboBox {
                             id: cityField
                             Layout.fillWidth: true
                             enabled: stateField.currentValue !== ""
@@ -346,41 +351,39 @@ Item {
                         Layout.fillWidth: true
                         columns: 2
                         columnSpacing: 24
+                        rowSpacing: 8
 
-                        CheckBox {
+                        AppCheckBox {
                             id: nationalCheck
                             text: "Feriados nacionais"
-                            palette.windowText: "#d8d5de"
                         }
-                        CheckBox {
+                        AppCheckBox {
                             id: stateCheck
                             text: "Feriados estaduais"
-                            palette.windowText: enabled ? "#d8d5de" : "#65636c"
                             enabled: stateField.currentValue !== ""
                         }
-                        CheckBox {
+                        AppCheckBox {
                             id: municipalCheck
                             text: "Feriados municipais"
-                            palette.windowText: enabled ? "#d8d5de" : "#65636c"
                             enabled: cityField.currentIndex >= 0
                         }
-                        CheckBox {
+                        AppCheckBox {
                             id: optionalCheck
                             text: "Pontos facultativos"
-                            palette.windowText: "#d8d5de"
                         }
-                        CheckBox {
+                        AppCheckBox {
                             id: commemorativeCheck
                             text: "Datas comemorativas"
-                            palette.windowText: "#d8d5de"
                         }
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: 8
 
-                        Button {
+                        AppButton {
                             text: "Salvar feriados"
+                            selected: true
                             onClicked: {
                                 const cityCode = cityField.currentIndex >= 0 ? cityField.currentValue : "";
                                 const saved = root.controller.saveHolidayPreferences(
@@ -396,7 +399,7 @@ Item {
                             }
                         }
 
-                        Button {
+                        AppButton {
                             text: "Atualizar feriados"
                             enabled: root.controller.syncConfigured && root.controller.holidaySyncState !== "syncing"
                             onClicked: {
@@ -415,10 +418,11 @@ Item {
                                   root.controller.holidaySyncState === "partial" ? "Cobertura parcial" :
                                   root.controller.holidaySyncState === "ready" ? "Atualizado" :
                                   root.controller.holidaySyncState === "syncing" ? "Atualizando…" : "Somente local"
-                            color: root.controller.holidaySyncState === "offline" ? "#ffb86c" :
-                                   root.controller.holidaySyncState === "partial" ? "#e9b86f" :
-                                   root.controller.holidaySyncState === "ready" ? "#81d39a" : "#777780"
-                            font.pixelSize: 12
+                            color: root.controller.holidaySyncState === "offline" ? WaypointTheme.warning :
+                                   root.controller.holidaySyncState === "partial" ? WaypointTheme.warning :
+                                   root.controller.holidaySyncState === "ready" ? WaypointTheme.success : WaypointTheme.subduedText
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
                         }
                     }
 
@@ -426,9 +430,10 @@ Item {
                         Layout.fillWidth: true
                         visible: root.controller.holidaySyncLastError !== ""
                         text: root.controller.holidaySyncLastError
-                        color: "#ff8395"
+                        color: WaypointTheme.urgent
                         wrapMode: Text.Wrap
-                        font.pixelSize: 12
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                     }
                 }
             }
@@ -437,21 +442,23 @@ Item {
                 Layout.fillWidth: true
                 visible: root.feedbackMessage !== ""
                 text: root.feedbackMessage
-                color: root.feedbackError ? "#ff8395" : "#81d39a"
+                color: root.feedbackError ? WaypointTheme.urgent : WaypointTheme.success
                 wrapMode: Text.Wrap
-                font.pixelSize: 12
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
             }
 
             Text {
                 Layout.fillWidth: true
                 text: "A connection string do PostgreSQL permanece somente no servidor. Este dispositivo armazena apenas o endpoint e o token necessários para falar com a API."
-                color: "#65636c"
+                color: WaypointTheme.disabledText
                 wrapMode: Text.Wrap
-                font.pixelSize: 11
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
             }
 
             Item {
-                Layout.preferredHeight: 38
+                Layout.preferredHeight: 24
             }
         }
     }

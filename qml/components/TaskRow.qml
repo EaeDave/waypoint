@@ -25,8 +25,8 @@ Rectangle {
     }
 
     implicitHeight: root.overdue || root.recurring ? 62 : 50
-    radius: 7
-    color: pointer.containsMouse ? "#151519" : "transparent"
+    radius: WaypointTheme.radius
+    color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
 
     RowLayout {
         anchors.fill: parent
@@ -37,17 +37,20 @@ Rectangle {
         Rectangle {
             Layout.preferredWidth: 18
             Layout.preferredHeight: 18
-            radius: 4
-            color: root.completed ? "#a997ff" : "transparent"
+            radius: WaypointTheme.radius
+            color: root.completed ? WaypointTheme.accent : WaypointTheme.controlFill
             border.width: 1
-            border.color: root.completed ? "#a997ff" : (root.overdue ? "#ff7085" : "#77737e")
+            border.color: root.completed ? WaypointTheme.accent
+                        : root.overdue ? WaypointTheme.urgent
+                        : WaypointTheme.controlBorder
 
             Text {
                 anchors.centerIn: parent
                 visible: root.completed
                 text: "✓"
-                color: "#0a090c"
-                font.pixelSize: 12
+                color: WaypointTheme.background
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
                 font.bold: true
             }
 
@@ -67,10 +70,10 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.title
-                color: root.completed ? "#716e77" : "#f2f0f5"
+                color: root.completed ? WaypointTheme.disabledText : WaypointTheme.foreground
                 elide: Text.ElideRight
-                font.family: "sans-serif"
-                font.pixelSize: 14
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySize
                 font.strikeout: root.completed
             }
 
@@ -83,9 +86,9 @@ Rectangle {
                     const overdue = "ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM");
                     return recurrence === "" ? overdue : overdue + " · " + recurrence;
                 }
-                color: root.overdue ? "#ff7085" : "#a997ff"
-                font.family: "monospace"
-                font.pixelSize: 9
+                color: root.overdue ? WaypointTheme.urgent : WaypointTheme.accent
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
                 font.bold: true
                 font.letterSpacing: 1
             }
@@ -93,59 +96,72 @@ Rectangle {
 
         Text {
             text: root.scheduledTimeKey
-            color: root.completed ? "#716e77" : "#d7d3dc"
-            font.family: "monospace"
-            font.pixelSize: 11
+            color: root.completed ? WaypointTheme.disabledText : WaypointTheme.subduedText
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.bodySmallSize
         }
 
-        ToolButton {
+        AppButton {
             id: taskActions
             Layout.preferredWidth: 34
             Layout.preferredHeight: 34
             Layout.alignment: Qt.AlignVCenter
+            square: true
             text: "⋯"
             onClicked: actionsMenu.open()
             ToolTip.visible: hovered
             ToolTip.text: "Editar ou excluir tarefa"
 
-            background: Rectangle {
-                radius: 5
-                color: taskActions.hovered ? "#24212c" : "transparent"
-                border.width: 1
-                border.color: taskActions.hovered || taskActions.activeFocus ? "#a997ff" : "#4b4752"
-            }
-
             Menu {
                 id: actionsMenu
+                y: taskActions.height + 4
+                width: 236
+                padding: 4
 
-                MenuItem {
+                background: Rectangle {
+                    radius: WaypointTheme.radius
+                    color: WaypointTheme.background
+                    border.width: 1
+                    border.color: WaypointTheme.activeBorder
+                }
+
+                AppMenuItem {
                     text: "Editar"
                     onTriggered: root.openEditor()
                 }
-                MenuSeparator {}
-                MenuItem {
+                MenuSeparator {
+                    contentItem: Rectangle {
+                        implicitHeight: 1
+                        color: WaypointTheme.divider
+                    }
+                }
+                AppMenuItem {
                     visible: !root.recurring
+                    destructive: true
                     text: "Excluir tarefa"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
                                                                   root.scheduledDateKey,
                                                                   "series")
                 }
-                MenuItem {
+                AppMenuItem {
                     visible: root.recurring
+                    destructive: true
                     text: "Excluir esta ocorrência"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
                                                                   root.scheduledDateKey,
                                                                   "occurrence")
                 }
-                MenuItem {
+                AppMenuItem {
                     visible: root.recurring
+                    destructive: true
                     text: "Excluir esta e as seguintes"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
                                                                   root.scheduledDateKey,
                                                                   "following")
                 }
-                MenuItem {
+                AppMenuItem {
                     visible: root.recurring
+                    destructive: true
                     text: "Excluir toda a série"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
                                                                   root.scheduledDateKey,
@@ -231,44 +247,47 @@ Rectangle {
 
     Popup {
         id: editPopup
-        x: Math.max(0, root.width - width)
-        y: root.height + 4
-        width: 390
-        padding: 16
+        parent: Overlay.overlay
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: 420
+        padding: WaypointTheme.popupPadding
+        modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
+        Overlay.modal: Rectangle {
+            color: WaypointTheme.scrim
+        }
+
         background: Rectangle {
-            radius: 9
-            color: "#17161b"
+            radius: WaypointTheme.radius
+            color: WaypointTheme.background
             border.width: 1
-            border.color: "#34313b"
+            border.color: WaypointTheme.activeBorder
         }
 
         contentItem: ColumnLayout {
-            spacing: 10
+            spacing: WaypointTheme.controlGap
 
             Text {
                 text: "EDITAR TAREFA"
-                color: "#aaa7ad"
-                font.family: "monospace"
-                font.pixelSize: 10
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.titleSize
                 font.bold: true
-                font.letterSpacing: 1
             }
 
-            TextField {
+            AppTextField {
                 id: editTitle
                 Layout.fillWidth: true
                 placeholderText: "Título"
-                selectByMouse: true
                 onAccepted: editTime.forceActiveFocus()
             }
 
-            TextField {
+            AppTextField {
                 id: editTime
                 Layout.fillWidth: true
                 placeholderText: "HH:mm"
-                selectByMouse: true
                 inputMethodHints: Qt.ImhTime
                 validator: RegularExpressionValidator {
                     regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
@@ -276,7 +295,7 @@ Rectangle {
                 onAccepted: root.saveEdit()
             }
 
-            ComboBox {
+            AppComboBox {
                 id: recurrenceInput
                 Layout.fillWidth: true
                 textRole: "text"
@@ -296,12 +315,15 @@ Rectangle {
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 10
-                rowSpacing: 9
+                rowSpacing: 8
 
-                Label {
+                Text {
                     text: "Frequência"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                ComboBox {
+                AppComboBox {
                     id: customFrequency
                     Layout.fillWidth: true
                     textRole: "text"
@@ -318,52 +340,60 @@ Rectangle {
                     }
                 }
 
-                Label {
+                Text {
                     text: "A cada"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
                 RowLayout {
-                    SpinBox {
+                    AppSpinBox {
                         id: customInterval
                         from: 1
                         to: 99
                         value: 1
                     }
-                    Label {
+                    Text {
                         text: customFrequency.currentValue === "daily" ? "dia(s)"
                             : customFrequency.currentValue === "weekly" ? "semana(s)"
                             : customFrequency.currentValue === "monthly" ? "mês(es)" : "ano(s)"
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                     }
                 }
 
-                Label {
+                Text {
                     text: "Somente em"
                     visible: customFrequency.currentValue === "weekly"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
                 RowLayout {
                     visible: customFrequency.currentValue === "weekly"
-                    spacing: 2
+                    spacing: 4
                     Repeater {
                         model: ["S", "T", "Q", "Q", "S", "S", "D"]
-                        CheckBox {
+                        AppButton {
                             required property int index
                             required property string modelData
+                            Layout.preferredWidth: 32
+                            square: true
+                            selected: (root.weekdayMask & (1 << index)) !== 0
                             text: modelData
-                            checked: (root.weekdayMask & (1 << index)) !== 0
-                            padding: 2
-                            onToggled: {
-                                if (checked)
-                                    root.weekdayMask |= 1 << index;
-                                else
-                                    root.weekdayMask &= ~(1 << index);
-                            }
+                            onClicked: root.weekdayMask ^= 1 << index
                         }
                     }
                 }
 
-                Label {
+                Text {
                     text: "Termina"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                ComboBox {
+                AppComboBox {
                     id: customEnding
                     Layout.fillWidth: true
                     textRole: "text"
@@ -375,22 +405,28 @@ Rectangle {
                     ]
                 }
 
-                Label {
+                Text {
                     visible: customEnding.currentValue === "onDate"
                     text: "Data final"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                TextField {
+                AppTextField {
                     id: customUntilDate
                     visible: customEnding.currentValue === "onDate"
                     Layout.fillWidth: true
                     placeholderText: "AAAA-MM-DD"
                 }
 
-                Label {
+                Text {
                     visible: customEnding.currentValue === "afterCount"
                     text: "Ocorrências"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                SpinBox {
+                AppSpinBox {
                     id: customOccurrenceCount
                     visible: customEnding.currentValue === "afterCount"
                     from: 1
@@ -401,17 +437,18 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: 4
 
                 Item {
                     Layout.fillWidth: true
                 }
-                Button {
+                AppButton {
                     text: "Cancelar"
-                    flat: true
                     onClicked: editPopup.close()
                 }
-                Button {
+                AppButton {
                     text: "Salvar"
+                    selected: true
                     enabled: editTitle.text.trim() !== "" && editTime.acceptableInput
                     onClicked: root.saveEdit()
                 }

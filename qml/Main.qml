@@ -15,86 +15,108 @@ ApplicationWindow {
     minimumHeight: 620
     visible: true
     title: "Waypoint"
-    color: "#070708"
+    color: WaypointTheme.background
+    font.family: WaypointTheme.fontFamily
+    font.pixelSize: WaypointTheme.bodySize
+
+    palette.window: WaypointTheme.background
+    palette.windowText: WaypointTheme.foreground
+    palette.base: WaypointTheme.background
+    palette.alternateBase: WaypointTheme.controlFill
+    palette.text: WaypointTheme.foreground
+    palette.button: WaypointTheme.controlFill
+    palette.buttonText: WaypointTheme.foreground
+    palette.highlight: WaypointTheme.controlSelectedFill
+    palette.highlightedText: WaypointTheme.foreground
+    palette.mid: WaypointTheme.controlBorder
 
     property int activePage: 0
-
-    Rectangle {
-        anchors.fill: parent
-        color: "#070708"
-    }
 
     RowLayout {
         anchors.fill: parent
         spacing: 0
 
         Rectangle {
-            Layout.preferredWidth: 72
+            Layout.preferredWidth: 64
             Layout.fillHeight: true
-            color: "#0c0c0e"
-            border.width: 0
+            color: WaypointTheme.surface
 
             ColumnLayout {
                 anchors.fill: parent
-                anchors.topMargin: 20
-                anchors.bottomMargin: 18
-                spacing: 10
+                anchors.topMargin: WaypointTheme.panelPadding
+                anchors.bottomMargin: WaypointTheme.panelPadding
+                spacing: 8
 
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 38
-                    Layout.preferredHeight: 38
-                    radius: 10
-                    color: "#a997ff"
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    radius: WaypointTheme.radius
+                    color: WaypointTheme.accent
+                    border.width: 1
+                    border.color: WaypointTheme.activeBorder
 
                     Text {
                         anchors.centerIn: parent
                         text: "W"
-                        color: "#0a090c"
-                        font.pixelSize: 17
+                        color: WaypointTheme.background
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.headingSize
                         font.bold: true
                     }
                 }
 
                 Item {
-                    Layout.preferredHeight: 18
+                    Layout.preferredHeight: 12
                 }
 
                 ToolButton {
                     id: todayButton
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    contentItem: AppIcon {
-                        name: "tasks"
-                        color: todayButton.checked ? "#f6f4f8" : "#8f8c95"
-                    }
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
                     checked: root.activePage === 0
                     onClicked: root.activePage = 0
                     ToolTip.visible: hovered
                     ToolTip.text: "Hoje"
+                    contentItem: AppIcon {
+                        name: "tasks"
+                        color: todayButton.checked ? WaypointTheme.foreground : WaypointTheme.subduedText
+                    }
                     background: Rectangle {
-                        radius: 8
-                        color: todayButton.checked ? "#1b1922" : (todayButton.hovered ? "#151519" : "transparent")
+                        radius: WaypointTheme.radius
+                        color: todayButton.checked ? WaypointTheme.controlSelectedFill
+                             : todayButton.hovered ? WaypointTheme.controlHoverFill
+                             : "transparent"
+                        border.width: 1
+                        border.color: todayButton.checked ? WaypointTheme.activeBorder
+                                    : todayButton.hovered ? WaypointTheme.controlHoverBorder
+                                    : "transparent"
                     }
                 }
 
                 ToolButton {
                     id: monthButton
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: 40
-                    Layout.preferredHeight: 40
-                    contentItem: AppIcon {
-                        name: "calendar"
-                        color: monthButton.checked ? "#f6f4f8" : "#8f8c95"
-                    }
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
                     checked: root.activePage === 1
                     onClicked: root.activePage = 1
                     ToolTip.visible: hovered
                     ToolTip.text: "Calendário"
+                    contentItem: AppIcon {
+                        name: "calendar"
+                        color: monthButton.checked ? WaypointTheme.foreground : WaypointTheme.subduedText
+                    }
                     background: Rectangle {
-                        radius: 8
-                        color: monthButton.checked ? "#1b1922" : (monthButton.hovered ? "#151519" : "transparent")
+                        radius: WaypointTheme.radius
+                        color: monthButton.checked ? WaypointTheme.controlSelectedFill
+                             : monthButton.hovered ? WaypointTheme.controlHoverFill
+                             : "transparent"
+                        border.width: 1
+                        border.color: monthButton.checked ? WaypointTheme.activeBorder
+                                    : monthButton.hovered ? WaypointTheme.controlHoverBorder
+                                    : "transparent"
                     }
                 }
 
@@ -105,13 +127,30 @@ ApplicationWindow {
                 ToolButton {
                     id: settingsButton
                     Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    checked: root.activePage === 2
                     text: "⋯"
                     onClicked: root.activePage = 2
                     ToolTip.visible: hovered
                     ToolTip.text: "Configurações"
+                    contentItem: Text {
+                        text: settingsButton.text
+                        color: settingsButton.checked ? WaypointTheme.foreground : WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.titleSize
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     background: Rectangle {
-                        radius: 8
-                        color: settingsButton.checked ? "#1b1922" : (settingsButton.hovered ? "#151519" : "transparent")
+                        radius: WaypointTheme.radius
+                        color: settingsButton.checked ? WaypointTheme.controlSelectedFill
+                             : settingsButton.hovered ? WaypointTheme.controlHoverFill
+                             : "transparent"
+                        border.width: 1
+                        border.color: settingsButton.checked ? WaypointTheme.activeBorder
+                                    : settingsButton.hovered ? WaypointTheme.controlHoverBorder
+                                    : "transparent"
                     }
                 }
 
@@ -120,7 +159,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 7
                     Layout.preferredHeight: 7
                     radius: 4
-                    color: root.waypointController.online ? "#81d39a" : "#ff7085"
+                    color: root.waypointController.online ? WaypointTheme.success : WaypointTheme.urgent
                     ToolTip.visible: statusPointer.containsMouse
                     ToolTip.text: root.waypointController.online ? "Daemon conectado" : root.waypointController.errorMessage
 
@@ -136,7 +175,7 @@ ApplicationWindow {
         Rectangle {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
-            color: "#202026"
+            color: WaypointTheme.divider
         }
 
         StackLayout {

@@ -14,11 +14,11 @@ Rectangle {
     property string scheduledTimeKey: currentTimeKey()
     property bool scheduledTimeEdited: false
 
-    implicitHeight: 46
-    radius: 7
-    color: "#101013"
-    border.width: input.activeFocus ? 1 : 0
-    border.color: "#8f7fe1"
+    implicitHeight: 44
+    radius: WaypointTheme.radius
+    color: input.activeFocus ? WaypointTheme.controlHoverFill : WaypointTheme.controlFill
+    border.width: 1
+    border.color: input.activeFocus ? WaypointTheme.activeBorder : WaypointTheme.controlBorder
 
     function focusInput() {
         input.forceActiveFocus();
@@ -88,53 +88,51 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 13
-        anchors.rightMargin: 8
+        anchors.leftMargin: 12
+        anchors.rightMargin: 6
         spacing: 8
 
         Text {
             text: "+"
-            color: "#a997ff"
-            font.pixelSize: 18
+            color: WaypointTheme.accent
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.headingSize
         }
 
         TextField {
             id: input
             Layout.fillWidth: true
             placeholderText: root.placeholderText
-            color: "#f2f0f5"
-            placeholderTextColor: "#68656d"
+            color: WaypointTheme.foreground
+            placeholderTextColor: WaypointTheme.disabledText
+            selectionColor: WaypointTheme.accent
+            selectedTextColor: WaypointTheme.background
             background: Item {}
-            font.pixelSize: 14
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.bodySize
             onAccepted: root.submit()
         }
 
-        TextField {
+        AppTextField {
             id: timeInput
-            Layout.preferredWidth: 58
+            Layout.preferredWidth: 64
+            Layout.preferredHeight: 30
             text: root.scheduledTimeKey
             placeholderText: "HH:mm"
-            color: "#d7d3dc"
             horizontalAlignment: TextInput.AlignHCenter
-            font.family: "monospace"
-            font.pixelSize: 12
-            selectByMouse: true
+            inputMethodHints: Qt.ImhTime
             validator: RegularExpressionValidator {
                 regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
             }
             onTextEdited: root.scheduledTimeEdited = true
-            background: Rectangle {
-                radius: 5
-                color: "#1b1a20"
-                border.width: timeInput.activeFocus ? 1 : 0
-                border.color: "#8f7fe1"
-            }
             onAccepted: root.submit()
         }
 
-        ToolButton {
+        AppButton {
             id: repeatButton
+            Layout.preferredHeight: 30
             text: root.selectedFrequency() === "none" ? "↻" : "↻ " + preset.currentText.toUpperCase()
+            selected: root.selectedFrequency() !== "none"
             onClicked: repeatPopup.open()
             ToolTip.visible: hovered
             ToolTip.text: "Configurar repetição"
@@ -143,9 +141,9 @@ Rectangle {
         Text {
             visible: input.activeFocus
             text: "ENTER"
-            color: "#5f5c65"
-            font.family: "monospace"
-            font.pixelSize: 9
+            color: WaypointTheme.disabledText
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.captionSize
             font.letterSpacing: 1
         }
     }
@@ -154,30 +152,29 @@ Rectangle {
         id: repeatPopup
         x: Math.max(0, root.width - width)
         y: root.height + 6
-        width: 390
-        padding: 16
+        width: 420
+        padding: WaypointTheme.popupPadding
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
         background: Rectangle {
-            radius: 9
-            color: "#17161b"
+            radius: WaypointTheme.radius
+            color: WaypointTheme.background
             border.width: 1
-            border.color: "#34313b"
+            border.color: WaypointTheme.activeBorder
         }
 
         contentItem: ColumnLayout {
-            spacing: 12
+            spacing: WaypointTheme.controlGap
 
             Text {
                 text: "REPETIÇÃO"
-                color: "#aaa7ad"
-                font.family: "monospace"
-                font.pixelSize: 10
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.titleSize
                 font.bold: true
-                font.letterSpacing: 1
             }
 
-            ComboBox {
+            AppComboBox {
                 id: preset
                 Layout.fillWidth: true
                 model: ["Não repetir", "Diariamente", "Semanalmente", "Mensalmente", "Anualmente", "Personalizado"]
@@ -188,10 +185,15 @@ Rectangle {
                 Layout.fillWidth: true
                 columns: 2
                 columnSpacing: 10
-                rowSpacing: 9
+                rowSpacing: 8
 
-                Label { text: "Frequência" }
-                ComboBox {
+                Text {
+                    text: "Frequência"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                }
+                AppComboBox {
                     id: customFrequency
                     Layout.fillWidth: true
                     textRole: "text"
@@ -208,48 +210,60 @@ Rectangle {
                     }
                 }
 
-                Label { text: "A cada" }
+                Text {
+                    text: "A cada"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                }
                 RowLayout {
-                    SpinBox {
+                    AppSpinBox {
                         id: interval
                         from: 1
                         to: 99
                         value: 1
                     }
-                    Label {
-                        text: customFrequency.currentValue === "daily" ? "dia(s)" :
-                              customFrequency.currentValue === "weekly" ? "semana(s)" :
-                              customFrequency.currentValue === "monthly" ? "mês(es)" : "ano(s)"
+                    Text {
+                        text: customFrequency.currentValue === "daily" ? "dia(s)"
+                            : customFrequency.currentValue === "weekly" ? "semana(s)"
+                            : customFrequency.currentValue === "monthly" ? "mês(es)" : "ano(s)"
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
                     }
                 }
 
-                Label {
+                Text {
+                    visible: customFrequency.currentValue === "weekly"
                     text: "Somente em"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
                 RowLayout {
                     visible: customFrequency.currentValue === "weekly"
-                    spacing: 2
+                    spacing: 4
                     Repeater {
-                        id: weekdayRepeater
                         model: ["S", "T", "Q", "Q", "S", "S", "D"]
-                        CheckBox {
+                        AppButton {
                             required property int index
                             required property string modelData
+                            Layout.preferredWidth: 32
+                            square: true
+                            selected: (root.weekdayMask & (1 << index)) !== 0
                             text: modelData
-                            checked: (root.weekdayMask & (1 << index)) !== 0
-                            padding: 2
-                            onToggled: {
-                                if (checked)
-                                    root.weekdayMask |= 1 << index;
-                                else
-                                    root.weekdayMask &= ~(1 << index);
-                            }
+                            onClicked: root.weekdayMask ^= 1 << index
                         }
                     }
                 }
 
-                Label { text: "Termina" }
-                ComboBox {
+                Text {
+                    text: "Termina"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                }
+                AppComboBox {
                     id: ending
                     Layout.fillWidth: true
                     textRole: "text"
@@ -261,11 +275,14 @@ Rectangle {
                     ]
                 }
 
-                Label {
+                Text {
                     visible: ending.currentValue === "onDate"
                     text: "Data final"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                TextField {
+                AppTextField {
                     id: untilDate
                     visible: ending.currentValue === "onDate"
                     Layout.fillWidth: true
@@ -273,11 +290,14 @@ Rectangle {
                     text: root.scheduledDateKey
                 }
 
-                Label {
+                Text {
                     visible: ending.currentValue === "afterCount"
                     text: "Ocorrências"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                SpinBox {
+                AppSpinBox {
                     id: occurrenceCount
                     visible: ending.currentValue === "afterCount"
                     from: 1
@@ -288,9 +308,13 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                Button {
+                Layout.topMargin: 4
+                Item {
+                    Layout.fillWidth: true
+                }
+                AppButton {
                     text: "Concluir"
+                    selected: true
                     onClicked: repeatPopup.close()
                 }
             }

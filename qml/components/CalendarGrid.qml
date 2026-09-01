@@ -25,10 +25,10 @@ Item {
         Text {
             Layout.preferredWidth: 23
             text: "W"
-            color: "#5f5c65"
+            color: WaypointTheme.disabledText
             horizontalAlignment: Text.AlignHCenter
-            font.family: "monospace"
-            font.pixelSize: 10
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.captionSize
             font.bold: true
         }
 
@@ -40,10 +40,10 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredWidth: 58
                 text: modelData
-                color: "#817e87"
+                color: WaypointTheme.subduedText
                 horizontalAlignment: Text.AlignHCenter
-                font.family: "monospace"
-                font.pixelSize: 10
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
                 font.bold: true
                 font.letterSpacing: 1
             }
@@ -69,11 +69,11 @@ Item {
                     width: 23
                     height: 48
                     text: root.calendarModel.weekNumberAtRow(index)
-                    color: "#5f5c65"
+                    color: WaypointTheme.disabledText
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    font.family: "monospace"
-                    font.pixelSize: 10
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
                 }
             }
         }
@@ -81,7 +81,7 @@ Item {
         Rectangle {
             width: 1
             height: 6 * 48 + 5 * 5
-            color: "#242329"
+            color: WaypointTheme.divider
         }
 
         Grid {

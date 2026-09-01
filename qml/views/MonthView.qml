@@ -17,28 +17,13 @@ Item {
         const parts = controller.selectedDateKey.split("-");
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
+
     function holidayColor(kind) {
         if (kind === "legal")
-            return "#ff9aaa";
+            return WaypointTheme.urgent;
         if (kind === "optional")
-            return "#aab4ff";
-        return "#e9c98d";
-    }
-
-    function holidayBackground(kind) {
-        if (kind === "legal")
-            return "#211318";
-        if (kind === "optional")
-            return "#15182a";
-        return "#1c1811";
-    }
-
-    function holidayBorder(kind) {
-        if (kind === "legal")
-            return "#5e2732";
-        if (kind === "optional")
-            return "#343d7a";
-        return "#5a4625";
+            return WaypointTheme.accent;
+        return WaypointTheme.warning;
     }
 
     function holidayKindLabel(kind, scope) {
@@ -58,7 +43,6 @@ Item {
         return coverage === "" ? category : category + " " + coverage;
     }
 
-
     RowLayout {
         anchors.fill: parent
         anchors.margins: 34
@@ -72,54 +56,59 @@ Item {
 
             RowLayout {
                 Layout.alignment: Qt.AlignHCenter
-                spacing: 16
+                spacing: 12
 
                 AppIcon {
-                    Layout.preferredWidth: 30
-                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
                     name: "calendar"
-                    color: "#f6f4f8"
-                    strokeWidth: 2.2
+                    color: WaypointTheme.foreground
+                    strokeWidth: 2
                 }
 
                 Text {
                     text: Qt.locale().toString(root.selectedDateValue, "MMMM d")
-                    color: "#f6f4f8"
-                    font.pixelSize: 38
+                    color: WaypointTheme.foreground
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.displayLargeSize
                     font.bold: true
                 }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.topMargin: 20
-                Layout.bottomMargin: 24
+                Layout.topMargin: 18
+                Layout.bottomMargin: 22
                 spacing: 12
 
                 Text {
                     text: root.now.getFullYear()
-                    color: "#77737e"
-                    font.family: "monospace"
-                    font.pixelSize: 10
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
                 }
 
                 Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 6
-                    color: "#242329"
+                    radius: 3
+                    color: WaypointTheme.controlFill
+                    border.width: 1
+                    border.color: WaypointTheme.divider
 
                     Rectangle {
                         width: parent.width * root.elapsedDays / root.daysInYear
                         height: parent.height
-                        color: "#f2f0f5"
+                        radius: 3
+                        color: WaypointTheme.activeBorder
                     }
                 }
 
                 Text {
                     text: Math.round(root.elapsedDays * 100 / root.daysInYear) + "%"
-                    color: "#b5b1ba"
-                    font.family: "monospace"
-                    font.pixelSize: 10
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
                 }
             }
 
@@ -133,10 +122,11 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                Layout.topMargin: 17
+                Layout.topMargin: 16
 
-                ToolButton {
+                AppButton {
                     text: "‹"
+                    square: true
                     onClicked: root.controller.calendar.showPreviousMonth()
                     ToolTip.visible: hovered
                     ToolTip.text: "Mês anterior"
@@ -146,9 +136,8 @@ Item {
                     Layout.fillWidth: true
                 }
 
-                Button {
+                AppButton {
                     text: root.controller.calendar.monthLabel.toUpperCase()
-                    flat: true
                     onClicked: root.controller.calendar.showCurrentMonth()
                 }
 
@@ -156,8 +145,9 @@ Item {
                     Layout.fillWidth: true
                 }
 
-                ToolButton {
+                AppButton {
                     text: "›"
+                    square: true
                     onClicked: root.controller.calendar.showNextMonth()
                     ToolTip.visible: hovered
                     ToolTip.text: "Próximo mês"
@@ -168,7 +158,7 @@ Item {
         Rectangle {
             Layout.preferredWidth: 1
             Layout.fillHeight: true
-            color: "#242329"
+            color: WaypointTheme.divider
         }
 
         ColumnLayout {
@@ -178,17 +168,18 @@ Item {
 
             Text {
                 text: Qt.locale().toString(root.selectedDateValue, "dddd, d MMMM")
-                color: "#f2f0f5"
-                font.pixelSize: 21
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.headingSize
                 font.bold: true
             }
 
             Text {
                 Layout.topMargin: 6
                 text: root.controller.selectedDateTasks.pendingCount + " pendente" + (root.controller.selectedDateTasks.pendingCount === 1 ? "" : "s")
-                color: "#817e87"
-                font.family: "monospace"
-                font.pixelSize: 10
+                color: WaypointTheme.subduedText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
                 font.letterSpacing: 1
             }
 
@@ -201,10 +192,10 @@ Item {
                     Layout.fillWidth: true
                     Layout.topMargin: 10
                     Layout.preferredHeight: holidayContent.implicitHeight + 18
-                    radius: 8
-                    color: root.holidayBackground(modelData.kind)
+                    radius: WaypointTheme.radius
+                    color: WaypointTheme.controlFill
                     border.width: 1
-                    border.color: root.holidayBorder(modelData.kind)
+                    border.color: root.holidayColor(modelData.kind)
 
                     ColumnLayout {
                         id: holidayContent
@@ -216,7 +207,8 @@ Item {
                             Layout.fillWidth: true
                             text: holidayCard.modelData.name
                             color: root.holidayColor(holidayCard.modelData.kind)
-                            font.pixelSize: 13
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.subtitleSize
                             font.bold: true
                             elide: Text.ElideRight
                         }
@@ -225,19 +217,19 @@ Item {
                                                         holidayCard.modelData.scope)
                             color: root.holidayColor(holidayCard.modelData.kind)
                             opacity: 0.72
-                            font.family: "monospace"
-                            font.pixelSize: 9
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.captionSize
                             font.bold: true
                             font.letterSpacing: 0.8
                         }
-
 
                         Text {
                             Layout.fillWidth: true
                             visible: holidayCard.modelData.description !== ""
                             text: holidayCard.modelData.description
-                            color: "#9b9298"
-                            font.pixelSize: 11
+                            color: WaypointTheme.subduedText
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
                             wrapMode: Text.Wrap
                         }
                     }
@@ -246,7 +238,7 @@ Item {
 
             QuickTaskComposer {
                 Layout.fillWidth: true
-                Layout.topMargin: 22
+                Layout.topMargin: 20
                 controller: root.controller
                 scheduledDateKey: root.controller.selectedDateKey
                 placeholderText: "Nova tarefa neste dia…"
@@ -256,7 +248,7 @@ Item {
                 id: selectedTasks
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.topMargin: 13
+                Layout.topMargin: 12
                 clip: true
                 spacing: 2
                 model: root.controller.selectedDateTasks
@@ -270,8 +262,9 @@ Item {
                     anchors.centerIn: parent
                     visible: selectedTasks.count === 0
                     text: "Clique acima para planejar este dia."
-                    color: "#5f5c65"
-                    font.pixelSize: 13
+                    color: WaypointTheme.disabledText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySize
                 }
             }
         }

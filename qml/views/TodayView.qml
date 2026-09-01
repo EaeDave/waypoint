@@ -12,27 +12,28 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 42
+        anchors.margins: 34
         spacing: 0
 
         RowLayout {
             Layout.fillWidth: true
 
             ColumnLayout {
-                spacing: 5
+                spacing: 4
 
                 Text {
                     text: "Hoje"
-                    color: "#f6f4f8"
-                    font.pixelSize: 38
+                    color: WaypointTheme.foreground
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.displayLargeSize
                     font.bold: true
                 }
 
                 Text {
                     text: Qt.locale().toString(new Date(), "dddd, d MMMM")
-                    color: "#817e87"
-                    font.family: "monospace"
-                    font.pixelSize: 12
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
                 }
             }
 
@@ -43,16 +44,18 @@ Item {
             Rectangle {
                 Layout.preferredWidth: connectionLabel.implicitWidth + 20
                 Layout.preferredHeight: 28
-                radius: 14
-                color: root.controller.online ? "#111813" : "#211116"
+                radius: WaypointTheme.radius
+                color: WaypointTheme.controlFill
+                border.width: 1
+                border.color: root.controller.online ? WaypointTheme.success : WaypointTheme.urgent
 
                 Text {
                     id: connectionLabel
                     anchors.centerIn: parent
                     text: root.controller.online ? "LOCAL" : "OFFLINE"
-                    color: root.controller.online ? "#81d39a" : "#ff7085"
-                    font.family: "monospace"
-                    font.pixelSize: 9
+                    color: root.controller.online ? WaypointTheme.success : WaypointTheme.urgent
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
                     font.bold: true
                     font.letterSpacing: 1
                 }
@@ -61,14 +64,14 @@ Item {
 
         RowLayout {
             Layout.fillWidth: true
-            Layout.topMargin: 34
-            Layout.bottomMargin: 15
+            Layout.topMargin: 28
+            Layout.bottomMargin: 12
 
             Text {
                 text: root.controller.todayTasks.overdueCount > 0 ? root.controller.todayTasks.overdueCount + " atrasada" + (root.controller.todayTasks.overdueCount === 1 ? "" : "s") : root.controller.todayTasks.pendingCount + " pendente" + (root.controller.todayTasks.pendingCount === 1 ? "" : "s")
-                color: root.controller.todayTasks.overdueCount > 0 ? "#ff7085" : "#aaa7ad"
-                font.family: "monospace"
-                font.pixelSize: 11
+                color: root.controller.todayTasks.overdueCount > 0 ? WaypointTheme.urgent : WaypointTheme.subduedText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
                 font.bold: true
                 font.letterSpacing: 1
             }
@@ -79,9 +82,9 @@ Item {
 
             Text {
                 text: "N  NOVA TAREFA"
-                color: "#5f5c65"
-                font.family: "monospace"
-                font.pixelSize: 9
+                color: WaypointTheme.disabledText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
                 font.letterSpacing: 1
             }
         }
@@ -96,7 +99,7 @@ Item {
         ScrollView {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.topMargin: 14
+            Layout.topMargin: 12
             clip: true
 
             ListView {
@@ -113,8 +116,9 @@ Item {
                     anchors.centerIn: parent
                     visible: taskList.count === 0
                     text: "Seu dia está livre."
-                    color: "#5f5c65"
-                    font.pixelSize: 15
+                    color: WaypointTheme.disabledText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.subtitleSize
                 }
             }
         }

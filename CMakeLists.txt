@@ -67,14 +67,23 @@ qt_add_executable(waypoint
     src/app/WaypointController.cpp
     src/app/WaypointController.hpp
 )
+set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(waypoint
     URI Waypoint
     VERSION 1.0
     NO_IMPORT_SCAN
     QML_FILES
         qml/Main.qml
+        qml/WaypointTheme.qml
         qml/components/CalendarDay.qml
         qml/components/AppIcon.qml
+        qml/components/AppButton.qml
+        qml/components/AppCheckBox.qml
+        qml/components/AppComboBox.qml
+        qml/components/AppSpinBox.qml
+        qml/components/AppMenuItem.qml
+        qml/components/AppTextField.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml
         qml/components/TaskRow.qml
