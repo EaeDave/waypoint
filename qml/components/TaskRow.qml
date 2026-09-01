@@ -99,10 +99,21 @@ Rectangle {
         }
 
         ToolButton {
+            id: taskActions
+            Layout.preferredWidth: 34
+            Layout.preferredHeight: 34
+            Layout.alignment: Qt.AlignVCenter
             text: "⋯"
             onClicked: actionsMenu.open()
             ToolTip.visible: hovered
             ToolTip.text: "Editar ou excluir tarefa"
+
+            background: Rectangle {
+                radius: 5
+                color: taskActions.hovered ? "#24212c" : "transparent"
+                border.width: 1
+                border.color: taskActions.hovered || taskActions.activeFocus ? "#a997ff" : "#4b4752"
+            }
 
             Menu {
                 id: actionsMenu
