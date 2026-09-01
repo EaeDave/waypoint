@@ -302,14 +302,9 @@ Rectangle {
                 onAccepted: editTime.forceActiveFocus()
             }
 
-            AppTextField {
+            AppTimePicker {
                 id: editTime
                 Layout.fillWidth: true
-                placeholderText: "HH:mm"
-                inputMethodHints: Qt.ImhTime
-                validator: RegularExpressionValidator {
-                    regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
-                }
                 onAccepted: root.saveEdit()
             }
 

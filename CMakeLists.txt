@@ -84,6 +84,7 @@ qt_add_qml_module(waypoint
         qml/components/AppSpinBox.qml
         qml/components/AppMenuItem.qml
         qml/components/AppTextField.qml
+        qml/components/AppTimePicker.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml
         qml/components/TaskRow.qml

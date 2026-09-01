@@ -64,6 +64,8 @@ Rectangle {
         const normalizedTitle = input.text.trim();
         if (normalizedTitle.length === 0)
             return;
+        if (!timeInput.acceptableInput)
+            return;
         const custom = preset.currentIndex === 5;
         const endMode = custom ? ending.currentValue : "never";
         const scheduledTime = scheduledTimeEdited
@@ -114,17 +116,11 @@ Rectangle {
             onAccepted: root.submit()
         }
 
-        AppTextField {
+        AppTimePicker {
             id: timeInput
-            Layout.preferredWidth: 64
+            Layout.preferredWidth: 116
             Layout.preferredHeight: 30
             text: root.scheduledTimeKey
-            placeholderText: "HH:mm"
-            horizontalAlignment: TextInput.AlignHCenter
-            inputMethodHints: Qt.ImhTime
-            validator: RegularExpressionValidator {
-                regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
-            }
             onTextEdited: root.scheduledTimeEdited = true
             onAccepted: root.submit()
         }

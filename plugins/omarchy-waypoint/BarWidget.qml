@@ -47,10 +47,10 @@ BarWidget {
         actionProcess.running = true;
     }
 
-    function addTask(title, date) {
+    function addTask(title, date, scheduledTime) {
+        const time = scheduledTime || Qt.formatTime(new Date(), "HH:mm");
         runAction(["add", "--date", Model.dateKey(date),
-                   "--time", Qt.formatTime(new Date(), "HH:mm"),
-                   "--title", title]);
+                   "--time", time, "--title", title]);
     }
 
     function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
