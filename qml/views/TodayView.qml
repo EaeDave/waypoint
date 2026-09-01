@@ -9,10 +9,11 @@ Item {
     id: root
 
     required property var controller
+    readonly property bool compact: width < WaypointTheme.compactBreakpoint
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 34
+        anchors.margins: root.compact ? 18 : 34
         spacing: 0
 
         RowLayout {
@@ -25,7 +26,7 @@ Item {
                     text: "Hoje"
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.displayLargeSize
+                    font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
                     font.bold: true
                 }
 
@@ -81,6 +82,7 @@ Item {
             }
 
             Text {
+                visible: !root.compact
                 text: "N  NOVA TAREFA"
                 color: WaypointTheme.disabledText
                 font.family: WaypointTheme.fontFamily

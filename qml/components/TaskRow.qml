@@ -250,7 +250,7 @@ Rectangle {
         parent: Overlay.overlay
         x: Math.round((parent.width - width) / 2)
         y: Math.round((parent.height - height) / 2)
-        width: 420
+        width: Math.min(420, parent.width - 24)
         padding: WaypointTheme.popupPadding
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside

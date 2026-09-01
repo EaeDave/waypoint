@@ -28,6 +28,8 @@ QtObject {
     readonly property int panelPadding: 18
     readonly property int popupPadding: 14
     readonly property int controlGap: 8
+    readonly property int compactBreakpoint: 680
+    readonly property int calendarSplitBreakpoint: 900
 
     readonly property string fontFamily: "monospace"
     readonly property int captionSize: 10

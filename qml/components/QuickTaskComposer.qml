@@ -13,6 +13,7 @@ Rectangle {
     property int weekdayMask: 0
     property string scheduledTimeKey: currentTimeKey()
     property bool scheduledTimeEdited: false
+    readonly property bool compact: width < 520
 
     implicitHeight: 44
     radius: WaypointTheme.radius
@@ -131,15 +132,16 @@ Rectangle {
         AppButton {
             id: repeatButton
             Layout.preferredHeight: 30
-            text: root.selectedFrequency() === "none" ? "↻" : "↻ " + preset.currentText.toUpperCase()
-            selected: root.selectedFrequency() !== "none"
+            text: root.compact || root.selectedFrequency() === "none"
+                ? "↻" : "↻ " + preset.currentText.toUpperCase()
+            square: root.compact
             onClicked: repeatPopup.open()
             ToolTip.visible: hovered
             ToolTip.text: "Configurar repetição"
         }
 
         Text {
-            visible: input.activeFocus
+            visible: input.activeFocus && !root.compact
             text: "ENTER"
             color: WaypointTheme.disabledText
             font.family: WaypointTheme.fontFamily
@@ -150,9 +152,10 @@ Rectangle {
 
     Popup {
         id: repeatPopup
-        x: Math.max(0, root.width - width)
-        y: root.height + 6
-        width: 420
+        parent: Overlay.overlay
+        x: Math.round((parent.width - width) / 2)
+        y: Math.round((parent.height - height) / 2)
+        width: Math.min(420, parent.width - 24)
         padding: WaypointTheme.popupPadding
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 

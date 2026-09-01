@@ -11,8 +11,8 @@ ApplicationWindow {
 
     width: 1120
     height: 720
-    minimumWidth: 900
-    minimumHeight: 620
+    minimumWidth: 600
+    minimumHeight: 520
     visible: true
     title: "Waypoint"
     color: WaypointTheme.background

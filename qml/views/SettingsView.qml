@@ -9,6 +9,7 @@ Item {
     required property var controller
     property string feedbackMessage: ""
     property bool feedbackError: false
+    readonly property bool compact: width < WaypointTheme.compactBreakpoint
     readonly property var brazilianStates: [
         { code: "", name: "Nenhum estado" },
         { code: "AC", name: "Acre" }, { code: "AL", name: "Alagoas" },
@@ -103,7 +104,7 @@ Item {
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: Math.min(parent.width - 68, 720)
+            width: Math.max(0, parent.width - (root.compact ? 28 : 68))
             anchors.horizontalCenter: parent.horizontalCenter
             spacing: 14
 
@@ -115,15 +116,17 @@ Item {
                 text: "Configurações"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.displayLargeSize
+                font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
                 font.bold: true
             }
 
             Text {
+                Layout.fillWidth: true
                 text: "Conecte este dispositivo ao seu servidor Waypoint self-hosted."
                 color: WaypointTheme.subduedText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.bodySize
+                wrapMode: Text.Wrap
             }
 
             Rectangle {
@@ -164,10 +167,12 @@ Item {
 
                         Text {
                             visible: root.controller.lastSuccessfulSync !== ""
+                            Layout.fillWidth: true
                             text: "Última sincronização: " + Qt.formatDateTime(new Date(root.controller.lastSuccessfulSync), "dd/MM/yyyy HH:mm")
                             color: WaypointTheme.subduedText
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: WaypointTheme.captionSize
+                            elide: Text.ElideLeft
                         }
                     }
 
@@ -219,10 +224,12 @@ Item {
                     }
 
                     Text {
+                        Layout.fillWidth: true
                         text: "Informe a URL base ou o endpoint /v1/sync."
                         color: WaypointTheme.disabledText
                         font.family: WaypointTheme.fontFamily
                         font.pixelSize: WaypointTheme.captionSize
+                        wrapMode: Text.Wrap
                     }
 
                     Text {
@@ -239,8 +246,9 @@ Item {
                         echoMode: TextInput.Password
                     }
 
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
                         spacing: 8
 
                         AppButton {
@@ -266,9 +274,6 @@ Item {
                             }
                         }
 
-                        Item {
-                            Layout.fillWidth: true
-                        }
 
                         AppButton {
                             text: "Usar somente local"
@@ -319,9 +324,11 @@ Item {
                         wrapMode: Text.Wrap
                     }
 
-                    RowLayout {
+                    GridLayout {
                         Layout.fillWidth: true
-                        spacing: 8
+                        columns: root.compact ? 1 : 2
+                        columnSpacing: 8
+                        rowSpacing: 8
 
                         AppComboBox {
                             id: stateField
@@ -349,7 +356,7 @@ Item {
 
                     GridLayout {
                         Layout.fillWidth: true
-                        columns: 2
+                        columns: root.compact ? 1 : 2
                         columnSpacing: 24
                         rowSpacing: 8
 
@@ -377,8 +384,9 @@ Item {
                         }
                     }
 
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
                         spacing: 8
 
                         AppButton {
@@ -409,9 +417,6 @@ Item {
                             }
                         }
 
-                        Item {
-                            Layout.fillWidth: true
-                        }
 
                         Text {
                             text: root.controller.holidaySyncState === "offline" ? "Cache offline" :
