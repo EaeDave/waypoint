@@ -16,7 +16,7 @@ function mondayIndex(jsDay) {
     return (jsDay + 6) % 7
 }
 
-function monthCells(year, month, tasks) {
+function monthCells(year, month, tasks, holidays) {
     const first = new Date(year, month, 1)
     const start = new Date(year, month, 1 - mondayIndex(first.getDay()))
     const today = dateKey(new Date())
@@ -39,6 +39,8 @@ function monthCells(year, month, tasks) {
                     ++overdue
             }
         }
+        const holidayEvents = (holidays || []).filter(holiday => holiday.date === key)
+        const legalHoliday = holidayEvents.some(holiday => holiday.kind === "legal")
         cells.push({
             date: date,
             key: key,
@@ -48,7 +50,10 @@ function monthCells(year, month, tasks) {
             weekend: date.getDay() === 0 || date.getDay() === 6,
             pending: pending,
             completed: completed,
-            overdue: overdue
+            overdue: overdue,
+            holidays: holidayEvents,
+            holidayCount: holidayEvents.length,
+            legalHoliday: legalHoliday
         })
     }
     return cells
@@ -62,8 +67,8 @@ function isoWeek(date) {
     return Math.ceil(((value.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 }
 
-function monthWeeks(year, month, tasks) {
-    const cells = monthCells(year, month, tasks)
+function monthWeeks(year, month, tasks, holidays) {
+    const cells = monthCells(year, month, tasks, holidays)
     const weeks = []
     for (let index = 0; index < 6; ++index) {
         const days = cells.slice(index * 7, index * 7 + 7)
@@ -86,6 +91,11 @@ function tasksForDate(tasks, date) {
     const key = dateKey(date)
     return (tasks || []).filter(task => task.scheduledDate === key)
 }
+function holidaysForDate(holidays, date) {
+    const key = dateKey(date)
+    return (holidays || []).filter(holiday => holiday.date === key)
+}
+
 
 function todaySummary(tasks) {
     const today = dateKey(new Date())

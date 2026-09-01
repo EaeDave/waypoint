@@ -1,3 +1,5 @@
+mod holidays;
+
 use axum::{
     Json, Router,
     extract::State,
@@ -9,20 +11,27 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
-    pool: PgPool,
-    sync_token: Arc<str>,
+    pub(crate) pool: PgPool,
+    pub(crate) sync_token: Arc<str>,
+    pub(crate) http: reqwest::Client,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, sync_token: impl Into<Arc<str>>) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent("Waypoint/0.1")
+            .build()
+            .expect("the holiday HTTP client configuration is valid");
         Self {
             pool,
             sync_token: sync_token.into(),
+            http,
         }
     }
 }
@@ -31,6 +40,15 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/sync", post(sync))
+        .route("/v1/holidays", get(holidays::list_holidays))
+        .route(
+            "/v1/holiday-preferences",
+            get(holidays::get_preferences).put(holidays::put_preferences),
+        )
+        .route(
+            "/v1/locations/municipalities",
+            get(holidays::list_municipalities),
+        )
         .with_state(state)
 }
 
@@ -169,7 +187,7 @@ async fn sync(
     }))
 }
 
-fn authorize(headers: &HeaderMap, expected_token: &str) -> Result<(), ApiError> {
+pub(crate) fn authorize(headers: &HeaderMap, expected_token: &str) -> Result<(), ApiError> {
     let supplied = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
@@ -239,18 +257,23 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
 }
 
 #[derive(Debug)]
-enum ApiError {
+pub(crate) enum ApiError {
     Unauthorized,
     BadRequest(String),
+    External(String),
     Internal(String),
 }
 
 impl ApiError {
-    fn bad_request(message: impl Into<String>) -> Self {
+    pub(crate) fn bad_request(message: impl Into<String>) -> Self {
         Self::BadRequest(message.into())
     }
 
-    fn database(error: sqlx::Error) -> Self {
+    pub(crate) fn external(message: impl Into<String>) -> Self {
+        Self::External(message.into())
+    }
+
+    pub(crate) fn database(error: sqlx::Error) -> Self {
         tracing::error!(error = %error, "database request failed");
         Self::Internal("database request failed".to_owned())
     }
@@ -261,6 +284,7 @@ impl IntoResponse for ApiError {
         let (status, message) = match self {
             Self::Unauthorized => (StatusCode::UNAUTHORIZED, "unauthorized".to_owned()),
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
+            Self::External(message) => (StatusCode::SERVICE_UNAVAILABLE, message),
             Self::Internal(message) => (StatusCode::INTERNAL_SERVER_ERROR, message),
         };
         (status, Json(json!({"error": message}))).into_response()
@@ -270,6 +294,9 @@ impl IntoResponse for ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::{body::Body, http::Request};
+    use sqlx::postgres::PgPoolOptions;
+    use tower::ServiceExt;
 
     fn request_with(mutations: Vec<SyncMutation>) -> SyncRequest {
         SyncRequest {
@@ -310,5 +337,25 @@ mod tests {
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+    #[tokio::test]
+    async fn holiday_routes_require_bearer_token() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://waypoint:waypoint@127.0.0.1/waypoint")
+            .expect("test database URL is valid");
+        let app = router(AppState::new(pool, "expected-token"));
+
+        for uri in [
+            "/v1/holidays?from=2026-01-01&to=2026-12-31",
+            "/v1/holiday-preferences",
+            "/v1/locations/municipalities?state=SP",
+        ] {
+            let response = app
+                .clone()
+                .oneshot(Request::builder().uri(uri).body(Body::empty()).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::UNAUTHORIZED, "{uri}");
+        }
     }
 }

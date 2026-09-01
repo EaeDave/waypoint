@@ -8,6 +8,50 @@ Item {
     required property var controller
     property string feedbackMessage: ""
     property bool feedbackError: false
+    readonly property var brazilianStates: [
+        { code: "", name: "Nenhum estado" },
+        { code: "AC", name: "Acre" }, { code: "AL", name: "Alagoas" },
+        { code: "AP", name: "Amapá" }, { code: "AM", name: "Amazonas" },
+        { code: "BA", name: "Bahia" }, { code: "CE", name: "Ceará" },
+        { code: "DF", name: "Distrito Federal" }, { code: "ES", name: "Espírito Santo" },
+        { code: "GO", name: "Goiás" }, { code: "MA", name: "Maranhão" },
+        { code: "MT", name: "Mato Grosso" }, { code: "MS", name: "Mato Grosso do Sul" },
+        { code: "MG", name: "Minas Gerais" }, { code: "PA", name: "Pará" },
+        { code: "PB", name: "Paraíba" }, { code: "PR", name: "Paraná" },
+        { code: "PE", name: "Pernambuco" }, { code: "PI", name: "Piauí" },
+        { code: "RJ", name: "Rio de Janeiro" }, { code: "RN", name: "Rio Grande do Norte" },
+        { code: "RS", name: "Rio Grande do Sul" }, { code: "RO", name: "Rondônia" },
+        { code: "RR", name: "Roraima" }, { code: "SC", name: "Santa Catarina" },
+        { code: "SP", name: "São Paulo" }, { code: "SE", name: "Sergipe" },
+        { code: "TO", name: "Tocantins" }
+    ]
+
+    function stateIndex(code) {
+        for (let index = 0; index < brazilianStates.length; ++index) {
+            if (brazilianStates[index].code === code)
+                return index;
+        }
+        return 0;
+    }
+
+    function cityIndex(code) {
+        for (let index = 0; index < cityField.count; ++index) {
+            if (cityField.valueAt(index) === code)
+                return index;
+        }
+        return -1;
+    }
+
+    function loadHolidayConfiguration() {
+        stateField.currentIndex = stateIndex(controller.holidayStateCode);
+        nationalCheck.checked = controller.includeNationalHolidays;
+        stateCheck.checked = controller.includeStateHolidays;
+        municipalCheck.checked = controller.includeMunicipalHolidays;
+        commemorativeCheck.checked = controller.includeCommemorativeDates;
+        if (controller.holidayStateCode !== "")
+            controller.loadMunicipalities(controller.holidayStateCode);
+        cityField.currentIndex = cityIndex(controller.holidayCityCode);
+    }
 
     function loadConfiguration() {
         if (!serverField.activeFocus)
@@ -34,12 +78,21 @@ Item {
         return "#777780";
     }
 
-    Component.onCompleted: loadConfiguration()
+    Component.onCompleted: {
+        loadConfiguration();
+        loadHolidayConfiguration();
+    }
 
     Connections {
         target: root.controller
         function onSyncConfigurationChanged() {
             root.loadConfiguration();
+        }
+        function onHolidayConfigurationChanged() {
+            root.loadHolidayConfiguration();
+        }
+        function onMunicipalitiesChanged() {
+            cityField.currentIndex = root.cityIndex(root.controller.holidayCityCode);
         }
     }
 
@@ -227,6 +280,146 @@ Item {
                             serverField.clear();
                             tokenField.clear();
                         }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: holidayColumn.implicitHeight + 32
+                radius: 12
+                color: "#0d0d10"
+                border.width: 1
+                border.color: "#222228"
+
+                ColumnLayout {
+                    id: holidayColumn
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    spacing: 12
+
+                    Text {
+                        text: "Feriados brasileiros"
+                        color: "#f2f0f5"
+                        font.pixelSize: 17
+                        font.bold: true
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Os eventos ficam no cache local e continuam visíveis sem conexão."
+                        color: "#777780"
+                        font.pixelSize: 12
+                        wrapMode: Text.Wrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+
+                        ComboBox {
+                            id: stateField
+                            Layout.fillWidth: true
+                            model: root.brazilianStates
+                            textRole: "name"
+                            valueRole: "code"
+                            onActivated: {
+                                cityField.currentIndex = -1;
+                                if (currentValue !== "")
+                                    root.controller.loadMunicipalities(currentValue);
+                            }
+                        }
+
+                        ComboBox {
+                            id: cityField
+                            Layout.fillWidth: true
+                            enabled: stateField.currentValue !== ""
+                            model: root.controller.municipalities
+                            textRole: "name"
+                            valueRole: "code"
+                            displayText: currentIndex >= 0 ? currentText : "Selecione o município"
+                        }
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 2
+                        columnSpacing: 24
+
+                        CheckBox {
+                            id: nationalCheck
+                            text: "Feriados nacionais"
+                            palette.windowText: "#d8d5de"
+                        }
+                        CheckBox {
+                            id: stateCheck
+                            text: "Feriados estaduais"
+                            palette.windowText: enabled ? "#d8d5de" : "#65636c"
+                            enabled: stateField.currentValue !== ""
+                        }
+                        CheckBox {
+                            id: municipalCheck
+                            text: "Feriados municipais"
+                            palette.windowText: enabled ? "#d8d5de" : "#65636c"
+                            enabled: cityField.currentIndex >= 0
+                        }
+                        CheckBox {
+                            id: commemorativeCheck
+                            text: "Datas comemorativas"
+                            palette.windowText: "#d8d5de"
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+
+                        Button {
+                            text: "Salvar feriados"
+                            onClicked: {
+                                const cityCode = cityField.currentIndex >= 0 ? cityField.currentValue : "";
+                                const saved = root.controller.saveHolidayPreferences(
+                                    stateField.currentValue,
+                                    cityCode,
+                                    nationalCheck.checked,
+                                    stateCheck.checked,
+                                    municipalCheck.checked,
+                                    commemorativeCheck.checked);
+                                root.feedbackError = !saved;
+                                root.feedbackMessage = saved ? "Preferências de feriados salvas." : root.controller.errorMessage;
+                            }
+                        }
+
+                        Button {
+                            text: "Atualizar feriados"
+                            enabled: root.controller.syncConfigured && root.controller.holidaySyncState !== "syncing"
+                            onClicked: {
+                                const started = root.controller.refreshHolidays();
+                                root.feedbackError = !started;
+                                root.feedbackMessage = started ? "Atualização de feriados iniciada." : root.controller.errorMessage;
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        Text {
+                            text: root.controller.holidaySyncState === "offline" ? "Cache offline" :
+                                  root.controller.holidaySyncState === "ready" ? "Atualizado" :
+                                  root.controller.holidaySyncState === "syncing" ? "Atualizando…" : "Somente local"
+                            color: root.controller.holidaySyncState === "offline" ? "#ffb86c" :
+                                   root.controller.holidaySyncState === "ready" ? "#81d39a" : "#777780"
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.controller.holidaySyncLastError !== ""
+                        text: root.controller.holidaySyncLastError
+                        color: "#ff8395"
+                        wrapMode: Text.Wrap
+                        font.pixelSize: 12
                     }
                 }
             }

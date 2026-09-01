@@ -10,6 +10,8 @@ BarWidget {
     moduleName: "io.waypoint.bar"
 
     property var tasks: []
+    property var holidays: []
+    property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     readonly property var summary: Model.todaySummary(tasks)
@@ -50,6 +52,8 @@ BarWidget {
         target.anchorItem = button;
         target.hostWidget = root;
         target.tasks = Qt.binding(() => root.tasks);
+        target.holidays = Qt.binding(() => root.holidays);
+        target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
         target.syncStatus = Qt.binding(() => root.syncStatus);
     }
@@ -98,6 +102,8 @@ BarWidget {
                     if (!response.ok)
                         throw new Error(response.error || "snapshot failed");
                     root.tasks = response.tasks || [];
+                    root.holidays = response.holidays || [];
+                    root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });
                     root.loadError = "";
                     root.syncStatus = response.sync || ({ state: "local-only", configured: false, lastError: "" });
                 } catch (error) {

@@ -151,6 +151,47 @@ Item {
                 font.letterSpacing: 1
             }
 
+            Repeater {
+                model: root.controller.selectedDateHolidays
+
+                Rectangle {
+                    id: holidayCard
+                    required property var modelData
+                    Layout.fillWidth: true
+                    Layout.topMargin: 10
+                    Layout.preferredHeight: holidayContent.implicitHeight + 18
+                    radius: 8
+                    color: modelData.kind === "legal" ? "#211318" : "#1c1811"
+                    border.width: 1
+                    border.color: modelData.kind === "legal" ? "#5e2732" : "#5a4625"
+
+                    ColumnLayout {
+                        id: holidayContent
+                        anchors.fill: parent
+                        anchors.margins: 9
+                        spacing: 3
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: holidayCard.modelData.name
+                            color: holidayCard.modelData.kind === "legal" ? "#ff9aaa" : "#e9c98d"
+                            font.pixelSize: 13
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: holidayCard.modelData.description !== ""
+                            text: holidayCard.modelData.description
+                            color: "#9b9298"
+                            font.pixelSize: 11
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                }
+            }
+
             QuickTaskComposer {
                 Layout.fillWidth: true
                 Layout.topMargin: 22

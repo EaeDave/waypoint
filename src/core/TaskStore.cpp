@@ -105,6 +105,27 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "payload_json TEXT NOT NULL, created_at TEXT NOT NULL)"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS sync_state ("
                      "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS holiday_cache ("
+                     "id INTEGER PRIMARY KEY AUTOINCREMENT, holiday_date TEXT NOT NULL, name TEXT NOT NULL, "
+                     "description TEXT, kind TEXT NOT NULL, scope_level TEXT NOT NULL, state_code TEXT, "
+                     "city_code TEXT, source TEXT NOT NULL)"),
+      QStringLiteral("CREATE INDEX IF NOT EXISTS holiday_cache_date_idx "
+                     "ON holiday_cache(holiday_date)"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS holiday_coverage ("
+                     "source TEXT NOT NULL, holiday_year INTEGER NOT NULL, status TEXT NOT NULL, "
+                     "fetched_at TEXT, last_error TEXT, PRIMARY KEY(source, holiday_year))"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS holiday_preferences ("
+                     "singleton INTEGER PRIMARY KEY CHECK(singleton = 1), state_code TEXT, city_code TEXT, "
+                     "include_national INTEGER NOT NULL DEFAULT 1, include_state INTEGER NOT NULL DEFAULT 1, "
+                     "include_municipal INTEGER NOT NULL DEFAULT 1, "
+                     "include_commemorative INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 0, "
+                     "updated_at TEXT NOT NULL)"),
+      QStringLiteral("INSERT OR IGNORE INTO holiday_preferences(singleton, updated_at) "
+                     "VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS brazil_municipalities ("
+                     "state_code TEXT NOT NULL, city_code TEXT PRIMARY KEY, name TEXT NOT NULL)"),
+      QStringLiteral("CREATE INDEX IF NOT EXISTS brazil_municipalities_state_name_idx "
+                     "ON brazil_municipalities(state_code, name)"),
   };
 
   for (const QString &statement : statements) {
@@ -380,6 +401,269 @@ bool TaskStore::saveSyncConfiguration(const SyncConfiguration &configuration, QS
       rollbackTransaction();
       setError(errorMessage,
                queryFailure(QStringLiteral("Cannot save synchronization setting '%1'").arg(key), query));
+      return false;
+    }
+  }
+  if (!commitTransaction(errorMessage)) {
+    rollbackTransaction();
+    return false;
+  }
+  return true;
+}
+QJsonObject TaskStore::holidayPreferences(QString *errorMessage) const {
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "SELECT state_code, city_code, include_national, include_state, include_municipal, "
+      "include_commemorative, revision, updated_at FROM holiday_preferences WHERE singleton = 1"));
+  if (!query.exec() || !query.next()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot read holiday preferences"), query));
+    return {};
+  }
+  return {
+      {QStringLiteral("stateCode"), query.value(0).toString()},
+      {QStringLiteral("cityCode"), query.value(1).toString()},
+      {QStringLiteral("includeNational"), query.value(2).toBool()},
+      {QStringLiteral("includeState"), query.value(3).toBool()},
+      {QStringLiteral("includeMunicipal"), query.value(4).toBool()},
+      {QStringLiteral("includeCommemorative"), query.value(5).toBool()},
+      {QStringLiteral("revision"), query.value(6).toLongLong()},
+      {QStringLiteral("updatedAt"), query.value(7).toString()},
+  };
+}
+
+bool TaskStore::saveHolidayPreferences(const QJsonObject &preferences, QString *errorMessage) {
+  const QString stateCode = preferences.value(QStringLiteral("stateCode")).toString().trimmed().toUpper();
+  const QString cityCode = preferences.value(QStringLiteral("cityCode")).toString().trimmed();
+  const bool stateValid = stateCode.isEmpty() ||
+                          (stateCode.size() == 2 && stateCode.at(0).isLetter() && stateCode.at(1).isLetter());
+  if (!stateValid) {
+    setError(errorMessage, QStringLiteral("Brazilian state code must contain exactly two letters"));
+    return false;
+  }
+  if (!cityCode.isEmpty() && stateCode.isEmpty()) {
+    setError(errorMessage, QStringLiteral("A city can only be selected together with a state"));
+    return false;
+  }
+
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "UPDATE holiday_preferences SET state_code = ?, city_code = ?, include_national = ?, "
+      "include_state = ?, include_municipal = ?, include_commemorative = ?, revision = revision + 1, "
+      "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE singleton = 1"));
+  query.addBindValue(stateCode.isEmpty() ? QVariant() : stateCode);
+  query.addBindValue(cityCode.isEmpty() ? QVariant() : cityCode);
+  query.addBindValue(preferences.value(QStringLiteral("includeNational")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeState")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeMunicipal")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeCommemorative")).toBool(false));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot save holiday preferences"), query));
+    return false;
+  }
+  emit holidayPreferencesChanged();
+  return true;
+}
+
+QJsonArray TaskStore::listHolidays(const QDate &from, const QDate &to, QString *errorMessage) const {
+  QJsonArray holidays;
+  if (!from.isValid() || !to.isValid() || from > to) {
+    setError(errorMessage, QStringLiteral("Holiday range requires valid ordered dates"));
+    return holidays;
+  }
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "SELECT holiday_date, name, description, kind, scope_level, state_code, city_code, source "
+      "FROM holiday_cache WHERE holiday_date BETWEEN ? AND ? "
+      "ORDER BY holiday_date, kind, scope_level, name"));
+  query.addBindValue(from.toString(Qt::ISODate));
+  query.addBindValue(to.toString(Qt::ISODate));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot list cached holidays"), query));
+    return holidays;
+  }
+  while (query.next()) {
+    holidays.append(QJsonObject{
+        {QStringLiteral("date"), query.value(0).toString()},
+        {QStringLiteral("name"), query.value(1).toString()},
+        {QStringLiteral("description"), query.value(2).toString()},
+        {QStringLiteral("kind"), query.value(3).toString()},
+        {QStringLiteral("scope"), query.value(4).toString()},
+        {QStringLiteral("stateCode"), query.value(5).toString()},
+        {QStringLiteral("cityCode"), query.value(6).toString()},
+        {QStringLiteral("source"), query.value(7).toString()},
+    });
+  }
+  return holidays;
+}
+
+QJsonArray TaskStore::holidayCoverage(QString *errorMessage) const {
+  QJsonArray coverage;
+  QSqlQuery query(m_database);
+  query.prepare(
+      QStringLiteral("SELECT source, holiday_year, status, fetched_at, last_error FROM holiday_coverage "
+                     "ORDER BY holiday_year, source"));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot read holiday cache coverage"), query));
+    return coverage;
+  }
+  while (query.next()) {
+    coverage.append(QJsonObject{
+        {QStringLiteral("source"), query.value(0).toString()},
+        {QStringLiteral("year"), query.value(1).toInt()},
+        {QStringLiteral("status"), query.value(2).toString()},
+        {QStringLiteral("fetchedAt"), query.value(3).toString()},
+        {QStringLiteral("lastError"), query.value(4).toString()},
+    });
+  }
+  return coverage;
+}
+
+bool TaskStore::replaceHolidaySnapshot(const QDate &from, const QDate &to, const QJsonArray &holidays,
+                                       const QJsonArray &coverage, QString *errorMessage) {
+  if (!from.isValid() || !to.isValid() || from > to) {
+    setError(errorMessage, QStringLiteral("Holiday snapshot requires valid ordered dates"));
+    return false;
+  }
+  if (!beginTransaction(errorMessage)) {
+    return false;
+  }
+
+  QSqlQuery removeHolidays(m_database);
+  removeHolidays.prepare(QStringLiteral("DELETE FROM holiday_cache WHERE holiday_date BETWEEN ? AND ?"));
+  removeHolidays.addBindValue(from.toString(Qt::ISODate));
+  removeHolidays.addBindValue(to.toString(Qt::ISODate));
+  if (!removeHolidays.exec()) {
+    rollbackTransaction();
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot replace cached holiday range"), removeHolidays));
+    return false;
+  }
+
+  QSqlQuery insertHoliday(m_database);
+  insertHoliday.prepare(QStringLiteral(
+      "INSERT INTO holiday_cache(holiday_date, name, description, kind, scope_level, state_code, "
+      "city_code, source) VALUES(?, ?, ?, ?, ?, ?, ?, ?)"));
+  for (const QJsonValue &value : holidays) {
+    const QJsonObject holiday = value.toObject();
+    const QDate date = QDate::fromString(holiday.value(QStringLiteral("date")).toString(), Qt::ISODate);
+    const QString name = holiday.value(QStringLiteral("name")).toString().trimmed();
+    if (!date.isValid() || date < from || date > to || name.isEmpty()) {
+      rollbackTransaction();
+      setError(errorMessage, QStringLiteral("Holiday snapshot contains an invalid or out-of-range event"));
+      return false;
+    }
+    const QList<QVariant> values{
+        date.toString(Qt::ISODate),
+        name,
+        holiday.value(QStringLiteral("description")).toString(),
+        holiday.value(QStringLiteral("kind")).toString(),
+        holiday.value(QStringLiteral("scope")).toString(),
+        holiday.value(QStringLiteral("stateCode")).toString(),
+        holiday.value(QStringLiteral("cityCode")).toString(),
+        holiday.value(QStringLiteral("source")).toString(),
+    };
+    for (qsizetype index = 0; index < values.size(); ++index) {
+      insertHoliday.bindValue(index, values.at(index));
+    }
+    if (!insertHoliday.exec()) {
+      rollbackTransaction();
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot cache holiday '%1'").arg(name), insertHoliday));
+      return false;
+    }
+  }
+
+  QSqlQuery removeCoverage(m_database);
+  removeCoverage.prepare(QStringLiteral("DELETE FROM holiday_coverage WHERE holiday_year BETWEEN ? AND ?"));
+  removeCoverage.addBindValue(from.year());
+  removeCoverage.addBindValue(to.year());
+  if (!removeCoverage.exec()) {
+    rollbackTransaction();
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot replace holiday coverage"), removeCoverage));
+    return false;
+  }
+  QSqlQuery insertCoverage(m_database);
+  insertCoverage.prepare(
+      QStringLiteral("INSERT INTO holiday_coverage(source, holiday_year, status, fetched_at, last_error) "
+                     "VALUES(?, ?, ?, ?, ?)"));
+  for (const QJsonValue &value : coverage) {
+    const QJsonObject item = value.toObject();
+    insertCoverage.bindValue(0, item.value(QStringLiteral("source")).toString());
+    insertCoverage.bindValue(1, item.value(QStringLiteral("year")).toInt());
+    insertCoverage.bindValue(2, item.value(QStringLiteral("status")).toString());
+    insertCoverage.bindValue(3, item.value(QStringLiteral("fetchedAt")).toString());
+    insertCoverage.bindValue(4, item.value(QStringLiteral("lastError")).toString());
+    if (!insertCoverage.exec()) {
+      rollbackTransaction();
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot cache holiday source coverage"), insertCoverage));
+      return false;
+    }
+  }
+  if (!commitTransaction(errorMessage)) {
+    rollbackTransaction();
+    return false;
+  }
+  emit holidaysChanged();
+  return true;
+}
+
+QJsonArray TaskStore::listMunicipalities(const QString &stateCode, QString *errorMessage) const {
+  QJsonArray municipalities;
+  QSqlQuery query(m_database);
+  query.prepare(
+      QStringLiteral("SELECT city_code, name FROM brazil_municipalities WHERE state_code = ? ORDER BY name"));
+  query.addBindValue(stateCode.trimmed().toUpper());
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot list cached municipalities"), query));
+    return municipalities;
+  }
+  while (query.next()) {
+    municipalities.append(QJsonObject{
+        {QStringLiteral("code"), query.value(0).toString()},
+        {QStringLiteral("name"), query.value(1).toString()},
+    });
+  }
+  return municipalities;
+}
+
+bool TaskStore::replaceMunicipalities(const QString &stateCode, const QJsonArray &municipalities,
+                                      QString *errorMessage) {
+  const QString normalizedState = stateCode.trimmed().toUpper();
+  if (normalizedState.size() != 2) {
+    setError(errorMessage, QStringLiteral("Brazilian state code must contain exactly two letters"));
+    return false;
+  }
+  if (!beginTransaction(errorMessage)) {
+    return false;
+  }
+  QSqlQuery remove(m_database);
+  remove.prepare(QStringLiteral("DELETE FROM brazil_municipalities WHERE state_code = ?"));
+  remove.addBindValue(normalizedState);
+  if (!remove.exec()) {
+    rollbackTransaction();
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot replace municipalities"), remove));
+    return false;
+  }
+  QSqlQuery insert(m_database);
+  insert.prepare(
+      QStringLiteral("INSERT INTO brazil_municipalities(state_code, city_code, name) VALUES(?, ?, ?)"));
+  for (const QJsonValue &value : municipalities) {
+    const QJsonObject municipality = value.toObject();
+    const QString code = municipality.value(QStringLiteral("code")).toString().trimmed();
+    const QString name = municipality.value(QStringLiteral("name")).toString().trimmed();
+    if (code.isEmpty() || name.isEmpty()) {
+      rollbackTransaction();
+      setError(errorMessage, QStringLiteral("Municipality snapshot contains an invalid entry"));
+      return false;
+    }
+    insert.bindValue(0, normalizedState);
+    insert.bindValue(1, code);
+    insert.bindValue(2, name);
+    if (!insert.exec()) {
+      rollbackTransaction();
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot cache municipality '%1'").arg(name), insert));
       return false;
     }
   }
