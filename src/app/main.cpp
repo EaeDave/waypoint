@@ -34,7 +34,7 @@ int main(int argc, char *argv[]) {
   const QString screenshotPath = parser.value(QStringLiteral("screenshot"));
   if (!screenshotPath.isEmpty() && !engine.rootObjects().isEmpty()) {
     QObject *rootObject = engine.rootObjects().constFirst();
-    rootObject->setProperty("activePage", 1);
+    rootObject->setProperty("activePage", parser.isSet(QStringLiteral("settings")) ? 2 : 1);
     QTimer::singleShot(750, &application, [rootObject, screenshotPath] {
       auto *window = qobject_cast<QQuickWindow *>(rootObject);
       const bool saved = window != nullptr && window->grabWindow().save(screenshotPath, "PNG");

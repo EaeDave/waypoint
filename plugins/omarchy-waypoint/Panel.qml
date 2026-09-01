@@ -67,7 +67,7 @@ Panel {
         owner: root.barIdentity
         bar: root.bar
         open: root.opened
-        centerOnBar: false
+        centerOnBar: true
         focusTarget: keyCatcher
         contentWidth: popup.fittedContentWidth(Style.space(560))
         contentHeight: popup.fittedContentHeight(contentColumn.implicitHeight)

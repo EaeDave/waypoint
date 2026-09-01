@@ -42,6 +42,18 @@ BarWidget {
         }
     }
 
+    function injectPanel() {
+        const target = panelLoader.item;
+        if (!target)
+            return;
+        target.bar = root.bar;
+        target.anchorItem = button;
+        target.hostWidget = root;
+        target.tasks = Qt.binding(() => root.tasks);
+        target.loadError = Qt.binding(() => root.loadError);
+        target.syncStatus = Qt.binding(() => root.syncStatus);
+    }
+
     function open() {
         refresh();
         if (panelLoader.item)
@@ -63,6 +75,8 @@ BarWidget {
     function closeForPopoutSwitch() {
         close();
     }
+
+    onBarChanged: injectPanel()
 
     readonly property bool popoutSwitchClosing: panelLoader.item ? panelLoader.item.popoutSwitchClosing === true : false
 
@@ -127,12 +141,8 @@ BarWidget {
         source: Qt.resolvedUrl("Panel.qml")
         visible: false
         onLoaded: {
-            item.bar = root.bar;
-            item.anchorItem = button;
-            item.hostWidget = root;
-            item.tasks = Qt.binding(() => root.tasks);
-            item.loadError = Qt.binding(() => root.loadError);
-            item.syncStatus = Qt.binding(() => root.syncStatus);
+            root.injectPanel();
+            Qt.callLater(root.injectPanel);
         }
     }
 
