@@ -1226,7 +1226,9 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
     rollbackTransaction();
     return false;
   }
-  emit tasksChanged();
+  if (!changes.isEmpty()) {
+    emit tasksChanged();
+  }
   return true;
 }
 

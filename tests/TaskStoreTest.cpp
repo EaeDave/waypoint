@@ -239,6 +239,10 @@ void TaskStoreTest::applyRemoteOccurrenceChangesIdempotently() {
                                     QStringLiteral("6"), {}, &error),
            qPrintable(error));
   QCOMPARE(store.listOccurrenceStates(&error).size(), 2);
+
+  QSignalSpy tasksChanged(&store, &waypoint::TaskStore::tasksChanged);
+  QVERIFY2(store.applyRemoteChanges({}, QStringLiteral("6"), {}, &error), qPrintable(error));
+  QCOMPARE(tasksChanged.count(), 0);
 }
 
 void TaskStoreTest::applyRecurrenceDeletionScopes() {
