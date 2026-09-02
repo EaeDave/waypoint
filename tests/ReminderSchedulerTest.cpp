@@ -12,6 +12,7 @@ private slots:
   void retryNotificationFailureWithinDueMinute();
   void deliverRecurringOccurrenceOnItsDate();
   void deliverEveryConfiguredReminderAcrossDates();
+  void deliverMostRecentMissedReminderWithoutSpammingOlderOffsets();
   void deliverHabitRemindersUntilGoalCompletion();
 };
 
@@ -179,6 +180,31 @@ void ReminderSchedulerTest::deliverEveryConfiguredReminderAcrossDates() {
   QCOMPARE(sink.deliveries.size(), reminders.size());
   QCOMPARE(sink.reminderMinutesBefore, reminders);
   QCOMPARE(sink.deliveries.first().occurrenceDate, dueDate);
+}
+
+void ReminderSchedulerTest::deliverMostRecentMissedReminderWithoutSpammingOlderOffsets() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate date(2026, 9, 2);
+  const QTime dueTime(18, 0);
+  QVERIFY2(store.createTask(QStringLiteral("Café da tarde"), date, dueTime, {}, QList<int>{60, 30, 5, 0},
+                            QStringLiteral("☕"), nullptr, &error),
+           qPrintable(error));
+
+  RecordingNotificationSink sink;
+  waypoint::ReminderScheduler scheduler(&store, &sink);
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, QTime(17, 32)), &error), qPrintable(error));
+  QCOMPARE(sink.reminderMinutesBefore, QList<int>({30}));
+
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, QTime(17, 32, 20)), &error), qPrintable(error));
+  QCOMPARE(sink.reminderMinutesBefore, QList<int>({30}));
+
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, QTime(17, 55)), &error), qPrintable(error));
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, dueTime), &error), qPrintable(error));
+  QCOMPARE(sink.reminderMinutesBefore, QList<int>({30, 5, 0}));
 }
 
 void ReminderSchedulerTest::deliverHabitRemindersUntilGoalCompletion() {

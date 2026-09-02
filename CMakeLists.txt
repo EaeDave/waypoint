@@ -40,12 +40,18 @@ target_link_libraries(waypoint_sync PUBLIC waypoint_core Qt6::Core Qt6::Network)
 target_compile_options(waypoint_sync PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(waypoint_mobile_core STATIC
+    src/mobile/AndroidWidgetBridge.cpp
+    src/mobile/AndroidWidgetBridge.hpp
     src/mobile/AndroidNotificationBridge.cpp
     src/mobile/AndroidNotificationBridge.hpp
     src/mobile/MobileController.cpp
     src/mobile/MobileController.hpp
     src/mobile/NotificationSchedule.cpp
     src/mobile/NotificationSchedule.hpp
+    src/mobile/WidgetSnapshot.cpp
+    src/mobile/WidgetSnapshot.hpp
+    src/mobile/WidgetTaskAction.cpp
+    src/mobile/WidgetTaskAction.hpp
 )
 target_include_directories(waypoint_mobile_core PUBLIC src)
 target_link_libraries(waypoint_mobile_core PUBLIC waypoint_core waypoint_sync Qt6::Core Qt6::Network)
@@ -64,6 +70,7 @@ if(ANDROID)
 
     qt_add_executable(waypoint_android MANUAL_FINALIZATION
         src/mobile/main.cpp
+        src/mobile/AndroidWidgetAction.cpp
     )
     set_source_files_properties(qml/mobile/MobileTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
     qt_add_qml_module(waypoint_android
@@ -89,6 +96,7 @@ if(ANDROID)
     target_link_libraries(waypoint_android PRIVATE
         waypoint_mobile_core
         Qt6::Core
+        Qt6::CorePrivate
         Qt6::Gui
         Qt6::Qml
         Qt6::Quick

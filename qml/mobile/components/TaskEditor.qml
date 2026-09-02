@@ -343,8 +343,8 @@ Popup {
                                 label: "Na hora"
                             },
                             {
-                                value: 10,
-                                label: "10 min"
+                                value: 5,
+                                label: "5 min"
                             },
                             {
                                 value: 30,

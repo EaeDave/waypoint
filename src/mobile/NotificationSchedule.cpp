@@ -5,6 +5,8 @@
 #include <QHash>
 #include <QJsonObject>
 
+#include <algorithm>
+
 namespace waypoint {
 namespace {
 
@@ -61,27 +63,43 @@ bool buildNotificationSchedule(TaskStore &store, const QDateTime &now, const int
     completedToday.insert(progress.habit.id, progress.completed());
   }
 
-  QJsonArray result;
+  QList<QJsonObject> notifications;
   for (const TaskOccurrence &occurrence : occurrences) {
     if (occurrence.completed || !occurrence.scheduledTime.isValid()) {
       continue;
     }
     const QDateTime dueAt(occurrence.occurrenceDate, occurrence.scheduledTime);
+    int catchUpMinutesBefore = -1;
+    QDateTime mostRecentMissedTrigger;
     for (const int minutesBefore : occurrence.reminderMinutesBefore) {
       const QDateTime trigger = dueAt.addSecs(-minutesBefore * 60);
-      if (trigger <= now) {
-        continue;
-      }
-      const QString key = QStringLiteral("task:%1@%2:%3")
-                              .arg(occurrence.taskId, occurrence.occurrenceDate.toString(Qt::ISODate))
-                              .arg(minutesBefore);
-      const QString body = minutesBefore == 0
-                               ? QStringLiteral("Agora · %1").arg(occurrence.scheduledTime.toString("HH:mm"))
+      if (trigger > now) {
+        const QString key = QStringLiteral("task:%1@%2:%3")
+                                .arg(occurrence.taskId, occurrence.occurrenceDate.toString(Qt::ISODate))
+                                .arg(minutesBefore);
+        const QString body =
+            minutesBefore == 0 ? QStringLiteral("Agora · %1").arg(occurrence.scheduledTime.toString("HH:mm"))
                                : QStringLiteral("Em %1 min · %2")
                                      .arg(minutesBefore)
                                      .arg(occurrence.scheduledTime.toString("HH:mm"));
-      result.append(
-          scheduledNotification(key, trigger, decoratedTitle(occurrence.emoji, occurrence.title), body));
+        notifications.append(
+            scheduledNotification(key, trigger, decoratedTitle(occurrence.emoji, occurrence.title), body));
+        continue;
+      }
+      if (dueAt > now && (!mostRecentMissedTrigger.isValid() || trigger > mostRecentMissedTrigger)) {
+        catchUpMinutesBefore = minutesBefore;
+        mostRecentMissedTrigger = trigger;
+      }
+    }
+    if (catchUpMinutesBefore >= 0) {
+      const QString key = QStringLiteral("task:%1@%2:%3")
+                              .arg(occurrence.taskId, occurrence.occurrenceDate.toString(Qt::ISODate))
+                              .arg(catchUpMinutesBefore);
+      const QString body = QStringLiteral("Em %1 min · %2")
+                               .arg(catchUpMinutesBefore)
+                               .arg(occurrence.scheduledTime.toString("HH:mm"));
+      notifications.append(scheduledNotification(key, now.addSecs(1),
+                                                 decoratedTitle(occurrence.emoji, occurrence.title), body));
     }
   }
 
@@ -100,10 +118,29 @@ bool buildNotificationSchedule(TaskStore &store, const QDateTime &now, const int
         const QString goal = habit.unit.isEmpty()
                                  ? QString::number(habit.targetAmount)
                                  : QStringLiteral("%1 %2").arg(habit.targetAmount).arg(habit.unit);
-        result.append(scheduledNotification(key, trigger, decoratedTitle(habit.emoji, habit.title),
-                                            QStringLiteral("Meta diária · %1").arg(goal)));
+        notifications.append(scheduledNotification(key, trigger, decoratedTitle(habit.emoji, habit.title),
+                                                   QStringLiteral("Meta diária · %1").arg(goal)));
       }
     }
+  }
+
+  std::sort(
+      notifications.begin(), notifications.end(), [](const QJsonObject &left, const QJsonObject &right) {
+        const double leftTrigger = left.value(QStringLiteral("at")).toDouble();
+        const double rightTrigger = right.value(QStringLiteral("at")).toDouble();
+        if (leftTrigger != rightTrigger) {
+          return leftTrigger < rightTrigger;
+        }
+        return left.value(QStringLiteral("key")).toString() < right.value(QStringLiteral("key")).toString();
+      });
+
+  constexpr int maximumScheduledNotifications = 384;
+  QJsonArray result;
+  for (const QJsonObject &notification : notifications) {
+    if (result.size() >= maximumScheduledNotifications) {
+      break;
+    }
+    result.append(notification);
   }
 
   *schedule = result;

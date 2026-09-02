@@ -8,5 +8,6 @@ public final class WaypointBootReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         WaypointNotifications.rescheduleStored(context);
+        WaypointWidgetProvider.updateAll(context);
     }
 }

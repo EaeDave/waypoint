@@ -4,6 +4,7 @@
 #include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
 
+#include <QByteArray>
 #include <QDate>
 #include <QObject>
 #include <QTimer>
@@ -107,6 +108,7 @@ private:
   bool finishMutation(bool succeeded, const QString &errorMessage);
   void refreshSyncProperties();
   void refreshNotificationSchedule();
+  void refreshWidgetSnapshot(const QDate &today);
 
   TaskStore m_store;
   SyncEngine m_syncEngine;
@@ -130,6 +132,9 @@ private:
   QString m_syncState = QStringLiteral("local-only");
   QString m_syncLastError;
   QString m_lastSuccessfulSync;
+  QDate m_widgetSnapshotDate;
+  QByteArray m_widgetSnapshot;
+  bool m_widgetSnapshotDirty = true;
 };
 
 } // namespace waypoint

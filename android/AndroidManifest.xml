@@ -6,6 +6,7 @@
     android:versionName="-- %%INSERT_VERSION_NAME%% --">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
@@ -53,6 +54,21 @@
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
 
+        <service
+            android:name="org.eaedave.waypoint.WaypointWidgetActionService"
+            android:exported="false"
+            android:foregroundServiceType="shortService">
+            <meta-data
+                android:name="android.app.lib_name"
+                android:value="-- %%INSERT_APP_LIB_NAME%% --" />
+            <meta-data
+                android:name="android.app.arguments"
+                android:value="-widget-action-service" />
+            <meta-data
+                android:name="android.app.background_running"
+                android:value="true" />
+        </service>
+
         <receiver
             android:name="org.eaedave.waypoint.WaypointReminderReceiver"
             android:exported="false" />
@@ -64,6 +80,22 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name="org.eaedave.waypoint.WaypointWidgetProvider"
+            android:enabled="true"
+            android:exported="false"
+            android:label="Waypoint">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="android.intent.action.DATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/waypoint_widget_info" />
         </receiver>
 
         <provider

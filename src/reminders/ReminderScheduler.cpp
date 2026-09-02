@@ -2,6 +2,7 @@
 
 #include "core/TaskStore.hpp"
 
+#include <algorithm>
 #include <chrono>
 
 namespace waypoint {
@@ -51,42 +52,62 @@ bool ReminderScheduler::dispatchDueReminders(const QDateTime &localNow, QString 
   }
 
   const QDateTime currentMinute(localNow.date(), QTime(localNow.time().hour(), localNow.time().minute()));
+  int maximumReminderMinutes = 0;
   for (const TaskRecord &task : tasks) {
-    for (const int reminderMinutesBefore : task.reminderMinutesBefore) {
-      const QDateTime dueMinute = currentMinute.addSecs(static_cast<qint64>(reminderMinutesBefore) * 60);
-      if (!dueMinute.isValid() || task.scheduledTime != dueMinute.time()) {
-        continue;
-      }
-      const QList<TaskOccurrence> occurrences =
-          projectOccurrences({task}, states, dueMinute.date(), dueMinute.date());
-      if (occurrences.isEmpty() || occurrences.constFirst().completed) {
-        continue;
-      }
-      const TaskOccurrence &occurrence = occurrences.constFirst();
-
-      bool claimed = false;
-      QString claimError;
-      if (!m_taskStore->claimReminderDelivery(occurrence.taskId, occurrence.occurrenceDate,
-                                              reminderMinutesBefore, &claimed, &claimError)) {
-        setError(errorMessage, claimError);
-        return false;
-      }
-      if (!claimed) {
-        continue;
-      }
-
-      QString notificationError;
-      if (!m_notificationSink->send(occurrence, reminderMinutesBefore, &notificationError)) {
-        QString releaseError;
-        if (!m_taskStore->releaseReminderDelivery(occurrence.taskId, occurrence.occurrenceDate,
-                                                  reminderMinutesBefore, &releaseError)) {
-          notificationError += QStringLiteral("; cannot release reminder claim: %1").arg(releaseError);
-        }
-        setError(errorMessage, notificationError);
-        return false;
-      }
-      emit reminderDelivered(occurrence.taskId, occurrence.title);
+    for (const int minutesBefore : task.reminderMinutesBefore) {
+      maximumReminderMinutes = std::max(maximumReminderMinutes, minutesBefore);
     }
+  }
+  const QDate reminderHorizon =
+      currentMinute.addSecs(static_cast<qint64>(maximumReminderMinutes) * 60).date();
+  const QList<TaskOccurrence> occurrences =
+      projectOccurrences(tasks, states, currentMinute.date(), reminderHorizon);
+  for (const TaskOccurrence &occurrence : occurrences) {
+    if (occurrence.completed || !occurrence.scheduledTime.isValid()) {
+      continue;
+    }
+    const QDateTime dueMinute(occurrence.occurrenceDate, occurrence.scheduledTime);
+    if (dueMinute < currentMinute) {
+      continue;
+    }
+
+    int reminderMinutesBefore = -1;
+    QDateTime mostRecentTrigger;
+    for (const int candidateMinutesBefore : occurrence.reminderMinutesBefore) {
+      const QDateTime triggerMinute = dueMinute.addSecs(-static_cast<qint64>(candidateMinutesBefore) * 60);
+      if (triggerMinute > currentMinute ||
+          (mostRecentTrigger.isValid() && triggerMinute <= mostRecentTrigger)) {
+        continue;
+      }
+      reminderMinutesBefore = candidateMinutesBefore;
+      mostRecentTrigger = triggerMinute;
+    }
+    if (reminderMinutesBefore < 0) {
+      continue;
+    }
+
+    bool claimed = false;
+    QString claimError;
+    if (!m_taskStore->claimReminderDelivery(occurrence.taskId, occurrence.occurrenceDate,
+                                            reminderMinutesBefore, &claimed, &claimError)) {
+      setError(errorMessage, claimError);
+      return false;
+    }
+    if (!claimed) {
+      continue;
+    }
+
+    QString notificationError;
+    if (!m_notificationSink->send(occurrence, reminderMinutesBefore, &notificationError)) {
+      QString releaseError;
+      if (!m_taskStore->releaseReminderDelivery(occurrence.taskId, occurrence.occurrenceDate,
+                                                reminderMinutesBefore, &releaseError)) {
+        notificationError += QStringLiteral("; cannot release reminder claim: %1").arg(releaseError);
+      }
+      setError(errorMessage, notificationError);
+      return false;
+    }
+    emit reminderDelivered(occurrence.taskId, occurrence.title);
   }
 
   const QList<HabitProgress> habits = m_taskStore->listHabitProgress(currentMinute.date(), &loadError);
@@ -101,7 +122,7 @@ bool ReminderScheduler::dispatchDueReminders(const QDateTime &localNow, QString 
     bool claimed = false;
     QString claimError;
     if (!m_taskStore->claimHabitReminderDelivery(progress.habit.id, progress.date, currentMinute.time(),
-                                                  &claimed, &claimError)) {
+                                                 &claimed, &claimError)) {
       setError(errorMessage, claimError);
       return false;
     }
@@ -111,8 +132,8 @@ bool ReminderScheduler::dispatchDueReminders(const QDateTime &localNow, QString 
     QString notificationError;
     if (!m_notificationSink->sendHabit(progress, currentMinute.time(), &notificationError)) {
       QString releaseError;
-      if (!m_taskStore->releaseHabitReminderDelivery(progress.habit.id, progress.date,
-                                                      currentMinute.time(), &releaseError)) {
+      if (!m_taskStore->releaseHabitReminderDelivery(progress.habit.id, progress.date, currentMinute.time(),
+                                                     &releaseError)) {
         notificationError += QStringLiteral("; cannot release habit reminder claim: %1").arg(releaseError);
       }
       setError(errorMessage, notificationError);

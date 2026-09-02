@@ -4,21 +4,21 @@ FROM rust:1.89-bookworm AS dependencies
 WORKDIR /source
 ENV CARGO_INCREMENTAL=0
 
-COPY Cargo.toml Cargo.lock ./
-COPY server/Cargo.toml ./server/Cargo.toml
-RUN mkdir --parents server/src \
-    && printf 'fn main() {}\n' > server/src/main.rs
+COPY server/Cargo.toml ./Cargo.toml
+COPY Cargo.lock ./
+RUN mkdir --parents src \
+    && printf 'fn main() {}\n' > src/main.rs
 RUN --mount=type=cache,id=waypoint-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=waypoint-cargo-target,target=/source/target,sharing=locked \
-    cargo build --locked --release --package waypoint-api
+    cargo build --locked --release --bin waypoint-api
 
 FROM dependencies AS builder
-RUN rm --recursive --force server/src
-COPY server/src ./server/src
-COPY server/migrations ./server/migrations
+RUN rm --recursive --force src
+COPY server/src ./src
+COPY server/migrations ./migrations
 RUN --mount=type=cache,id=waypoint-cargo-registry,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,id=waypoint-cargo-target,target=/source/target,sharing=locked \
-    cargo build --locked --release --package waypoint-api \
+    cargo build --locked --release --bin waypoint-api \
     && cp /source/target/release/waypoint-api /waypoint-api
 
 FROM debian:bookworm-slim AS runtime

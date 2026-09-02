@@ -4,12 +4,17 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QVariant>
+#include <QtCore/private/qandroidextras_p.h>
 
 int main(int argc, char *argv[]) {
-  QGuiApplication::setOrganizationName(QStringLiteral("eaedave"));
-  QGuiApplication::setOrganizationDomain(QStringLiteral("eaedave.org"));
-  QGuiApplication::setApplicationName(QStringLiteral("Waypoint"));
+  QCoreApplication::setOrganizationName(QStringLiteral("eaedave"));
+  QCoreApplication::setOrganizationDomain(QStringLiteral("eaedave.org"));
+  QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));
 
+  if (argc > 1 && QString::fromUtf8(argv[1]) == QStringLiteral("-widget-action-service")) {
+    QAndroidService service(argc, argv);
+    return service.exec();
+  }
 
   QGuiApplication application(argc, argv);
   QQuickStyle::setStyle(QStringLiteral("Basic"));

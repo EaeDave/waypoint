@@ -1,8 +1,10 @@
 #include "mobile/MobileController.hpp"
 
 #include "mobile/AndroidNotificationBridge.hpp"
-
+#include "mobile/AndroidWidgetBridge.hpp"
+#include "mobile/WidgetSnapshot.hpp"
 #include <QDate>
+#include <QDebug>
 #include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -97,10 +99,15 @@ MobileController::MobileController(QString databasePath, QObject *parent)
       m_visibleYear(m_selectedDate.year()), m_visibleMonth(m_selectedDate.month()) {
   m_refreshTimer.setInterval(30000);
   connect(&m_refreshTimer, &QTimer::timeout, this, &MobileController::refresh);
-  connect(&m_store, &TaskStore::tasksChanged, this, &MobileController::scheduleRefresh);
+  connect(&m_store, &TaskStore::tasksChanged, this, [this] {
+    m_widgetSnapshotDirty = true;
+    scheduleRefresh();
+  });
   connect(&m_store, &TaskStore::habitsChanged, this, &MobileController::scheduleRefresh);
-  connect(&m_store, &TaskStore::holidaysChanged, this,
-          [this] { QTimer::singleShot(0, this, &MobileController::refresh); });
+  connect(&m_store, &TaskStore::holidaysChanged, this, [this] {
+    m_widgetSnapshotDirty = true;
+    QTimer::singleShot(0, this, &MobileController::refresh);
+  });
   connect(&m_syncEngine, &SyncEngine::statusChanged, this, &MobileController::refreshSyncProperties);
   connect(&m_holidaySyncEngine, &HolidaySyncEngine::statusChanged, this,
           [this] { QTimer::singleShot(0, this, &MobileController::refresh); });
@@ -248,6 +255,7 @@ void MobileController::refresh() {
     emit holidayPreferencesChanged();
   }
   refreshSyncProperties();
+  refreshWidgetSnapshot(today);
   publishError({});
   emit dataChanged();
 }
@@ -466,6 +474,25 @@ void MobileController::refreshSyncProperties() {
     m_lastSuccessfulSync = lastSuccessful;
     emit syncStatusChanged();
   }
+}
+
+void MobileController::refreshWidgetSnapshot(const QDate &today) {
+  if (!m_widgetSnapshotDirty && m_widgetSnapshotDate == today) {
+    return;
+  }
+  QString error;
+  const QJsonObject snapshot = buildWidgetSnapshot(m_store, today, 6, 12, &error);
+  if (!error.isEmpty()) {
+    qWarning().noquote() << "Unable to refresh Android widget snapshot:" << error;
+    return;
+  }
+  const QByteArray serialized = QJsonDocument(snapshot).toJson(QJsonDocument::Compact);
+  if (serialized != m_widgetSnapshot) {
+    AndroidWidgetBridge::publishSnapshot(snapshot);
+    m_widgetSnapshot = serialized;
+  }
+  m_widgetSnapshotDate = today;
+  m_widgetSnapshotDirty = false;
 }
 
 void MobileController::refreshNotificationSchedule() {
