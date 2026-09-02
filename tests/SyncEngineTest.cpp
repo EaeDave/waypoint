@@ -15,6 +15,7 @@ private slots:
   void normalizeAndPersistServerUrl();
   void rejectUnsafeServerUrl();
   void preserveExistingTokenWhenRequested();
+  void syncsImmediatelyWhenEventArrives();
   void preserveHolidayPreferencesWithoutServer();
   void downloadNewerHolidayPreferences();
 };
@@ -68,6 +69,71 @@ void SyncEngineTest::preserveExistingTokenWhenRequested() {
   QCOMPARE(stored.token, QByteArrayLiteral("token"));
 
   QVERIFY2(engine.updateConfiguration({}, {}, true, &error), qPrintable(error));
+}
+
+void SyncEngineTest::syncsImmediatelyWhenEventArrives() {
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const waypoint::SyncConfiguration configuration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync").arg(server.serverPort())),
+      QByteArrayLiteral("token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+
+  waypoint::SyncEngine engine(&store);
+  engine.start();
+
+  QTcpSocket *eventSocket = nullptr;
+  int syncRequests = 0;
+  const QByteArray syncBody =
+      QByteArrayLiteral(R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[]})");
+  const QByteArray syncResponse =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ") +
+      QByteArray::number(syncBody.size()) + QByteArrayLiteral("\r\n\r\n") + syncBody;
+
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+    QTcpSocket *socket = server.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 2000);
+    const QByteArray request = socket->readAll();
+    QVERIFY2(request.contains("Authorization: Bearer token"), request.constData());
+    if (request.startsWith("GET /v1/events ")) {
+      eventSocket = socket;
+      const QByteArray headers = QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"
+          "Connection: keep-alive\r\n\r\n");
+      QCOMPARE(socket->write(headers), headers.size());
+      QVERIFY(socket->flush());
+    } else {
+      QVERIFY2(request.startsWith("POST /v1/sync "), request.constData());
+      ++syncRequests;
+      QCOMPARE(socket->write(syncResponse), syncResponse.size());
+      QVERIFY(socket->flush());
+    }
+  }
+  QVERIFY(eventSocket != nullptr);
+  QCOMPARE(syncRequests, 1);
+
+  const QByteArray event =
+      QByteArrayLiteral("event: sync-needed\ndata: {\"sequence\":1}\n\n");
+  QCOMPARE(eventSocket->write(event), event.size());
+  QVERIFY(eventSocket->flush());
+
+  QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+  QTcpSocket *triggeredSocket = server.nextPendingConnection();
+  QVERIFY(triggeredSocket != nullptr);
+  QTRY_VERIFY_WITH_TIMEOUT(triggeredSocket->bytesAvailable() > 0, 2000);
+  const QByteArray triggeredRequest = triggeredSocket->readAll();
+  QVERIFY2(triggeredRequest.startsWith("POST /v1/sync "), triggeredRequest.constData());
+  QCOMPARE(triggeredSocket->write(syncResponse), syncResponse.size());
+  QVERIFY(triggeredSocket->flush());
 }
 
 void SyncEngineTest::preserveHolidayPreferencesWithoutServer() {

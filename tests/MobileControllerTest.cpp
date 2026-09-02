@@ -1,3 +1,4 @@
+#include "mobile/BackgroundSync.hpp"
 #include "mobile/MobileController.hpp"
 #include "mobile/NotificationSchedule.hpp"
 #include "mobile/WidgetSnapshot.hpp"
@@ -21,6 +22,7 @@ private slots:
   void capNotificationsBelowAndroidAlarmLimit();
   void buildWidgetCalendarSnapshot();
   void applyWidgetTaskCompletionAndUndo();
+  void prepareAndApplyBackgroundSync();
 };
 
 void MobileControllerTest::exposeTaskAndHabitWorkflows() {
@@ -325,6 +327,35 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
                       [&recurringTask](const waypoint::TaskRecord &activeTask) {
                         return activeTask.id == recurringTask.id;
                       }));
+}
+
+void MobileControllerTest::prepareAndApplyBackgroundSync() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("waypoint.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const waypoint::SyncConfiguration configuration{
+      QUrl(QStringLiteral("https://waypoint.example/v1/sync")),
+      QByteArrayLiteral("secret-token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+
+  waypoint::BackgroundSyncRequest request;
+  QVERIFY2(waypoint::prepareBackgroundSync(store, &request, &error), qPrintable(error));
+  QCOMPARE(request.endpoint, configuration.endpoint);
+  QCOMPARE(request.token, configuration.token);
+  QVERIFY(!request.payload.value(QStringLiteral("deviceId")).toString().isEmpty());
+  QCOMPARE(request.payload.value(QStringLiteral("cursor")).toInteger(), 0);
+
+  const QJsonObject response{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+      {QStringLiteral("changes"), QJsonArray{}},
+  };
+  waypoint::BackgroundSyncResult result;
+  QVERIFY2(waypoint::applyBackgroundSync(store, response, &result, &error), qPrintable(error));
+  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 1);
+  QVERIFY(result.notificationSchedule.isEmpty());
 }
 
 QTEST_MAIN(MobileControllerTest)

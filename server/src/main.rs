@@ -25,8 +25,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::migrate!().run(&pool).await?;
 
     let listener = tokio::net::TcpListener::bind(bind_address).await?;
+    let mut state = AppState::new(pool, sync_token);
+    if let Ok(service_account_json) = env::var("WAYPOINT_FIREBASE_SERVICE_ACCOUNT_JSON") {
+        state = state.with_fcm_service_account_json(&service_account_json)?;
+        tracing::info!("Firebase Cloud Messaging delivery is enabled");
+    } else {
+        tracing::warn!(
+            "Firebase Cloud Messaging delivery is disabled; Android uses polling fallback"
+        );
+    }
     tracing::info!(address = %bind_address, "Waypoint API is ready");
-    axum::serve(listener, router(AppState::new(pool, sync_token))).await?;
+    axum::serve(listener, router(state)).await?;
     Ok(())
 }
 

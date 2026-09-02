@@ -20,6 +20,7 @@ public final class WaypointActivity extends QtActivity {
   public void onCreate(Bundle savedInstanceState) {
     sanitizeWidgetLaunchIntent(getIntent());
     super.onCreate(savedInstanceState);
+    WaypointFirebase.initialize(this);
     configureSystemBars();
     if (!requestNotificationPermission()) {
       offerExactAlarmAccessOnce();

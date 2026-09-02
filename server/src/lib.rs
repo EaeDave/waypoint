@@ -1,17 +1,24 @@
+pub mod fcm;
 mod holidays;
 
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    response::{
+        IntoResponse, Response,
+        sse::{Event, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
 use chrono::{NaiveDate, NaiveTime};
+use fcm::FcmClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
-use std::{sync::Arc, time::Duration};
+use std::{convert::Infallible, sync::Arc, time::Duration};
+use tokio::sync::broadcast;
+use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
 
@@ -20,6 +27,8 @@ pub struct AppState {
     pub(crate) pool: PgPool,
     pub(crate) sync_token: Arc<str>,
     pub(crate) http: reqwest::Client,
+    wakeups: broadcast::Sender<SyncWakeup>,
+    fcm: Option<FcmClient>,
 }
 
 impl AppState {
@@ -28,12 +37,26 @@ impl AppState {
             .timeout(Duration::from_secs(10))
             .user_agent("Waypoint/0.1")
             .build()
-            .expect("the holiday HTTP client configuration is valid");
+            .expect("the HTTP client configuration is valid");
+        let (wakeups, _) = broadcast::channel(128);
         Self {
             pool,
             sync_token: sync_token.into(),
             http,
+            wakeups,
+            fcm: None,
         }
+    }
+
+    pub fn with_fcm_service_account_json(
+        mut self,
+        service_account_json: &str,
+    ) -> Result<Self, fcm::FcmError> {
+        self.fcm = Some(FcmClient::from_service_account_json(
+            self.http.clone(),
+            service_account_json,
+        )?);
+        Ok(self)
     }
 }
 
@@ -41,6 +64,11 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/v1/sync", post(sync))
+        .route("/v1/events", get(sync_events))
+        .route(
+            "/v1/devices/{device_id}",
+            axum::routing::put(register_device).delete(delete_device),
+        )
         .route("/v1/holidays", get(holidays::list_holidays))
         .route(
             "/v1/holiday-preferences",
@@ -94,6 +122,111 @@ struct SyncChange {
     payload: Value,
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncWakeup {
+    sequence: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DeviceRegistration {
+    platform: String,
+    push_token: String,
+}
+
+async fn sync_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    authorize(&headers, &state.sync_token)?;
+    let stream = BroadcastStream::new(state.wakeups.subscribe())
+        .filter_map(Result::ok)
+        .map(|wakeup| {
+            Ok(Event::default()
+                .event("sync-needed")
+                .data(format!(r#"{{"sequence":{}}}"#, wakeup.sequence)))
+        });
+    Ok(Sse::new(stream).keep_alive(
+        KeepAlive::new()
+            .interval(Duration::from_secs(20))
+            .text("keep-alive"),
+    ))
+}
+
+async fn register_device(
+    State(state): State<AppState>,
+    Path(device_id): Path<String>,
+    headers: HeaderMap,
+    Json(registration): Json<DeviceRegistration>,
+) -> Result<StatusCode, ApiError> {
+    authorize(&headers, &state.sync_token)?;
+    validate_device_registration(&device_id, &registration)?;
+
+    let mut transaction = state.pool.begin().await.map_err(ApiError::database)?;
+    sqlx::query("DELETE FROM sync_devices WHERE push_token = $1 AND device_id <> $2")
+        .bind(&registration.push_token)
+        .bind(&device_id)
+        .execute(&mut *transaction)
+        .await
+        .map_err(ApiError::database)?;
+    sqlx::query(
+        "INSERT INTO sync_devices(device_id, platform, push_token) VALUES($1, $2, $3) \
+         ON CONFLICT(device_id) DO UPDATE SET platform = excluded.platform, \
+         push_token = excluded.push_token, updated_at = now()",
+    )
+    .bind(&device_id)
+    .bind(&registration.platform)
+    .bind(&registration.push_token)
+    .execute(&mut *transaction)
+    .await
+    .map_err(ApiError::database)?;
+    transaction.commit().await.map_err(ApiError::database)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_device(
+    State(state): State<AppState>,
+    Path(device_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    authorize(&headers, &state.sync_token)?;
+    validate_device_id(&device_id)?;
+    sqlx::query("DELETE FROM sync_devices WHERE device_id = $1")
+        .bind(device_id)
+        .execute(&state.pool)
+        .await
+        .map_err(ApiError::database)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn validate_device_registration(
+    device_id: &str,
+    registration: &DeviceRegistration,
+) -> Result<(), ApiError> {
+    validate_device_id(device_id)?;
+    if registration.platform != "android" {
+        return Err(ApiError::bad_request("platform must be android"));
+    }
+    if registration.push_token.trim() != registration.push_token
+        || !(16..=4096).contains(&registration.push_token.len())
+    {
+        return Err(ApiError::bad_request(
+            "pushToken must contain 16 to 4096 non-whitespace-bounded characters",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_device_id(device_id: &str) -> Result<(), ApiError> {
+    if device_id.trim().is_empty() || device_id.len() > 128 {
+        return Err(ApiError::bad_request(
+            "deviceId must contain 1 to 128 characters",
+        ));
+    }
+    Ok(())
+}
+
 async fn sync(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -104,6 +237,7 @@ async fn sync(
 
     let mut transaction = state.pool.begin().await.map_err(ApiError::database)?;
     let mut accepted_mutation_ids = Vec::with_capacity(request.mutations.len());
+    let mut wake_sequence = None;
 
     for mutation in request.mutations {
         let mutation_id = Uuid::parse_str(&mutation.mutation_id).map_err(|_| {
@@ -159,19 +293,20 @@ async fn sync(
         .await
         .map_err(ApiError::database)?;
 
-        sqlx::query(
+        let sequence = sqlx::query_scalar::<_, i64>(
             "INSERT INTO changes \
              (mutation_id, entity_type, entity_id, operation, payload) \
-             VALUES($1, $2, $3, $4, $5)",
+             VALUES($1, $2, $3, $4, $5) RETURNING sequence",
         )
         .bind(mutation_id)
         .bind(entity_type)
         .bind(entity_id)
         .bind(&mutation.operation)
         .bind(sqlx::types::Json(&payload))
-        .execute(&mut *transaction)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(ApiError::database)?;
+        wake_sequence = Some(sequence);
     }
 
     let rows = sqlx::query(
@@ -200,11 +335,67 @@ async fn sync(
     }
 
     transaction.commit().await.map_err(ApiError::database)?;
+    if let Some(sequence) = wake_sequence {
+        publish_sync_wakeup(&state, sequence, request.device_id.clone());
+    }
     Ok(Json(SyncResponse {
         next_cursor,
         accepted_mutation_ids,
         changes,
     }))
+}
+
+fn publish_sync_wakeup(state: &AppState, sequence: i64, source_device_id: String) {
+    let _ = state.wakeups.send(SyncWakeup { sequence });
+    let Some(fcm) = state.fcm.clone() else {
+        return;
+    };
+    let pool = state.pool.clone();
+    tokio::spawn(async move {
+        deliver_android_wakeups(pool, fcm, sequence, &source_device_id).await;
+    });
+}
+
+async fn deliver_android_wakeups(
+    pool: PgPool,
+    fcm: FcmClient,
+    sequence: i64,
+    source_device_id: &str,
+) {
+    let devices = match sqlx::query_as::<_, (String, String)>(
+        "SELECT device_id, push_token FROM sync_devices \
+         WHERE platform = 'android' AND device_id <> $1",
+    )
+    .bind(source_device_id)
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(devices) => devices,
+        Err(error) => {
+            tracing::error!(%error, "failed to list Android devices for sync wakeup");
+            return;
+        }
+    };
+
+    for (device_id, push_token) in devices {
+        if let Err(error) = fcm.send_sync_needed(&push_token, sequence).await {
+            tracing::warn!(%error, %device_id, "failed to deliver Android sync wakeup");
+            if error.invalid_device_token()
+                && let Err(delete_error) =
+                    sqlx::query("DELETE FROM sync_devices WHERE device_id = $1 AND push_token = $2")
+                        .bind(&device_id)
+                        .bind(&push_token)
+                        .execute(&pool)
+                        .await
+            {
+                tracing::error!(
+                    error = %delete_error,
+                    %device_id,
+                    "failed to delete invalid Android push token"
+                );
+            }
+        }
+    }
 }
 
 pub(crate) fn authorize(headers: &HeaderMap, expected_token: &str) -> Result<(), ApiError> {
@@ -696,6 +887,7 @@ mod tests {
         let mutation = SyncMutation {
             mutation_id: Uuid::new_v4().to_string(),
             entity_type: "task".to_owned(),
+
             entity_id: task_id.clone(),
             operation: "upsert".to_owned(),
             payload: json!({
@@ -887,8 +1079,42 @@ mod tests {
         assert!(validate_request(&request_with(vec![entry])).is_err());
     }
 
+    #[test]
+    fn validates_android_device_registrations() {
+        let registration = DeviceRegistration {
+            platform: "android".to_owned(),
+            push_token: "valid-push-token-123".to_owned(),
+        };
+        assert!(validate_device_registration("android-device", &registration).is_ok());
+
+        let unsupported = DeviceRegistration {
+            platform: "desktop".to_owned(),
+            push_token: "valid-push-token-123".to_owned(),
+        };
+        assert!(validate_device_registration("desktop-device", &unsupported).is_err());
+
+        let short_token = DeviceRegistration {
+            platform: "android".to_owned(),
+            push_token: "short".to_owned(),
+        };
+        assert!(validate_device_registration("android-device", &short_token).is_err());
+    }
+
     #[tokio::test]
-    async fn holiday_routes_require_bearer_token() {
+    async fn publishes_committed_sequence_as_wakeup_hint() {
+        let pool = PgPoolOptions::new()
+            .connect_lazy("postgres://waypoint:waypoint@127.0.0.1/waypoint")
+            .expect("test database URL is valid");
+        let state = AppState::new(pool, "expected-token");
+        let mut receiver = state.wakeups.subscribe();
+
+        publish_sync_wakeup(&state, 73, "source-device".to_owned());
+
+        let wakeup = receiver.recv().await.expect("wakeup is published");
+        assert_eq!(wakeup.sequence, 73);
+    }
+    #[tokio::test]
+    async fn get_routes_require_bearer_token() {
         let pool = PgPoolOptions::new()
             .connect_lazy("postgres://waypoint:waypoint@127.0.0.1/waypoint")
             .expect("test database URL is valid");
@@ -898,6 +1124,7 @@ mod tests {
             "/v1/holidays?from=2026-01-01&to=2026-12-31",
             "/v1/holiday-preferences",
             "/v1/locations/municipalities?state=SP",
+            "/v1/events",
         ] {
             let response = app
                 .clone()

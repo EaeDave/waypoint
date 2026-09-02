@@ -34,6 +34,8 @@ add_library(waypoint_sync STATIC
     src/sync/HolidaySyncEngine.cpp
     src/sync/HolidaySyncEngine.hpp
     src/sync/SyncEngine.hpp
+    src/sync/SyncProtocol.cpp
+    src/sync/SyncProtocol.hpp
 )
 target_include_directories(waypoint_sync PUBLIC src)
 target_link_libraries(waypoint_sync PUBLIC waypoint_core Qt6::Core Qt6::Network)
@@ -43,6 +45,8 @@ add_library(waypoint_mobile_core STATIC
     src/mobile/AndroidWidgetBridge.cpp
     src/mobile/AndroidWidgetBridge.hpp
     src/mobile/AndroidNotificationBridge.cpp
+    src/mobile/BackgroundSync.cpp
+    src/mobile/BackgroundSync.hpp
     src/mobile/AndroidNotificationBridge.hpp
     src/mobile/MobileController.cpp
     src/mobile/MobileController.hpp

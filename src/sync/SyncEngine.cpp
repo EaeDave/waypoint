@@ -1,13 +1,13 @@
 #include "sync/SyncEngine.hpp"
 
 #include "core/TaskStore.hpp"
+#include "sync/SyncProtocol.hpp"
+#include <algorithm>
 
-#include <QCryptographicHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
 #include <QNetworkRequest>
-#include <QSysInfo>
 
 namespace waypoint {
 namespace {
@@ -24,8 +24,10 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent) : QObject(parent),
   m_periodicTimer.setInterval(15000);
   m_debounceTimer.setInterval(150);
   m_debounceTimer.setSingleShot(true);
+  m_eventReconnectTimer.setSingleShot(true);
   connect(&m_periodicTimer, &QTimer::timeout, this, &SyncEngine::syncNow);
   connect(&m_debounceTimer, &QTimer::timeout, this, &SyncEngine::syncNow);
+  connect(&m_eventReconnectTimer, &QTimer::timeout, this, &SyncEngine::openEventStream);
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
 }
@@ -74,6 +76,7 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
   m_debounceTimer.stop();
+  closeEventStream();
   if (!enabled()) {
     m_periodicTimer.stop();
     setStatus(QStringLiteral("local-only"));
@@ -84,6 +87,7 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
     m_periodicTimer.start();
   }
   setStatus(QStringLiteral("ready"));
+  openEventStream();
   QTimer::singleShot(0, this, &SyncEngine::syncNow);
   return true;
 }
@@ -105,28 +109,26 @@ void SyncEngine::start() {
   }
   m_periodicTimer.start();
   setStatus(QStringLiteral("ready"));
+  openEventStream();
   QTimer::singleShot(0, this, &SyncEngine::syncNow);
 }
 
 void SyncEngine::syncNow() {
-  if (!enabled() || m_inFlight) {
+  if (!enabled()) {
+    return;
+  }
+  if (m_inFlight) {
+    m_syncRequested = true;
     return;
   }
 
   QString error;
-  const QJsonArray mutations = m_taskStore->pendingMutations(&error);
-  const QString cursor = m_taskStore->syncCursor(&error);
+  const QJsonObject payload = buildSyncRequest(*m_taskStore, syncDeviceId(), &error);
   if (!error.isEmpty()) {
     setStatus(QStringLiteral("error"), error);
     log(QStringLiteral("error"), error);
     return;
   }
-
-  const QJsonObject payload{
-      {QStringLiteral("deviceId"), deviceId()},
-      {QStringLiteral("cursor"), cursor.toLongLong()},
-      {QStringLiteral("mutations"), mutations},
-  };
   QNetworkRequest request(m_endpoint);
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_token);
@@ -142,8 +144,13 @@ void SyncEngine::finishSync() {
   auto *reply = qobject_cast<QNetworkReply *>(sender());
   m_inFlight = false;
   if (reply == nullptr) {
+    continuePendingSync();
     return;
   }
+  const auto finishRequest = [this, reply] {
+    reply->deleteLater();
+    continuePendingSync();
+  };
   const QByteArray responseBytes = reply->readAll();
   if (reply->error() != QNetworkReply::NoError) {
     const QString message = QStringLiteral("HTTP %1: %2")
@@ -151,7 +158,7 @@ void SyncEngine::finishSync() {
                                 .arg(reply->errorString());
     setStatus(QStringLiteral("error"), message);
     log(QStringLiteral("warn"), QStringLiteral("Synchronization request failed: %1").arg(message));
-    reply->deleteLater();
+    finishRequest();
     return;
   }
 
@@ -162,30 +169,21 @@ void SyncEngine::finishSync() {
         QStringLiteral("Synchronization response is not valid JSON: %1").arg(parseError.errorString());
     setStatus(QStringLiteral("error"), message);
     log(QStringLiteral("error"), message);
-    reply->deleteLater();
+    finishRequest();
     return;
   }
 
-  const QJsonObject response = document.object();
-  QStringList acceptedMutationIds;
-  for (const QJsonValue &value : response.value(QStringLiteral("acceptedMutationIds")).toArray()) {
-    acceptedMutationIds.append(value.toString());
-  }
-
   QString storeError;
-  if (!m_taskStore->applyRemoteChanges(
-          response.value(QStringLiteral("changes")).toArray(),
-          QString::number(response.value(QStringLiteral("nextCursor")).toInteger()), acceptedMutationIds,
-          &storeError)) {
+  if (!applySyncResponse(*m_taskStore, document.object(), &storeError)) {
     setStatus(QStringLiteral("error"), storeError);
     log(QStringLiteral("error"), storeError);
-    reply->deleteLater();
+    finishRequest();
     return;
   }
 
   m_lastSuccessfulSync = QDateTime::currentDateTimeUtc();
   setStatus(QStringLiteral("ready"));
-  reply->deleteLater();
+  finishRequest();
 }
 
 void SyncEngine::scheduleSoon() {
@@ -193,18 +191,114 @@ void SyncEngine::scheduleSoon() {
     m_debounceTimer.start();
   }
 }
+void SyncEngine::consumeEventStream() {
+  if (m_eventStream == nullptr) {
+    return;
+  }
+  m_eventBuffer.append(m_eventStream->readAll());
+  while (true) {
+    const qsizetype lfSeparator = m_eventBuffer.indexOf(QByteArrayLiteral("\n\n"));
+    const qsizetype crlfSeparator = m_eventBuffer.indexOf(QByteArrayLiteral("\r\n\r\n"));
+    qsizetype separator = lfSeparator;
+    qsizetype separatorSize = 2;
+    if (separator < 0 || (crlfSeparator >= 0 && crlfSeparator < separator)) {
+      separator = crlfSeparator;
+      separatorSize = 4;
+    }
+    if (separator < 0) {
+      return;
+    }
 
-QString SyncEngine::deviceId() const {
-  const QString overrideId = qEnvironmentVariable("WAYPOINT_DEVICE_ID");
-  if (!overrideId.isEmpty()) {
-    return overrideId;
+    QByteArray event = m_eventBuffer.left(separator);
+    m_eventBuffer.remove(0, separator + separatorSize);
+    event.replace(QByteArrayLiteral("\r\n"), QByteArrayLiteral("\n"));
+    bool isSyncWakeup = false;
+    for (const QByteArray &line : event.split('\n')) {
+      if (line == QByteArrayLiteral("event: sync-needed")) {
+        isSyncWakeup = true;
+        break;
+      }
+    }
+    if (isSyncWakeup) {
+      m_eventReconnectSeconds = 1;
+      syncNow();
+    }
   }
-  QByteArray identity = QSysInfo::machineUniqueId();
-  if (identity.isEmpty()) {
-    identity = QSysInfo::machineHostName().toUtf8();
-  }
-  return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(24));
 }
+
+void SyncEngine::finishEventStream() {
+  auto *reply = qobject_cast<QNetworkReply *>(sender());
+  if (reply == nullptr || reply != m_eventStream) {
+    if (reply != nullptr) {
+      reply->deleteLater();
+    }
+    return;
+  }
+  consumeEventStream();
+  m_eventStream = nullptr;
+  reply->deleteLater();
+  scheduleEventReconnect();
+}
+
+void SyncEngine::openEventStream() {
+  if (!enabled() || m_eventStream != nullptr) {
+    return;
+  }
+  QNetworkRequest request(eventStreamUrl());
+  request.setRawHeader("Accept", QByteArrayLiteral("text/event-stream"));
+  request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_token);
+  request.setRawHeader("Cache-Control", QByteArrayLiteral("no-cache"));
+  m_eventBuffer.clear();
+  m_eventStream = m_network.get(request);
+  m_eventStream->setParent(this);
+  connect(m_eventStream, &QNetworkReply::readyRead, this, &SyncEngine::consumeEventStream);
+  connect(m_eventStream, &QNetworkReply::finished, this, &SyncEngine::finishEventStream);
+}
+
+QUrl SyncEngine::eventStreamUrl() const {
+  QUrl url = m_endpoint;
+  QString path = url.path();
+  if (path.endsWith(QStringLiteral("/v1/sync"))) {
+    path.chop(4);
+    path.append(QStringLiteral("events"));
+  } else {
+    path = QStringLiteral("/v1/events");
+  }
+  url.setPath(path);
+  return url;
+}
+
+void SyncEngine::closeEventStream() {
+  m_eventReconnectTimer.stop();
+  m_eventReconnectSeconds = 1;
+  m_eventBuffer.clear();
+  if (m_eventStream == nullptr) {
+    return;
+  }
+  QNetworkReply *reply = m_eventStream;
+  m_eventStream = nullptr;
+  disconnect(reply, nullptr, this, nullptr);
+  reply->abort();
+  reply->deleteLater();
+}
+
+void SyncEngine::continuePendingSync() {
+  if (!m_syncRequested) {
+    return;
+  }
+  m_syncRequested = false;
+  QTimer::singleShot(0, this, &SyncEngine::syncNow);
+}
+
+void SyncEngine::scheduleEventReconnect() {
+  if (!enabled() || m_eventReconnectTimer.isActive()) {
+    return;
+  }
+  m_eventReconnectTimer.start(m_eventReconnectSeconds * 1000);
+  m_eventReconnectSeconds = std::min(m_eventReconnectSeconds * 2, 60);
+}
+
+
 
 QUrl SyncEngine::normalizeEndpoint(const QString &endpointInput, QString *errorMessage) const {
   QUrl endpoint = QUrl::fromUserInput(endpointInput);

@@ -1,4 +1,5 @@
 #include "core/TaskStore.hpp"
+#include "mobile/BackgroundSync.hpp"
 #include "mobile/WidgetTaskAction.hpp"
 
 #include <QJsonDocument>
@@ -51,4 +52,48 @@ Java_org_eaedave_waypoint_WaypointWidgetActionService_applyTaskCompletion(
     response.insert(QStringLiteral("error"), error);
   }
   return toJavaString(environment, QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)));
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_eaedave_waypoint_WaypointBackgroundSyncService_prepareBackgroundSync(JNIEnv *environment, jclass,
+                                                                              jstring databasePath) {
+  QJsonObject response;
+  QString error;
+  waypoint::TaskStore store(fromJavaString(environment, databasePath));
+  waypoint::BackgroundSyncRequest request;
+  const bool prepared = store.open(&error) && waypoint::prepareBackgroundSync(store, &request, &error);
+  response.insert(QStringLiteral("ok"), prepared);
+  if (prepared) {
+    response.insert(QStringLiteral("endpoint"), request.endpoint.toString(QUrl::FullyEncoded));
+    response.insert(QStringLiteral("token"), QString::fromUtf8(request.token));
+    response.insert(QStringLiteral("request"), request.payload);
+  } else {
+    response.insert(QStringLiteral("error"), error);
+  }
+  return toJavaString(environment, QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)));
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_eaedave_waypoint_WaypointBackgroundSyncService_applyBackgroundSync(
+    JNIEnv *environment, jclass, jstring databasePath, jstring responsePayload) {
+  QJsonObject resultJson;
+  QString error;
+  QJsonParseError parseError;
+  const QJsonDocument document =
+      QJsonDocument::fromJson(fromJavaString(environment, responsePayload).toUtf8(), &parseError);
+  waypoint::TaskStore store(fromJavaString(environment, databasePath));
+  waypoint::BackgroundSyncResult result;
+  const bool applied = parseError.error == QJsonParseError::NoError && document.isObject() && store.open(&error) &&
+                       waypoint::applyBackgroundSync(store, document.object(), &result, &error);
+  if (parseError.error != QJsonParseError::NoError) {
+    error = QStringLiteral("Synchronization response is not valid JSON: %1").arg(parseError.errorString());
+  }
+  resultJson.insert(QStringLiteral("ok"), applied);
+  if (applied) {
+    resultJson.insert(QStringLiteral("snapshot"), result.widgetSnapshot);
+    resultJson.insert(QStringLiteral("schedule"), result.notificationSchedule);
+  } else {
+    resultJson.insert(QStringLiteral("error"), error);
+  }
+  return toJavaString(environment, QString::fromUtf8(QJsonDocument(resultJson).toJson(QJsonDocument::Compact)));
 }
