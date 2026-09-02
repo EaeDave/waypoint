@@ -17,13 +17,14 @@ namespace {
 
 constexpr auto completionSoundName = "complete";
 
-void playCompletionSound() {
+void playCompletionSound(const QString &description) {
   const QString soundPlayer = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
   if (soundPlayer.isEmpty()) {
     return;
   }
-  QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(completionSoundName),
-                                        QStringLiteral("-d"), QStringLiteral("Waypoint task completed")});
+  QProcess::startDetached(
+      soundPlayer,
+      {QStringLiteral("-i"), QString::fromLatin1(completionSoundName), QStringLiteral("-d"), description});
 }
 
 } // namespace
@@ -202,16 +203,7 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     if (!m_taskStore->recordHabit(habitId, date, amount, &entry, &error)) {
       return protocol::errorResponse(error);
     }
-    const QList<HabitProgress> progress = m_taskStore->listHabitProgress(date, &error);
-    if (!error.isEmpty()) {
-      return protocol::errorResponse(error);
-    }
-    for (const HabitProgress &item : progress) {
-      if (item.habit.id == habitId && item.completed()) {
-        playCompletionSound();
-        break;
-      }
-    }
+    playCompletionSound(QStringLiteral("Waypoint habit recorded"));
     return {{QStringLiteral("ok"), true}, {QStringLiteral("entry"), entry.toJson()}};
   }
   if (command == QStringLiteral("undo-habit")) {
@@ -260,7 +252,7 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
       return protocol::errorResponse(error);
     }
     if (completed) {
-      playCompletionSound();
+      playCompletionSound(QStringLiteral("Waypoint task completed"));
     }
     return {{QStringLiteral("ok"), true}};
   }
