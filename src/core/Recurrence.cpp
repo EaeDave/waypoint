@@ -411,6 +411,12 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
               if (left.occurrenceDate != right.occurrenceDate) {
                 return left.occurrenceDate < right.occurrenceDate;
               }
+              if (left.completed != right.completed) {
+                return !left.completed;
+              }
+              if (left.scheduledTime != right.scheduledTime) {
+                return left.scheduledTime < right.scheduledTime;
+              }
               return left.taskId < right.taskId;
             });
   return occurrences;
@@ -485,6 +491,9 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
             [](const TaskOccurrence &left, const TaskOccurrence &right) {
               if (left.completed != right.completed) {
                 return !left.completed;
+              }
+              if (left.scheduledTime != right.scheduledTime) {
+                return left.scheduledTime < right.scheduledTime;
               }
               if (left.occurrenceDate != right.occurrenceDate) {
                 return left.occurrenceDate < right.occurrenceDate;

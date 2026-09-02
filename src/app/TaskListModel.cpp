@@ -111,20 +111,15 @@ void TaskListModel::rebuildVisibleTasks() {
     }
   }
 
-  std::ranges::sort(visible, [today](const TaskOccurrence &left, const TaskOccurrence &right) {
-    const bool leftOverdue = !left.completed && left.occurrenceDate < today;
-    const bool rightOverdue = !right.completed && right.occurrenceDate < today;
-    if (leftOverdue != rightOverdue) {
-      return leftOverdue;
-    }
+  std::ranges::sort(visible, [](const TaskOccurrence &left, const TaskOccurrence &right) {
     if (left.completed != right.completed) {
       return !left.completed;
     }
-    if (left.occurrenceDate != right.occurrenceDate) {
-      return left.occurrenceDate < right.occurrenceDate;
-    }
     if (left.scheduledTime != right.scheduledTime) {
       return left.scheduledTime < right.scheduledTime;
+    }
+    if (left.occurrenceDate != right.occurrenceDate) {
+      return left.occurrenceDate < right.occurrenceDate;
     }
     return left.taskId < right.taskId;
   });

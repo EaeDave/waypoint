@@ -19,6 +19,7 @@ private slots:
   void hideSkippedOccurrenceUntilNextRecurrence();
   void advanceCalendarMarkerAfterResolvedOccurrence();
   void isolateDailyCountsAcrossMidnightAndSeries();
+  void sortActionableTasksByTimeWithCompletedLast();
 };
 
 void RecurrenceTest::serializeTypedRule() {
@@ -244,6 +245,38 @@ void RecurrenceTest::isolateDailyCountsAcrossMidnightAndSeries() {
   QVERIFY(std::ranges::all_of(afterMidnight, [](const auto &occurrence) {
     return occurrence.occurrenceDate == QDate(2026, 1, 2) && !occurrence.completed;
   }));
+}
+
+void RecurrenceTest::sortActionableTasksByTimeWithCompletedLast() {
+  const QDate today(2026, 9, 2);
+  waypoint::TaskRecord late;
+  late.id = QStringLiteral("late");
+  late.title = QStringLiteral("Escovar os dentes");
+  late.scheduledDate = today;
+  late.scheduledTime = QTime(13, 30);
+
+  waypoint::TaskRecord early = late;
+  early.id = QStringLiteral("early");
+  early.title = QStringLiteral("Almoçar");
+  early.scheduledTime = QTime(12, 0);
+
+  waypoint::TaskRecord completed = late;
+  completed.id = QStringLiteral("completed");
+  completed.title = QStringLiteral("Tomar creatina");
+  completed.scheduledTime = QTime(9, 0);
+  completed.completed = true;
+
+  const auto actionable = waypoint::projectActionableOccurrences({late, completed, early}, {}, today);
+  QCOMPARE(actionable.size(), 3);
+  QCOMPARE(actionable.at(0).taskId, QStringLiteral("early"));
+  QCOMPARE(actionable.at(1).taskId, QStringLiteral("late"));
+  QCOMPARE(actionable.at(2).taskId, QStringLiteral("completed"));
+
+  const auto ranged = waypoint::projectOccurrences({late, completed, early}, {}, today, today);
+  QCOMPARE(ranged.size(), 3);
+  QCOMPARE(ranged.at(0).taskId, QStringLiteral("early"));
+  QCOMPARE(ranged.at(1).taskId, QStringLiteral("late"));
+  QCOMPARE(ranged.at(2).taskId, QStringLiteral("completed"));
 }
 
 QTEST_MAIN(RecurrenceTest)

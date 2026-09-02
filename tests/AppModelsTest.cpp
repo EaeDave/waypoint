@@ -198,14 +198,18 @@ void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
 void AppModelsTest::sortTasksByFloatingLocalTime() {
   const QDate today = QDate::currentDate();
   waypoint::TaskListModel model;
-  model.setSourceOccurrences({occurrence(QStringLiteral("late"), today, false, false, QTime(17, 45)),
-                              occurrence(QStringLiteral("early"), today, false, false, QTime(8, 15))});
+  model.setSourceOccurrences(
+      {occurrence(QStringLiteral("late"), today, false, false, QTime(17, 45)),
+       occurrence(QStringLiteral("completed-early"), today, true, false, QTime(6, 30)),
+       occurrence(QStringLiteral("early"), today, false, false, QTime(8, 15))});
 
-  QCOMPARE(model.rowCount(), 2);
+  QCOMPARE(model.rowCount(), 3);
   QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
            QStringLiteral("early"));
-  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::ScheduledTimeRole).toString(),
-           QStringLiteral("08:15"));
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("late"));
+  QCOMPARE(model.data(model.index(2, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("completed-early"));
 }
 
 QTEST_MAIN(AppModelsTest)
