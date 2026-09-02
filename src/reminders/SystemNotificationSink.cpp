@@ -34,16 +34,13 @@ void setError(QString *destination, const QString &message) {
   }
 }
 
-} // namespace
-
-bool SystemNotificationSink::send(const TaskOccurrence &occurrence, const int reminderMinutesBefore,
-                                  QString *errorMessage) {
+bool sendDesktopNotification(const QString &summary, const QString &body, const QString &soundDescription,
+                             QString *errorMessage) {
   const QDBusConnection sessionBus = QDBusConnection::sessionBus();
   if (!sessionBus.isConnected()) {
     setError(errorMessage, QStringLiteral("Cannot connect to the desktop notification bus"));
     return false;
   }
-
   const QString soundPlayer = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
   QVariantMap hints{
       {QStringLiteral("category"), QStringLiteral("reminder")},
@@ -54,7 +51,28 @@ bool SystemNotificationSink::send(const TaskOccurrence &occurrence, const int re
   if (!soundPlayer.isEmpty()) {
     hints.insert(QStringLiteral("suppress-sound"), true);
   }
+  QDBusMessage request = QDBusMessage::createMethodCall(
+      QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"),
+      QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
+  request << QStringLiteral("Waypoint") << static_cast<uint>(0) << QStringLiteral("view-calendar-tasks")
+          << summary << body << QStringList{} << hints << -1;
+  const QDBusMessage response = sessionBus.call(request, QDBus::Block, 3000);
+  if (response.type() == QDBusMessage::ErrorMessage) {
+    setError(errorMessage,
+             QStringLiteral("Cannot send desktop notification: %1").arg(response.errorMessage()));
+    return false;
+  }
+  if (!soundPlayer.isEmpty()) {
+    QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(notificationSoundName),
+                                          QStringLiteral("-d"), soundDescription});
+  }
+  return true;
+}
 
+} // namespace
+
+bool SystemNotificationSink::send(const TaskOccurrence &occurrence, const int reminderMinutesBefore,
+                                  QString *errorMessage) {
   const QString summary = occurrence.emoji.isEmpty()
                               ? occurrence.title
                               : QStringLiteral("%1  %2").arg(occurrence.emoji, occurrence.title);
@@ -65,24 +83,24 @@ bool SystemNotificationSink::send(const TaskOccurrence &occurrence, const int re
                 .arg(reminderLeadLabel(reminderMinutesBefore),
                      occurrence.occurrenceDate.toString(QStringLiteral("dd/MM")),
                      occurrence.scheduledTime.toString(QStringLiteral("HH:mm")));
-  QDBusMessage request = QDBusMessage::createMethodCall(
-      QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("/org/freedesktop/Notifications"),
-      QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
-  request << QStringLiteral("Waypoint") << static_cast<uint>(0) << QStringLiteral("view-calendar-tasks")
-          << summary << body << QStringList{} << hints << -1;
+  return sendDesktopNotification(summary, body, QStringLiteral("Waypoint task reminder"), errorMessage);
+}
 
-  const QDBusMessage response = sessionBus.call(request, QDBus::Block, 3000);
-  if (response.type() == QDBusMessage::ErrorMessage) {
-    setError(errorMessage,
-             QStringLiteral("Cannot send desktop notification: %1").arg(response.errorMessage()));
-    return false;
-  }
-
-  if (!soundPlayer.isEmpty()) {
-    QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(notificationSoundName),
-                                          QStringLiteral("-d"), QStringLiteral("Waypoint task reminder")});
-  }
-  return true;
+bool SystemNotificationSink::sendHabit(const HabitProgress &progress, const QTime &reminderTime,
+                                       QString *errorMessage) {
+  const QString summary =
+      progress.habit.emoji.isEmpty()
+          ? progress.habit.title
+          : QStringLiteral("%1  %2").arg(progress.habit.emoji, progress.habit.title);
+  const QString unitSuffix =
+      progress.habit.unit.isEmpty() ? QString() : QStringLiteral(" %1").arg(progress.habit.unit);
+  const QString body =
+      QStringLiteral("%1 · %2 / %3%4 · registre seu progresso")
+          .arg(reminderTime.toString(QStringLiteral("HH:mm")))
+          .arg(progress.amount)
+          .arg(progress.habit.targetAmount)
+          .arg(unitSuffix);
+  return sendDesktopNotification(summary, body, QStringLiteral("Waypoint habit reminder"), errorMessage);
 }
 
 } // namespace waypoint

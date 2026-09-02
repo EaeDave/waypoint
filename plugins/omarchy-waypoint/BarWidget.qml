@@ -10,7 +10,7 @@ BarWidget {
     moduleName: "io.waypoint.bar"
 
     property var occurrences: []
-    property var today: ({ pendingCount: 0, overdueCount: 0, occurrences: [] })
+    property var today: ({ pendingCount: 0, overdueCount: 0, occurrences: [], habits: [] })
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -91,6 +91,38 @@ BarWidget {
         runAction(["delete", taskId]);
     }
 
+    function saveHabit(habit) {
+        const reminders = habit.reminderTimes.length === 0
+            ? "none" : habit.reminderTimes.join(",");
+        const arguments = [habit.id === "" ? "add-habit" : "edit-habit"];
+        if (habit.id !== "")
+            arguments.push(habit.id);
+        arguments.push("--title", habit.title,
+                       "--goal", String(habit.targetAmount),
+                       "--unit", habit.unit || "",
+                       "--check-in", habit.checkInMode,
+                       "--increment", String(habit.incrementAmount),
+                       "--weekdays", habit.weekdays.join(","),
+                       "--reminder-times", reminders,
+                       "--emoji", habit.emoji || "");
+        runAction(arguments);
+    }
+
+    function recordHabit(habitId, amount) {
+        const arguments = ["record-habit", habitId];
+        if (amount > 0)
+            arguments.push("--amount", String(amount));
+        runAction(arguments);
+    }
+
+    function undoHabit(habitId) {
+        runAction(["undo-habit", habitId]);
+    }
+
+    function deleteHabit(habitId) {
+        runAction(["delete-habit", habitId]);
+    }
+
 
     function openSettings() {
         if (!settingsProcess.running) {
@@ -109,6 +141,7 @@ BarWidget {
         target.occurrences = Qt.binding(() => root.occurrences);
         target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
         target.todayTasks = Qt.binding(() => root.today.occurrences || []);
+        target.todayHabits = Qt.binding(() => root.today.habits || []);
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
@@ -182,7 +215,8 @@ BarWidget {
                     const response = JSON.parse(String(text || "{}"));
                     if (!response.ok)
                         throw new Error(response.error || "snapshot failed");
-                    root.today = response.today || ({ pendingCount: 0, overdueCount: 0, occurrences: [] });
+                    root.today = response.today || ({ pendingCount: 0, overdueCount: 0,
+                                                       occurrences: [], habits: [] });
                     root.occurrences = response.occurrences || [];
                     root.holidays = response.holidays || [];
                     root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });

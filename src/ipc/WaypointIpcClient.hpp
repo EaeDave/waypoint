@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/TaskRecord.hpp"
+#include "core/HabitRecord.hpp"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -23,6 +24,16 @@ public:
                                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
                                                                 QString *errorMessage = nullptr) const;
+  [[nodiscard]] QList<HabitProgress> listHabitProgress(const QDate &date,
+                                                       QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool addHabit(const HabitRecord &habit, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool editHabit(const HabitRecord &habit, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool recordHabit(const QString &habitId, const QDate &date,
+                                 const std::optional<qint64> &amount,
+                                 QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool undoLastHabitEntry(const QString &habitId, const QDate &date,
+                                       QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool deleteHabit(const QString &habitId, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
                              const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
                              const QString &emoji, QString *errorMessage = nullptr) const;

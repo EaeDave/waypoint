@@ -17,6 +17,7 @@ Panel {
     property var hostWidget: null
     property var occurrences: []
     property var todayTasks: []
+    property var todayHabits: []
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -33,6 +34,7 @@ Panel {
     property bool reminderPickerVisible: false
     property var timePickerTarget: null
     property bool timePickerCreatesTask: false
+    property bool timePickerAddsHabitReminder: false
     property bool reminderPickerCreatesTask: false
     property string pendingQuickTitle: ""
     property date pendingQuickDate: new Date()
@@ -49,6 +51,15 @@ Panel {
     property int editingWeekdayMask: 0
     property var editingReminderMinutesBefore: [0]
     readonly property int maximumReminderCount: 5
+    property bool habitEditorVisible: false
+    property bool habitManualVisible: false
+    property bool habitReminderPickerVisible: false
+    property var editingHabitReminderTimes: []
+    property string editingHabitId: ""
+    property string editingHabitEmoji: ""
+    property string manualHabitId: ""
+    property int habitWeekdayMask: 127
+    readonly property int maximumHabitReminderCount: 10
 
     readonly property var barIdentity: hostWidget || root
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
@@ -157,6 +168,7 @@ Panel {
     function openTimePicker(target, initialTime, createsTask) {
         timePickerTarget = target;
         timePickerCreatesTask = createsTask === true;
+        timePickerAddsHabitReminder = false;
         timePickerInput.text = initialTime || currentTimeKey();
         syncPickerSelectionFromText();
         timePickerVisible = true;
@@ -186,6 +198,7 @@ Panel {
         timePickerTarget = null;
         timePickerCreatesTask = false;
         pendingQuickTitle = "";
+        timePickerAddsHabitReminder = false;
     }
 
     function openEmojiPicker(target, currentEmoji) {
@@ -198,6 +211,8 @@ Panel {
             quickEmoji = selectedEmoji;
         else if (emojiPickerTarget === "edit")
             editingEmoji = selectedEmoji;
+        else if (emojiPickerTarget === "habit")
+            editingHabitEmoji = selectedEmoji;
         emojiPickerTarget = "";
     }
 
@@ -205,6 +220,12 @@ Panel {
         if (!timePickerInput.acceptableInput)
             return;
         const selectedTime = timePickerInput.text;
+        if (timePickerAddsHabitReminder) {
+            addHabitReminder(selectedTime);
+            timePickerVisible = false;
+            timePickerAddsHabitReminder = false;
+            return;
+        }
         if (timePickerCreatesTask) {
             pendingQuickTime = selectedTime;
             timePickerVisible = false;
@@ -401,6 +422,114 @@ Panel {
             return;
         hostWidget.skipOccurrence(editingTaskId, editingOccurrenceDate);
         closeTaskEditor();
+    }
+
+    function selectedHabitWeekdays() {
+        const selected = [];
+        for (let index = 0; index < 7; ++index) {
+            if ((habitWeekdayMask & (1 << index)) !== 0)
+                selected.push(index + 1);
+        }
+        return selected;
+    }
+
+    function setHabitReminders(values) {
+        const normalized = [];
+        for (const value of (values || [])) {
+            const time = String(value);
+            if (/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(time)
+                    && normalized.indexOf(time) < 0
+                    && normalized.length < maximumHabitReminderCount)
+                normalized.push(time);
+        }
+        normalized.sort();
+        editingHabitReminderTimes = normalized;
+    }
+
+    function addHabitReminder(time) {
+        const updated = editingHabitReminderTimes.slice();
+        if (updated.indexOf(time) < 0 && updated.length < maximumHabitReminderCount) {
+            updated.push(time);
+            setHabitReminders(updated);
+        }
+    }
+
+    function removeHabitReminder(time) {
+        const updated = editingHabitReminderTimes.slice();
+        const index = updated.indexOf(time);
+        if (index >= 0)
+            updated.splice(index, 1);
+        setHabitReminders(updated);
+    }
+
+    function openHabitReminderTimePicker() {
+        timePickerTarget = null;
+        timePickerCreatesTask = false;
+        timePickerAddsHabitReminder = true;
+        timePickerInput.text = currentTimeKey();
+        syncPickerSelectionFromText();
+        timePickerVisible = true;
+    }
+
+    function openHabitEditor(habit) {
+        const source = habit || ({});
+        editingHabitId = String(source.id || "");
+        editingHabitEmoji = String(source.emoji || "");
+        habitTitleInput.text = String(source.title || "");
+        habitGoalInput.value = Number(source.targetAmount || 1);
+        habitUnitInput.text = String(source.unit || "");
+        habitModeInput.value = String(source.checkInMode || "complete");
+        habitIncrementInput.value = Number(source.incrementAmount || 1);
+        habitWeekdayMask = 0;
+        for (const weekday of (source.weekdays || [1, 2, 3, 4, 5, 6, 7]))
+            habitWeekdayMask |= 1 << (Number(weekday) - 1);
+        setHabitReminders(source.reminderTimes || []);
+        habitEditorVisible = true;
+        Qt.callLater(() => {
+            habitTitleInput.forceActiveFocus();
+            habitTitleInput.selectAll();
+        });
+    }
+
+    function closeHabitEditor() {
+        habitEditorVisible = false;
+        habitReminderPickerVisible = false;
+    }
+
+    function saveHabitEdit() {
+        if (!hostWidget || habitTitleInput.text.trim() === "" || habitWeekdayMask === 0)
+            return;
+        const reminders = editingHabitReminderTimes;
+        hostWidget.saveHabit({
+            id: editingHabitId,
+            title: habitTitleInput.text.trim(),
+            targetAmount: habitGoalInput.value,
+            unit: habitUnitInput.text.trim(),
+            checkInMode: habitModeInput.value,
+            incrementAmount: habitIncrementInput.value,
+            weekdays: selectedHabitWeekdays(),
+            reminderTimes: reminders,
+            emoji: editingHabitEmoji
+        });
+        closeHabitEditor();
+    }
+
+    function deleteEditedHabit() {
+        if (hostWidget)
+            hostWidget.deleteHabit(editingHabitId);
+        closeHabitEditor();
+    }
+
+    function openManualHabit(habitId) {
+        manualHabitId = habitId;
+        habitManualAmount.value = 1;
+        habitManualVisible = true;
+    }
+
+    function recordManualHabit() {
+        if (hostWidget)
+            hostWidget.recordHabit(manualHabitId, habitManualAmount.value);
+        habitManualVisible = false;
     }
 
 
@@ -968,6 +1097,169 @@ Panel {
                         }
                     }
 
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(3)
+                        visible: root.selectedDateIsToday
+
+                        RowLayout {
+                            width: parent.width
+
+                            Text {
+                                text: "HÁBITOS"
+                                color: Qt.darker(root.foreground, 1.4)
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                                font.bold: true
+                                font.letterSpacing: 1
+                            }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "+ HÁBITO"
+                                foreground: root.foreground
+                                accent: Color.accent
+                                bordered: true
+                                horizontalPadding: Style.space(7)
+                                verticalPadding: Style.space(3)
+                                onClicked: root.openHabitEditor(null)
+                            }
+                        }
+
+                        Text {
+                            visible: root.todayHabits.length === 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Nenhum hábito para hoje"
+                            color: Qt.darker(root.foreground, 1.9)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+
+                        Repeater {
+                            model: root.todayHabits
+
+                            Rectangle {
+                                id: habitRow
+                                required property var modelData
+                                width: parent.width
+                                height: Style.space(66)
+                                radius: Style.cornerRadius
+                                color: Style.hoverFillFor(root.foreground, Color.accent)
+
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.right: habitActions.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    anchors.margins: Style.space(8)
+                                    anchors.rightMargin: Style.space(6)
+                                    spacing: Style.space(3)
+
+                                    Row {
+                                        width: parent.width
+                                        spacing: Style.space(6)
+
+                                        Text {
+                                            visible: String(habitRow.modelData.emoji || "") !== ""
+                                            text: habitRow.modelData.emoji || ""
+                                            color: root.foreground
+                                            font.family: "Noto Color Emoji"
+                                            font.pixelSize: Style.font.body
+                                        }
+                                        Text {
+                                            width: parent.width - (visible ? Style.space(28) : 0)
+                                            text: habitRow.modelData.title
+                                            color: habitRow.modelData.completed
+                                                ? Qt.darker(root.foreground, 1.7) : root.foreground
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.body
+                                            font.bold: true
+                                            elide: Text.ElideRight
+                                        }
+                                    }
+
+                                    Text {
+                                        width: parent.width
+                                        text: habitRow.modelData.amount + " / " + habitRow.modelData.targetAmount
+                                            + (String(habitRow.modelData.unit || "") === ""
+                                                ? "" : " " + habitRow.modelData.unit)
+                                            + ((habitRow.modelData.reminderTimes || []).length === 0
+                                                ? "" : " · 󰂚 " + habitRow.modelData.reminderTimes.length)
+                                        color: habitRow.modelData.completed ? Color.accent
+                                            : Qt.darker(root.foreground, 1.45)
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.bold: true
+                                    }
+
+                                    Rectangle {
+                                        width: parent.width
+                                        height: Style.spacing.hairline * 2
+                                        radius: height / 2
+                                        color: Qt.rgba(root.foreground.r, root.foreground.g,
+                                                       root.foreground.b, 0.18)
+
+                                        Rectangle {
+                                            width: parent.width * Math.min(
+                                                1, habitRow.modelData.amount / habitRow.modelData.targetAmount)
+                                            height: parent.height
+                                            radius: parent.radius
+                                            color: Color.accent
+                                        }
+                                    }
+                                }
+
+                                Row {
+                                    id: habitActions
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Style.space(6)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: Style.space(3)
+
+                                    Button {
+                                        visible: habitRow.modelData.amount > 0
+                                        text: "↶"
+                                        foreground: root.foreground
+                                        accent: Color.accent
+                                        bordered: true
+                                        horizontalPadding: Style.space(6)
+                                        verticalPadding: Style.space(3)
+                                        onClicked: if (root.hostWidget)
+                                            root.hostWidget.undoHabit(habitRow.modelData.id)
+                                    }
+                                    Button {
+                                        text: "⋯"
+                                        foreground: root.foreground
+                                        accent: Color.accent
+                                        bordered: true
+                                        horizontalPadding: Style.space(6)
+                                        verticalPadding: Style.space(3)
+                                        onClicked: root.openHabitEditor(habitRow.modelData)
+                                    }
+                                    Button {
+                                        enabled: !habitRow.modelData.completed
+                                        text: habitRow.modelData.completed ? "✓"
+                                            : habitRow.modelData.checkInMode === "fixed"
+                                                ? "+" + habitRow.modelData.incrementAmount
+                                            : habitRow.modelData.checkInMode === "manual" ? "+" : "✓"
+                                        foreground: root.foreground
+                                        accent: Color.accent
+                                        selected: habitRow.modelData.completed
+                                        horizontalPadding: Style.space(7)
+                                        verticalPadding: Style.space(3)
+                                        onClicked: {
+                                            if (!root.hostWidget)
+                                                return;
+                                            if (habitRow.modelData.checkInMode === "manual")
+                                                root.openManualHabit(habitRow.modelData.id);
+                                            else
+                                                root.hostWidget.recordHabit(habitRow.modelData.id, 0);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     RowLayout {
                         width: parent.width
 
@@ -1001,6 +1293,393 @@ Panel {
                             fontFamily: root.fontFamily
                             onClicked: if (root.hostWidget)
                                 root.hostWidget.openSettings()
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 120
+                visible: root.habitEditorVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.closeHabitEditor()
+                }
+
+                BorderSurface {
+                    id: habitEditorCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(460))
+                    height: contentTopInset + contentBottomInset + habitEditorColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea { anchors.fill: parent }
+
+                    ColumnLayout {
+                        id: habitEditorColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: habitEditorCard.contentLeftInset
+                        anchors.rightMargin: habitEditorCard.contentRightInset
+                        spacing: Style.space(9)
+
+                        Text {
+                            text: root.editingHabitId === "" ? "NOVO HÁBITO" : "EDITAR HÁBITO"
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(8)
+
+                            Button {
+                                text: root.editingHabitEmoji === "" ? "☺" : root.editingHabitEmoji
+                                tooltipText: "Escolher emoji"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                fontFamily: root.editingHabitEmoji === ""
+                                            ? root.fontFamily : "Noto Color Emoji"
+                                onClicked: root.openEmojiPicker("habit", root.editingHabitEmoji)
+                            }
+                            TextField {
+                                id: habitTitleInput
+                                Layout.fillWidth: true
+                                placeholderText: "Título"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selectByMouse: true
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(8)
+
+                            NumberField {
+                                id: habitGoalInput
+                                Layout.fillWidth: true
+                                from: 1
+                                to: 1000000000
+                                value: 1
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                            }
+                            TextField {
+                                id: habitUnitInput
+                                Layout.fillWidth: true
+                                placeholderText: "Unidade (ml, copos…)"
+                                maximumLength: 32
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selectByMouse: true
+                            }
+                        }
+
+                        Dropdown {
+                            id: habitModeInput
+                            Layout.fillWidth: true
+                            showLabel: false
+                            foreground: Color.popups.text
+                            background: Color.popups.background
+                            accent: Color.accent
+                            options: [
+                                { label: "Incremento fixo", value: "fixed" },
+                                { label: "Quantidade manual", value: "manual" },
+                                { label: "Completar tudo", value: "complete" }
+                            ]
+                        }
+
+                        RowLayout {
+                            visible: habitModeInput.value === "fixed"
+                            Layout.fillWidth: true
+                            Text {
+                                text: "Incremento"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                            }
+                            Item { Layout.fillWidth: true }
+                            NumberField {
+                                id: habitIncrementInput
+                                from: 1
+                                to: 1000000000
+                                value: 1
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(2)
+
+                            Text {
+                                text: "Dias"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                            }
+                            Item { Layout.fillWidth: true }
+                            Repeater {
+                                model: ["S", "T", "Q", "Q", "S", "S", "D"]
+                                Button {
+                                    required property int index
+                                    required property string modelData
+                                    text: modelData
+                                    selected: (root.habitWeekdayMask & (1 << index)) !== 0
+                                    foreground: Color.popups.text
+                                    accent: Color.accent
+                                    horizontalPadding: Style.space(4)
+                                    verticalPadding: Style.space(2)
+                                    onClicked: {
+                                        if (selected)
+                                            root.habitWeekdayMask &= ~(1 << index);
+                                        else
+                                            root.habitWeekdayMask |= 1 << index;
+                                    }
+                                }
+                            }
+                        }
+
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Lembretes · " + root.editingHabitReminderTimes.length
+                            tooltipText: "Selecionar até 10 horários"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            onClicked: root.habitReminderPickerVisible = true
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(8)
+
+                            Button {
+                                visible: root.editingHabitId !== ""
+                                text: "Excluir"
+                                foreground: Color.urgent
+                                accent: Color.urgent
+                                bordered: true
+                                onClicked: root.deleteEditedHabit()
+                            }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Cancelar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.closeHabitEditor()
+                            }
+                            Button {
+                                text: "Salvar"
+                                enabled: habitTitleInput.text.trim() !== ""
+                                         && root.habitWeekdayMask !== 0
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
+                                onClicked: root.saveHabitEdit()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 130
+                visible: root.habitManualVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.habitManualVisible = false
+                }
+
+                BorderSurface {
+                    id: habitManualCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(320))
+                    height: contentTopInset + contentBottomInset + habitManualColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea { anchors.fill: parent }
+
+                    ColumnLayout {
+                        id: habitManualColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: habitManualCard.contentLeftInset
+                        anchors.rightMargin: habitManualCard.contentRightInset
+                        spacing: Style.space(10)
+
+                        Text {
+                            text: "REGISTRAR PROGRESSO"
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+                        NumberField {
+                            id: habitManualAmount
+                            Layout.fillWidth: true
+                            from: 1
+                            to: 1000000000
+                            value: 1
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Cancelar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.habitManualVisible = false
+                            }
+                            Button {
+                                text: "Registrar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
+                                onClicked: root.recordManualHabit()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 190
+                visible: root.habitReminderPickerVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.habitReminderPickerVisible = false
+                }
+
+                BorderSurface {
+                    id: habitReminderPickerCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(360))
+                    height: contentTopInset + contentBottomInset + habitReminderPickerColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea { anchors.fill: parent }
+
+                    ColumnLayout {
+                        id: habitReminderPickerColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: habitReminderPickerCard.contentLeftInset
+                        anchors.rightMargin: habitReminderPickerCard.contentRightInset
+                        spacing: Style.space(8)
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                text: "LEMBRETES"
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                                font.bold: true
+                                font.letterSpacing: 1
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: root.editingHabitReminderTimes.length + " / "
+                                      + root.maximumHabitReminderCount
+                                color: Qt.darker(Color.popups.text, 1.5)
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                            }
+                        }
+
+                        Text {
+                            visible: root.editingHabitReminderTimes.length === 0
+                            text: "Nenhum horário adicionado."
+                            color: Qt.darker(Color.popups.text, 1.5)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+
+                        Repeater {
+                            model: root.editingHabitReminderTimes
+
+                            RowLayout {
+                                required property string modelData
+                                Layout.fillWidth: true
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: parent.modelData
+                                    color: Color.popups.text
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.body
+                                    font.bold: true
+                                }
+                                Button {
+                                    text: "Remover"
+                                    foreground: Color.urgent
+                                    accent: Color.urgent
+                                    bordered: true
+                                    onClicked: root.removeHabitReminder(parent.modelData)
+                                }
+                            }
+                        }
+
+                        Button {
+                            Layout.fillWidth: true
+                            enabled: root.editingHabitReminderTimes.length
+                                     < root.maximumHabitReminderCount
+                            text: "+ Adicionar horário"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            onClicked: root.openHabitReminderTimePicker()
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Concluir"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
+                                onClicked: root.habitReminderPickerVisible = false
+                            }
                         }
                     }
                 }

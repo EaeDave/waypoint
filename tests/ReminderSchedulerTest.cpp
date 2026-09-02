@@ -12,6 +12,7 @@ private slots:
   void retryNotificationFailureWithinDueMinute();
   void deliverRecurringOccurrenceOnItsDate();
   void deliverEveryConfiguredReminderAcrossDates();
+  void deliverHabitRemindersUntilGoalCompletion();
 };
 
 namespace {
@@ -21,6 +22,8 @@ public:
   bool failNextSend = false;
   QList<waypoint::TaskOccurrence> deliveries;
   QList<int> reminderMinutesBefore;
+  QList<waypoint::HabitProgress> habitDeliveries;
+  QList<QTime> habitReminderTimes;
 
   bool send(const waypoint::TaskOccurrence &occurrence, const int minutesBefore,
             QString *errorMessage) override {
@@ -33,6 +36,20 @@ public:
     }
     deliveries.append(occurrence);
     reminderMinutesBefore.append(minutesBefore);
+    return true;
+  }
+
+  bool sendHabit(const waypoint::HabitProgress &progress, const QTime &reminderTime,
+                 QString *errorMessage) override {
+    if (failNextSend) {
+      failNextSend = false;
+      if (errorMessage != nullptr) {
+        *errorMessage = QStringLiteral("notification service unavailable");
+      }
+      return false;
+    }
+    habitDeliveries.append(progress);
+    habitReminderTimes.append(reminderTime);
     return true;
   }
 };
@@ -162,6 +179,37 @@ void ReminderSchedulerTest::deliverEveryConfiguredReminderAcrossDates() {
   QCOMPARE(sink.deliveries.size(), reminders.size());
   QCOMPARE(sink.reminderMinutesBefore, reminders);
   QCOMPARE(sink.deliveries.first().occurrenceDate, dueDate);
+}
+
+void ReminderSchedulerTest::deliverHabitRemindersUntilGoalCompletion() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate date(2026, 9, 1);
+  const QList<QTime> reminders{QTime(8, 0), QTime(9, 0), QTime(10, 0)};
+  waypoint::HabitRecord habit;
+  QVERIFY2(store.createHabit(QStringLiteral("Água"), 2, QStringLiteral("copos"),
+                             waypoint::HabitCheckInMode::Fixed, 1, {date.dayOfWeek()}, reminders,
+                             QStringLiteral("💧"), &habit, &error),
+           qPrintable(error));
+
+  RecordingNotificationSink sink;
+  waypoint::ReminderScheduler scheduler(&store, &sink);
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, reminders.at(0)), &error), qPrintable(error));
+  QCOMPARE(sink.habitDeliveries.size(), 1);
+  QCOMPARE(sink.habitDeliveries.first().amount, 0);
+
+  QVERIFY2(store.recordHabit(habit.id, date, std::nullopt, nullptr, &error), qPrintable(error));
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, reminders.at(1)), &error), qPrintable(error));
+  QCOMPARE(sink.habitDeliveries.size(), 2);
+  QCOMPARE(sink.habitDeliveries.last().amount, 1);
+
+  QVERIFY2(store.recordHabit(habit.id, date, std::nullopt, nullptr, &error), qPrintable(error));
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(date, reminders.at(2)), &error), qPrintable(error));
+  QCOMPARE(sink.habitDeliveries.size(), 2);
+  QCOMPARE(sink.habitReminderTimes, QList<QTime>({QTime(8, 0), QTime(9, 0)}));
 }
 
 QTEST_MAIN(ReminderSchedulerTest)

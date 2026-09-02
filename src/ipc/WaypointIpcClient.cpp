@@ -129,6 +129,68 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
   return occurrences;
 }
 
+QList<HabitProgress> WaypointIpcClient::listHabitProgress(const QDate &date,
+                                                          QString *errorMessage) const {
+  const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("habits")},
+                                        {QStringLiteral("date"), date.toString(Qt::ISODate)}},
+                                       errorMessage);
+  if (!responseSucceeded(response, errorMessage)) {
+    return {};
+  }
+  QList<HabitProgress> progress;
+  for (const QJsonValue &value : response.value(QStringLiteral("habits")).toArray()) {
+    const QJsonObject json = value.toObject();
+    progress.append({HabitRecord::fromJson(json),
+                     QDate::fromString(json.value(QStringLiteral("date")).toString(), Qt::ISODate),
+                     json.value(QStringLiteral("amount")).toInteger()});
+  }
+  return progress;
+}
+
+bool WaypointIpcClient::addHabit(const HabitRecord &habit, QString *errorMessage) const {
+  QJsonObject message = habit.toJson();
+  message.insert(QStringLiteral("command"), QStringLiteral("add-habit"));
+  return responseSucceeded(request(message, errorMessage), errorMessage);
+}
+
+bool WaypointIpcClient::editHabit(const HabitRecord &habit, QString *errorMessage) const {
+  QJsonObject message = habit.toJson();
+  message.insert(QStringLiteral("command"), QStringLiteral("edit-habit"));
+  message.insert(QStringLiteral("habitId"), habit.id);
+  return responseSucceeded(request(message, errorMessage), errorMessage);
+}
+
+bool WaypointIpcClient::recordHabit(const QString &habitId, const QDate &date,
+                                    const std::optional<qint64> &amount, QString *errorMessage) const {
+  QJsonObject message{
+      {QStringLiteral("command"), QStringLiteral("record-habit")},
+      {QStringLiteral("habitId"), habitId},
+      {QStringLiteral("date"), date.toString(Qt::ISODate)},
+  };
+  if (amount.has_value()) {
+    message.insert(QStringLiteral("amount"), *amount);
+  }
+  return responseSucceeded(request(message, errorMessage), errorMessage);
+}
+
+bool WaypointIpcClient::undoLastHabitEntry(const QString &habitId, const QDate &date,
+                                          QString *errorMessage) const {
+  return responseSucceeded(
+      request({{QStringLiteral("command"), QStringLiteral("undo-habit")},
+               {QStringLiteral("habitId"), habitId},
+               {QStringLiteral("date"), date.toString(Qt::ISODate)}},
+              errorMessage),
+      errorMessage);
+}
+
+bool WaypointIpcClient::deleteHabit(const QString &habitId, QString *errorMessage) const {
+  return responseSucceeded(
+      request({{QStringLiteral("command"), QStringLiteral("delete-habit")},
+               {QStringLiteral("habitId"), habitId}},
+              errorMessage),
+      errorMessage);
+}
+
 bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
                                 const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
                                 const QString &emoji, QString *errorMessage) const {

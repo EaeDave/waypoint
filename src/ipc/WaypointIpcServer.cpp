@@ -138,12 +138,96 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     for (const TaskOccurrence &occurrence : records) {
       occurrences.append(occurrence.toJson());
     }
+    const QList<HabitProgress> habitRecords = m_taskStore->listHabitProgress(today, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    QJsonArray habits;
+    for (const HabitProgress &progress : habitRecords) {
+      habits.append(progress.toJson());
+    }
     const OccurrenceSummary summary = summarizeOccurrences(records, today);
     return {{QStringLiteral("ok"), true},
             {QStringLiteral("date"), today.toString(Qt::ISODate)},
             {QStringLiteral("pendingCount"), summary.pendingToday},
             {QStringLiteral("overdueCount"), summary.overdue},
-            {QStringLiteral("occurrences"), occurrences}};
+            {QStringLiteral("occurrences"), occurrences},
+            {QStringLiteral("habits"), habits}};
+  }
+  if (command == QStringLiteral("habits")) {
+    const QString requestedDate = request.value(QStringLiteral("date")).toString();
+    const QDate date =
+        requestedDate.isEmpty() ? QDate::currentDate() : QDate::fromString(requestedDate, Qt::ISODate);
+    const QList<HabitProgress> records = m_taskStore->listHabitProgress(date, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    QJsonArray habits;
+    for (const HabitProgress &progress : records) {
+      habits.append(progress.toJson());
+    }
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("date"), date.toString(Qt::ISODate)},
+            {QStringLiteral("habits"), habits}};
+  }
+  if (command == QStringLiteral("add-habit")) {
+    const HabitRecord input = HabitRecord::fromJson(request);
+    HabitRecord habit;
+    if (!m_taskStore->createHabit(input.title, input.targetAmount, input.unit, input.checkInMode,
+                                  input.incrementAmount, input.weekdays, input.reminderTimes, input.emoji,
+                                  &habit, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("habit"), habit.toJson()}};
+  }
+  if (command == QStringLiteral("edit-habit")) {
+    const HabitRecord input = HabitRecord::fromJson(request);
+    const QString habitId = request.value(QStringLiteral("habitId")).toString();
+    if (!m_taskStore->editHabit(habitId, input.title, input.targetAmount, input.unit,
+                                input.checkInMode, input.incrementAmount, input.weekdays,
+                                input.reminderTimes, input.emoji, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("record-habit")) {
+    std::optional<qint64> amount;
+    if (request.contains(QStringLiteral("amount"))) {
+      amount = request.value(QStringLiteral("amount")).toInteger();
+    }
+    HabitEntry entry;
+    const QString habitId = request.value(QStringLiteral("habitId")).toString();
+    const QDate date =
+        QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
+    if (!m_taskStore->recordHabit(habitId, date, amount, &entry, &error)) {
+      return protocol::errorResponse(error);
+    }
+    const QList<HabitProgress> progress = m_taskStore->listHabitProgress(date, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    for (const HabitProgress &item : progress) {
+      if (item.habit.id == habitId && item.completed()) {
+        playCompletionSound();
+        break;
+      }
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("entry"), entry.toJson()}};
+  }
+  if (command == QStringLiteral("undo-habit")) {
+    const QString habitId = request.value(QStringLiteral("habitId")).toString();
+    const QDate date =
+        QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
+    if (!m_taskStore->undoLastHabitEntry(habitId, date, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("delete-habit")) {
+    if (!m_taskStore->deleteHabit(request.value(QStringLiteral("habitId")).toString(), &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
   }
   if (command == QStringLiteral("add")) {
     TaskRecord task;

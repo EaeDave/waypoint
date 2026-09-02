@@ -46,6 +46,22 @@ QList<int> taskReminderMinutesBefore(const QVariantList &values) {
   return reminders;
 }
 
+QList<int> habitWeekdays(const QVariantList &values) {
+  QList<int> weekdays;
+  for (const QVariant &value : values) {
+    weekdays.append(value.toInt());
+  }
+  return weekdays;
+}
+
+QList<QTime> habitReminderTimes(const QVariantList &values) {
+  QList<QTime> times;
+  for (const QVariant &value : values) {
+    times.append(QTime::fromString(value.toString(), QStringLiteral("HH:mm")));
+  }
+  return times;
+}
+
 } // namespace
 
 WaypointController::WaypointController(QObject *parent)
@@ -61,6 +77,8 @@ WaypointController::WaypointController(QObject *parent)
 TaskListModel *WaypointController::todayTasks() { return &m_todayTasks; }
 
 TaskListModel *WaypointController::selectedDateTasks() { return &m_selectedDateTasks; }
+
+QVariantList WaypointController::todayHabits() const { return m_todayHabits; }
 
 CalendarModel *WaypointController::calendar() { return &m_calendar; }
 
@@ -135,6 +153,11 @@ void WaypointController::refresh() {
     startDaemonOnce();
     return;
   }
+  const QList<HabitProgress> todayHabitProgress = m_client.listHabitProgress(today, &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
 
   const QDate visibleMonth(m_calendar.visibleYear(), m_calendar.visibleMonth(), 1);
   const QDate rangeStart = visibleMonth.addDays(-14);
@@ -149,16 +172,27 @@ void WaypointController::refresh() {
   for (const TaskOccurrence &occurrence : todayOccurrences) {
     todayValues.append(occurrence.toJson());
   }
+  QJsonArray habitValues;
+  for (const HabitProgress &progress : todayHabitProgress) {
+    habitValues.append(progress.toJson());
+  }
   QJsonArray rangeValues;
   for (const TaskOccurrence &occurrence : rangeOccurrences) {
     rangeValues.append(occurrence.toJson());
   }
-  const QByteArray signature = QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
-                                                         {QStringLiteral("range"), rangeValues}})
-                                   .toJson(QJsonDocument::Compact);
+  const QByteArray signature =
+      QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
+                                {QStringLiteral("habits"), habitValues},
+                                {QStringLiteral("range"), rangeValues}})
+          .toJson(QJsonDocument::Compact);
   if (signature != m_snapshotSignature) {
     m_snapshotSignature = signature;
     publishOccurrences(todayOccurrences, rangeOccurrences);
+    m_todayHabits.clear();
+    for (const QJsonValue &value : habitValues) {
+      m_todayHabits.append(value.toObject().toVariantMap());
+    }
+    emit habitsChanged();
   }
   if (!refreshSyncDetails(&error)) {
     updateConnection(false, error);
@@ -290,6 +324,63 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
 bool WaypointController::deleteTask(const QString &taskId) {
   QString error;
   if (!m_client.deleteTask(taskId, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::saveHabit(const QString &habitId, const QString &title,
+                                   const qint64 targetAmount, const QString &unit,
+                                   const QString &checkInMode, const qint64 incrementAmount,
+                                   const QVariantList &weekdays, const QVariantList &reminderTimes,
+                                   const QString &emoji) {
+  HabitRecord habit;
+  habit.id = habitId;
+  habit.title = title;
+  habit.targetAmount = targetAmount;
+  habit.unit = unit;
+  habit.checkInMode = habitCheckInModeFromName(checkInMode);
+  habit.incrementAmount = incrementAmount;
+  habit.weekdays = habitWeekdays(weekdays);
+  habit.reminderTimes = habitReminderTimes(reminderTimes);
+  habit.emoji = emoji;
+  QString error;
+  const bool succeeded =
+      habitId.isEmpty() ? m_client.addHabit(habit, &error) : m_client.editHabit(habit, &error);
+  if (!succeeded) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::recordHabit(const QString &habitId, const qint64 amount) {
+  QString error;
+  const std::optional<qint64> recordedAmount = amount > 0 ? std::optional<qint64>(amount) : std::nullopt;
+  if (!m_client.recordHabit(habitId, QDate::currentDate(), recordedAmount, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::undoHabit(const QString &habitId) {
+  QString error;
+  if (!m_client.undoLastHabitEntry(habitId, QDate::currentDate(), &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::deleteHabit(const QString &habitId) {
+  QString error;
+  if (!m_client.deleteHabit(habitId, &error)) {
     updateConnection(false, error);
     return false;
   }

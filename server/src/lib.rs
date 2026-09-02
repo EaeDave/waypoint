@@ -253,6 +253,8 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     match mutation.entity_type.as_str() {
         "task" => validate_task_mutation(mutation),
         "occurrence" => validate_occurrence_mutation(mutation),
+        "habit" => validate_habit_mutation(mutation),
+        "habit-entry" => validate_habit_entry_mutation(mutation),
         entity_type => Err(ApiError::bad_request(format!(
             "invalid entityType: {entity_type}"
         ))),
@@ -434,6 +436,171 @@ fn validate_occurrence_mutation(mutation: &SyncMutation) -> Result<(), ApiError>
         .unwrap_or_default();
     if !["pending", "completed", "skipped"].contains(&status) {
         return Err(ApiError::bad_request("invalid occurrence status"));
+    }
+    Ok(())
+}
+
+fn validate_habit_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
+    Uuid::parse_str(&mutation.entity_id).map_err(|_| {
+        ApiError::bad_request(format!("invalid habit entityId: {}", mutation.entity_id))
+    })?;
+    if mutation.payload.get("id").and_then(Value::as_str) != Some(mutation.entity_id.as_str()) {
+        return Err(ApiError::bad_request(format!(
+            "habit.id must match entityId for mutation {}",
+            mutation.mutation_id
+        )));
+    }
+    if mutation.operation == "delete" {
+        return Ok(());
+    }
+
+    let title = mutation
+        .payload
+        .get("title")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if title.trim().is_empty() || title.chars().count() > 500 {
+        return Err(ApiError::bad_request(
+            "habit title must contain 1 to 500 characters",
+        ));
+    }
+    let target = mutation
+        .payload
+        .get("targetAmount")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    if !(1..=1_000_000_000).contains(&target) {
+        return Err(ApiError::bad_request(
+            "habit targetAmount must be between 1 and 1000000000",
+        ));
+    }
+    let unit = mutation
+        .payload
+        .get("unit")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if unit.trim() != unit || unit.chars().count() > 32 || unit.contains(['\n', '\r']) {
+        return Err(ApiError::bad_request(
+            "habit unit must be a trimmed single line of at most 32 characters",
+        ));
+    }
+    let mode = mutation
+        .payload
+        .get("checkInMode")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if !["fixed", "manual", "complete"].contains(&mode) {
+        return Err(ApiError::bad_request("invalid habit checkInMode"));
+    }
+    let increment = mutation
+        .payload
+        .get("incrementAmount")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    if !(1..=1_000_000_000).contains(&increment) || (mode == "fixed" && increment > target) {
+        return Err(ApiError::bad_request("invalid habit incrementAmount"));
+    }
+
+    let weekdays = mutation
+        .payload
+        .get("weekdays")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ApiError::bad_request("habit weekdays must be an array"))?;
+    if weekdays.is_empty() || weekdays.len() > 7 {
+        return Err(ApiError::bad_request(
+            "habit must have between 1 and 7 weekdays",
+        ));
+    }
+    let mut seen_weekdays = [false; 7];
+    for value in weekdays {
+        let weekday = value
+            .as_u64()
+            .ok_or_else(|| ApiError::bad_request("invalid habit weekday"))?;
+        if !(1..=7).contains(&weekday) || seen_weekdays[weekday as usize - 1] {
+            return Err(ApiError::bad_request(
+                "habit weekdays must be unique values from 1 to 7",
+            ));
+        }
+        seen_weekdays[weekday as usize - 1] = true;
+    }
+
+    let reminders = mutation
+        .payload
+        .get("reminderTimes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| ApiError::bad_request("habit reminderTimes must be an array"))?;
+    if reminders.len() > 10 {
+        return Err(ApiError::bad_request(
+            "a habit can have at most 10 reminder times",
+        ));
+    }
+    let mut seen_reminders = Vec::with_capacity(reminders.len());
+    for value in reminders {
+        let reminder = value
+            .as_str()
+            .ok_or_else(|| ApiError::bad_request("habit reminder time must be a string"))?;
+        NaiveTime::parse_from_str(reminder, "%H:%M")
+            .map_err(|_| ApiError::bad_request(format!("invalid habit reminder time: {reminder}")))?;
+        if seen_reminders.contains(&reminder) {
+            return Err(ApiError::bad_request(
+                "habit reminder times cannot contain duplicates",
+            ));
+        }
+        seen_reminders.push(reminder);
+    }
+
+    let emoji = mutation
+        .payload
+        .get("emoji")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if emoji.chars().count() > 32 || emoji.trim() != emoji || emoji.graphemes(true).count() > 1 {
+        return Err(ApiError::bad_request(
+            "habit emoji must be empty or contain one bounded grapheme",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_habit_entry_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
+    Uuid::parse_str(&mutation.entity_id).map_err(|_| {
+        ApiError::bad_request(format!(
+            "invalid habit entry entityId: {}",
+            mutation.entity_id
+        ))
+    })?;
+    if mutation.payload.get("id").and_then(Value::as_str) != Some(mutation.entity_id.as_str()) {
+        return Err(ApiError::bad_request(format!(
+            "habit entry id must match entityId for mutation {}",
+            mutation.mutation_id
+        )));
+    }
+    let habit_id = mutation
+        .payload
+        .get("habitId")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::bad_request("habit entry habitId is required"))?;
+    Uuid::parse_str(habit_id)
+        .map_err(|_| ApiError::bad_request(format!("invalid habit entry habitId: {habit_id}")))?;
+    let entry_date = mutation
+        .payload
+        .get("entryDate")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::bad_request("habit entryDate is required"))?;
+    NaiveDate::parse_from_str(entry_date, "%Y-%m-%d")
+        .map_err(|_| ApiError::bad_request(format!("invalid habit entryDate: {entry_date}")))?;
+    if mutation.operation == "delete" {
+        return Ok(());
+    }
+    let amount = mutation
+        .payload
+        .get("amount")
+        .and_then(Value::as_i64)
+        .unwrap_or_default();
+    if !(1..=1_000_000_000).contains(&amount) {
+        return Err(ApiError::bad_request(
+            "habit entry amount must be between 1 and 1000000000",
+        ));
     }
     Ok(())
 }
@@ -629,6 +796,96 @@ mod tests {
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
     }
+    #[test]
+    fn accepts_habit_and_entry_mutations() {
+        let habit_id = Uuid::new_v4().to_string();
+        let entry_id = Uuid::new_v4().to_string();
+        let habit = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "habit".to_owned(),
+            entity_id: habit_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": habit_id,
+                "title": "Água",
+                "targetAmount": 2000,
+                "unit": "ml",
+                "checkInMode": "fixed",
+                "incrementAmount": 250,
+                "weekdays": [1, 2, 3, 4, 5, 6, 7],
+                "reminderTimes": ["08:00", "12:00", "18:00"],
+                "emoji": "💧"
+            }),
+        };
+        let entry = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "habit-entry".to_owned(),
+            entity_id: entry_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": entry_id,
+                "habitId": habit_id,
+                "entryDate": "2026-09-01",
+                "amount": 250
+            }),
+        };
+        assert!(validate_request(&request_with(vec![habit, entry])).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_habit_schedules_and_amounts() {
+        for payload in [
+            json!({
+                "title": "Duplicated day",
+                "targetAmount": 1,
+                "unit": "",
+                "checkInMode": "complete",
+                "incrementAmount": 1,
+                "weekdays": [1, 1],
+                "reminderTimes": []
+            }),
+            json!({
+                "title": "Too many reminders",
+                "targetAmount": 1,
+                "unit": "",
+                "checkInMode": "complete",
+                "incrementAmount": 1,
+                "weekdays": [1],
+                "reminderTimes": [
+                    "01:00", "02:00", "03:00", "04:00", "05:00", "06:00",
+                    "07:00", "08:00", "09:00", "10:00", "11:00"
+                ]
+            }),
+        ] {
+            let habit_id = Uuid::new_v4().to_string();
+            let mut payload = payload;
+            payload["id"] = Value::String(habit_id.clone());
+            let mutation = SyncMutation {
+                mutation_id: Uuid::new_v4().to_string(),
+                entity_type: "habit".to_owned(),
+                entity_id: habit_id,
+                operation: "upsert".to_owned(),
+                payload,
+            };
+            assert!(validate_request(&request_with(vec![mutation])).is_err());
+        }
+
+        let entry_id = Uuid::new_v4().to_string();
+        let entry = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "habit-entry".to_owned(),
+            entity_id: entry_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": entry_id,
+                "habitId": Uuid::new_v4().to_string(),
+                "entryDate": "2026-09-01T00:00:00Z",
+                "amount": 0
+            }),
+        };
+        assert!(validate_request(&request_with(vec![entry])).is_err());
+    }
+
     #[tokio::test]
     async fn holiday_routes_require_bearer_token() {
         let pool = PgPoolOptions::new()

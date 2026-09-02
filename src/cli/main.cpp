@@ -47,6 +47,64 @@ std::optional<QList<int>> parseReminderMinutesBefore(const QString &value, QStri
   return reminders;
 }
 
+std::optional<waypoint::HabitRecord> habitFromOptions(const QCommandLineParser &parser,
+                                                       QString *errorMessage) {
+  waypoint::HabitRecord habit;
+  habit.title = parser.value(QStringLiteral("title")).trimmed();
+  bool validGoal = false;
+  habit.targetAmount = parser.value(QStringLiteral("goal")).toLongLong(&validGoal);
+  habit.unit = parser.value(QStringLiteral("unit")).trimmed();
+  const QString mode = parser.value(QStringLiteral("check-in"));
+  if (!QStringList{QStringLiteral("fixed"), QStringLiteral("manual"), QStringLiteral("complete")}
+           .contains(mode)) {
+    *errorMessage = QStringLiteral("--check-in must be fixed, manual, or complete");
+    return std::nullopt;
+  }
+  habit.checkInMode = waypoint::habitCheckInModeFromName(mode);
+  bool validIncrement = false;
+  habit.incrementAmount = parser.value(QStringLiteral("increment")).toLongLong(&validIncrement);
+  habit.emoji = parser.value(QStringLiteral("emoji"));
+  if (!validGoal || !validIncrement) {
+    *errorMessage = QStringLiteral("--goal and --increment must be integers");
+    return std::nullopt;
+  }
+
+  const QString weekdayInput = parser.isSet(QStringLiteral("weekdays"))
+                                   ? parser.value(QStringLiteral("weekdays"))
+                                   : QStringLiteral("1,2,3,4,5,6,7");
+  habit.weekdays.clear();
+  for (const QString &value : weekdayInput.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+    bool valid = false;
+    const int weekday = value.trimmed().toInt(&valid);
+    if (!valid || weekday < 1 || weekday > 7) {
+      *errorMessage = QStringLiteral("--weekdays must contain values from 1 through 7");
+      return std::nullopt;
+    }
+    habit.weekdays.append(weekday);
+  }
+
+  const QString reminderInput = parser.isSet(QStringLiteral("reminder-times"))
+                                    ? parser.value(QStringLiteral("reminder-times"))
+                                    : QStringLiteral("none");
+  if (reminderInput.trimmed() != QStringLiteral("none")) {
+    for (const QString &value : reminderInput.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+      const QTime time = QTime::fromString(value.trimmed(), QStringLiteral("HH:mm"));
+      if (!time.isValid()) {
+        *errorMessage = QStringLiteral("--reminder-times must be 'none' or comma-separated HH:mm times");
+        return std::nullopt;
+      }
+      habit.reminderTimes.append(time);
+    }
+  }
+
+  QString validationError;
+  if (!habit.isValid(&validationError)) {
+    *errorMessage = validationError;
+    return std::nullopt;
+  }
+  return habit;
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -60,21 +118,23 @@ int main(int argc, char *argv[]) {
   parser.addVersionOption();
   parser.addPositionalArgument(
       QStringLiteral("command"),
-      QStringLiteral("ping, snapshot, add, complete, reopen, skip, edit, reschedule, delete, sync-status, "
+      QStringLiteral("ping, snapshot, habits, add-habit, edit-habit, record-habit, undo-habit, "
+                     "delete-habit, add, complete, reopen, skip, edit, reschedule, delete, sync-status, "
                      "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
                      "holiday-preferences, configure-holidays, municipalities, holidays, or "
                      "refresh-holidays"));
   parser.addPositionalArgument(QStringLiteral("arguments"), QStringLiteral("Command arguments"),
                                QStringLiteral("[arguments...]"));
   parser.addOption({{QStringLiteral("t"), QStringLiteral("title")},
-                    QStringLiteral("Task title"),
+                    QStringLiteral("Task or habit title"),
                     QStringLiteral("title")});
   parser.addOption({{QStringLiteral("d"), QStringLiteral("date")},
-                    QStringLiteral("Scheduled date in YYYY-MM-DD format"),
+                    QStringLiteral("Calendar date in YYYY-MM-DD format"),
                     QStringLiteral("date")});
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
-  parser.addOption({QStringLiteral("emoji"), QStringLiteral("Optional task emoji"), QStringLiteral("emoji")});
+  parser.addOption({QStringLiteral("emoji"), QStringLiteral("Optional task or habit emoji"),
+                    QStringLiteral("emoji")});
   parser.addOption({QStringLiteral("reminders"),
                     QStringLiteral("Comma-separated minutes before the task, up to 5; use 'none' to disable"),
                     QStringLiteral("minutes")});
@@ -86,6 +146,19 @@ int main(int argc, char *argv[]) {
   parser.addOption({QStringLiteral("weekdays"),
                     QStringLiteral("Comma-separated ISO weekdays (1=Monday, 7=Sunday)"),
                     QStringLiteral("days")});
+  parser.addOption({QStringLiteral("goal"), QStringLiteral("Habit daily goal"), QStringLiteral("amount"),
+                    QStringLiteral("1")});
+  parser.addOption({QStringLiteral("unit"), QStringLiteral("Habit goal unit"), QStringLiteral("unit")});
+  parser.addOption({QStringLiteral("check-in"),
+                    QStringLiteral("Habit check-in mode: fixed, manual, or complete"),
+                    QStringLiteral("mode"), QStringLiteral("complete")});
+  parser.addOption({QStringLiteral("increment"), QStringLiteral("Fixed habit check-in increment"),
+                    QStringLiteral("amount"), QStringLiteral("1")});
+  parser.addOption({QStringLiteral("reminder-times"),
+                    QStringLiteral("Comma-separated habit reminder times, up to 10; use 'none' to disable"),
+                    QStringLiteral("times")});
+  parser.addOption({QStringLiteral("amount"), QStringLiteral("Manual habit check-in amount"),
+                    QStringLiteral("amount")});
   parser.addOption({QStringLiteral("end-mode"),
                     QStringLiteral("Recurrence ending: never, onDate, or afterCount"), QStringLiteral("mode"),
                     QStringLiteral("never")});
@@ -183,6 +256,99 @@ int main(int argc, char *argv[]) {
                {QStringLiteral("holidayCoverage"), holidayData.value(QStringLiteral("coverage"))},
                {QStringLiteral("holidayPreferences"), holidayPreferences},
                {QStringLiteral("holidaySync"), holidayStatus}});
+    return 0;
+  }
+  if (command == QStringLiteral("habits")) {
+    const QDate date = parser.isSet(QStringLiteral("date"))
+                           ? QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate)
+                           : QDate::currentDate();
+    if (!date.isValid()) {
+      return printError(QStringLiteral("habits requires --date YYYY-MM-DD"));
+    }
+    QJsonArray habits;
+    for (const waypoint::HabitProgress &progress : client.listHabitProgress(date, &error)) {
+      habits.append(progress.toJson());
+    }
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true},
+               {QStringLiteral("date"), date.toString(Qt::ISODate)},
+               {QStringLiteral("habits"), habits}});
+    return 0;
+  }
+  if (command == QStringLiteral("add-habit")) {
+    const auto habit = habitFromOptions(parser, &error);
+    if (!habit.has_value()) {
+      return printError(error);
+    }
+    if (!client.addHabit(*habit, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("edit-habit")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("edit-habit requires a habit id"));
+    }
+    auto habit = habitFromOptions(parser, &error);
+    if (!habit.has_value()) {
+      return printError(error);
+    }
+    habit->id = positional.at(1);
+    if (!client.editHabit(*habit, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("record-habit")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("record-habit requires a habit id"));
+    }
+    const QDate date = parser.isSet(QStringLiteral("date"))
+                           ? QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate)
+                           : QDate::currentDate();
+    if (!date.isValid()) {
+      return printError(QStringLiteral("record-habit requires --date YYYY-MM-DD"));
+    }
+    std::optional<qint64> amount;
+    if (parser.isSet(QStringLiteral("amount"))) {
+      bool valid = false;
+      const qint64 parsedAmount = parser.value(QStringLiteral("amount")).toLongLong(&valid);
+      if (!valid) {
+        return printError(QStringLiteral("--amount must be an integer"));
+      }
+      amount = parsedAmount;
+    }
+    if (!client.recordHabit(positional.at(1), date, amount, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("undo-habit")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("undo-habit requires a habit id"));
+    }
+    const QDate date = parser.isSet(QStringLiteral("date"))
+                           ? QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate)
+                           : QDate::currentDate();
+    if (!date.isValid() || !client.undoLastHabitEntry(positional.at(1), date, &error)) {
+      return printError(error.isEmpty() ? QStringLiteral("undo-habit requires --date YYYY-MM-DD") : error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("delete-habit")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("delete-habit requires a habit id"));
+    }
+    if (!client.deleteHabit(positional.at(1), &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
     return 0;
   }
   if (command == QStringLiteral("add")) {

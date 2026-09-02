@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Recurrence.hpp"
+#include "core/HabitRecord.hpp"
 
 #include <QDateTime>
 #include <QObject>
@@ -15,6 +16,8 @@ public:
   virtual ~TaskNotificationSink() = default;
   [[nodiscard]] virtual bool send(const TaskOccurrence &occurrence, int reminderMinutesBefore,
                                   QString *errorMessage = nullptr) = 0;
+  [[nodiscard]] virtual bool sendHabit(const HabitProgress &progress, const QTime &reminderTime,
+                                       QString *errorMessage = nullptr) = 0;
 };
 
 class ReminderScheduler final : public QObject {

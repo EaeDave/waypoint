@@ -7,6 +7,15 @@ set_tests_properties(waypoint_core_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+qt_add_executable(waypoint_habit_tests
+    HabitStoreTest.cpp
+)
+target_link_libraries(waypoint_habit_tests PRIVATE waypoint_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME waypoint_habit_tests COMMAND waypoint_habit_tests -o -,txt)
+set_tests_properties(waypoint_habit_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 qt_add_executable(waypoint_recurrence_tests
     RecurrenceTest.cpp
 )

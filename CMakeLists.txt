@@ -11,6 +11,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS Core DBus Gui Network Qml Quick QuickCo
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
+    src/core/HabitRecord.cpp
+    src/core/HabitRecord.hpp
     src/core/Recurrence.cpp
     src/core/Recurrence.hpp
     src/core/TaskRecord.cpp
@@ -98,6 +100,8 @@ qt_add_qml_module(waypoint
         qml/components/AppTimePicker.qml
         qml/components/AppReminderPicker.qml
         qml/components/AppEmojiPicker.qml
+        qml/components/AppHabitReminderPicker.qml
+        qml/components/HabitSection.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml
         qml/components/TaskRow.qml

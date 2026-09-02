@@ -27,6 +27,7 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent) : QObject(parent),
   connect(&m_periodicTimer, &QTimer::timeout, this, &SyncEngine::syncNow);
   connect(&m_debounceTimer, &QTimer::timeout, this, &SyncEngine::syncNow);
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
+  connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
 }
 
 bool SyncEngine::enabled() const {

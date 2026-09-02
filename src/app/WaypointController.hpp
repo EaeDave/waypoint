@@ -16,6 +16,7 @@ class WaypointController final : public QObject {
   Q_OBJECT
   Q_PROPERTY(TaskListModel *todayTasks READ todayTasks CONSTANT)
   Q_PROPERTY(TaskListModel *selectedDateTasks READ selectedDateTasks CONSTANT)
+  Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY habitsChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
   Q_PROPERTY(
       QString selectedDateKey READ selectedDateKey WRITE setSelectedDateKey NOTIFY selectedDateKeyChanged)
@@ -43,6 +44,7 @@ public:
 
   [[nodiscard]] TaskListModel *todayTasks();
   [[nodiscard]] TaskListModel *selectedDateTasks();
+  [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] CalendarModel *calendar();
   [[nodiscard]] QString selectedDateKey() const;
   void setSelectedDateKey(const QString &dateKey);
@@ -84,6 +86,13 @@ public:
                             const QString &endMode, const QString &untilDateKey, int occurrenceCount,
                             const QVariantList &reminderMinutesBefore, const QString &emoji);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
+  Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
+                             const QString &unit, const QString &checkInMode, qint64 incrementAmount,
+                             const QVariantList &weekdays, const QVariantList &reminderTimes,
+                             const QString &emoji);
+  Q_INVOKABLE bool recordHabit(const QString &habitId, qint64 amount = 0);
+  Q_INVOKABLE bool undoHabit(const QString &habitId);
+  Q_INVOKABLE bool deleteHabit(const QString &habitId);
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();
   Q_INVOKABLE bool syncNow();
@@ -95,6 +104,7 @@ public:
 
 signals:
   void selectedDateKeyChanged();
+  void habitsChanged();
   void connectionChanged();
   void errorMessageChanged();
   void syncConfigurationChanged();
@@ -117,6 +127,7 @@ private:
   TaskListModel m_todayTasks;
   TaskListModel m_selectedDateTasks;
   CalendarModel m_calendar;
+  QVariantList m_todayHabits;
   QTimer m_refreshTimer;
   QDate m_selectedDate;
   QByteArray m_snapshotSignature;

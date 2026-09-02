@@ -21,6 +21,7 @@ ReminderScheduler::ReminderScheduler(TaskStore *taskStore, TaskNotificationSink 
   m_timer.setInterval(std::chrono::seconds(10));
   connect(&m_timer, &QTimer::timeout, this, &ReminderScheduler::dispatchCurrentMinute);
   connect(m_taskStore, &TaskStore::tasksChanged, this, &ReminderScheduler::dispatchCurrentMinute);
+  connect(m_taskStore, &TaskStore::habitsChanged, this, &ReminderScheduler::dispatchCurrentMinute);
 }
 
 void ReminderScheduler::start() {
@@ -86,6 +87,38 @@ bool ReminderScheduler::dispatchDueReminders(const QDateTime &localNow, QString 
       }
       emit reminderDelivered(occurrence.taskId, occurrence.title);
     }
+  }
+
+  const QList<HabitProgress> habits = m_taskStore->listHabitProgress(currentMinute.date(), &loadError);
+  if (!loadError.isEmpty()) {
+    setError(errorMessage, loadError);
+    return false;
+  }
+  for (const HabitProgress &progress : habits) {
+    if (progress.completed() || !progress.habit.reminderTimes.contains(currentMinute.time())) {
+      continue;
+    }
+    bool claimed = false;
+    QString claimError;
+    if (!m_taskStore->claimHabitReminderDelivery(progress.habit.id, progress.date, currentMinute.time(),
+                                                  &claimed, &claimError)) {
+      setError(errorMessage, claimError);
+      return false;
+    }
+    if (!claimed) {
+      continue;
+    }
+    QString notificationError;
+    if (!m_notificationSink->sendHabit(progress, currentMinute.time(), &notificationError)) {
+      QString releaseError;
+      if (!m_taskStore->releaseHabitReminderDelivery(progress.habit.id, progress.date,
+                                                      currentMinute.time(), &releaseError)) {
+        notificationError += QStringLiteral("; cannot release habit reminder claim: %1").arg(releaseError);
+      }
+      setError(errorMessage, notificationError);
+      return false;
+    }
+    emit reminderDelivered(progress.habit.id, progress.habit.title);
   }
   return true;
 }

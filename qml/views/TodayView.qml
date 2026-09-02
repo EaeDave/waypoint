@@ -99,28 +99,46 @@ Item {
         }
 
         ScrollView {
+            id: dayScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 12
             clip: true
+            contentWidth: availableWidth
 
-            ListView {
-                id: taskList
-                model: root.controller.todayTasks
-                spacing: 2
+            ColumnLayout {
+                width: dayScroll.availableWidth
+                spacing: 4
 
-                delegate: TaskRow {
-                    width: taskList.width
-                    controller: root.controller
+                ListView {
+                    id: taskList
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: contentHeight
+                    interactive: false
+                    model: root.controller.todayTasks
+                    spacing: 2
+
+                    delegate: TaskRow {
+                        width: taskList.width
+                        controller: root.controller
+                    }
                 }
 
                 Text {
-                    anchors.centerIn: parent
+                    Layout.fillWidth: true
+                    Layout.topMargin: 18
+                    Layout.bottomMargin: 8
                     visible: taskList.count === 0
                     text: "Seu dia está livre."
+                    horizontalAlignment: Text.AlignHCenter
                     color: WaypointTheme.disabledText
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.subtitleSize
+                }
+
+                HabitSection {
+                    Layout.fillWidth: true
+                    controller: root.controller
                 }
             }
         }
