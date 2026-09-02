@@ -15,7 +15,7 @@ private slots:
   void clampLeapDayFromOriginalAnchor();
   void honorEndingConditions();
   void projectOccurrenceStateByDate();
-  void exposeOnlyLatestDueRecurringOccurrence();
+  void holdOldestUnresolvedDueRecurringOccurrence();
   void hideSkippedOccurrenceUntilNextRecurrence();
   void advanceCalendarMarkerAfterResolvedOccurrence();
   void isolateDailyCountsAcrossMidnightAndSeries();
@@ -111,21 +111,30 @@ void RecurrenceTest::projectOccurrenceStateByDate() {
   QCOMPARE(occurrences.at(1).scheduledTime, QTime(18, 20));
 }
 
-void RecurrenceTest::exposeOnlyLatestDueRecurringOccurrence() {
+void RecurrenceTest::holdOldestUnresolvedDueRecurringOccurrence() {
   waypoint::TaskRecord task;
   task.id = QStringLiteral("task-a");
   task.title = QStringLiteral("Praticar");
   task.scheduledDate = QDate(2026, 1, 1);
   task.recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+  const QDate today(2026, 1, 2);
 
-  waypoint::TaskOccurrenceState yesterday;
-  yesterday.taskId = task.id;
-  yesterday.occurrenceDate = QDate(2026, 1, 2);
+  const auto overdue = waypoint::projectActionableOccurrences({task}, {}, today);
+  QCOMPARE(overdue.size(), 1);
+  QCOMPARE(overdue.first().occurrenceDate, QDate(2026, 1, 1));
 
-  const auto occurrences = waypoint::projectActionableOccurrences({task}, {yesterday}, QDate(2026, 1, 3));
-  QCOMPARE(occurrences.size(), 1);
-  QCOMPARE(occurrences.first().occurrenceDate, QDate(2026, 1, 3));
-  QVERIFY(!occurrences.first().completed);
+  waypoint::TaskOccurrenceState resolved;
+  resolved.taskId = task.id;
+  resolved.occurrenceDate = QDate(2026, 1, 1);
+  resolved.status = waypoint::OccurrenceStatus::Completed;
+  const auto afterCompletion = waypoint::projectActionableOccurrences({task}, {resolved}, today);
+  QCOMPARE(afterCompletion.size(), 1);
+  QCOMPARE(afterCompletion.first().occurrenceDate, today);
+
+  resolved.status = waypoint::OccurrenceStatus::Skipped;
+  const auto afterSkip = waypoint::projectActionableOccurrences({task}, {resolved}, today);
+  QCOMPARE(afterSkip.size(), 1);
+  QCOMPARE(afterSkip.first().occurrenceDate, today);
 }
 void RecurrenceTest::hideSkippedOccurrenceUntilNextRecurrence() {
   waypoint::TaskRecord task;
@@ -134,14 +143,20 @@ void RecurrenceTest::hideSkippedOccurrenceUntilNextRecurrence() {
   task.scheduledDate = QDate(2026, 1, 1);
   task.recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
 
-  waypoint::TaskOccurrenceState skipped;
-  skipped.taskId = task.id;
+  waypoint::TaskOccurrenceState first;
+  first.taskId = task.id;
+  first.occurrenceDate = QDate(2026, 1, 1);
+  first.status = waypoint::OccurrenceStatus::Completed;
+  waypoint::TaskOccurrenceState second = first;
+  second.occurrenceDate = QDate(2026, 1, 2);
+  waypoint::TaskOccurrenceState skipped = first;
   skipped.occurrenceDate = QDate(2026, 1, 3);
   skipped.status = waypoint::OccurrenceStatus::Skipped;
+  const QList<waypoint::TaskOccurrenceState> states{first, second, skipped};
 
-  QVERIFY(waypoint::projectActionableOccurrences({task}, {skipped}, QDate(2026, 1, 3)).isEmpty());
+  QVERIFY(waypoint::projectActionableOccurrences({task}, states, QDate(2026, 1, 3)).isEmpty());
 
-  const auto nextDay = waypoint::projectActionableOccurrences({task}, {skipped}, QDate(2026, 1, 4));
+  const auto nextDay = waypoint::projectActionableOccurrences({task}, states, QDate(2026, 1, 4));
   QCOMPARE(nextDay.size(), 1);
   QCOMPARE(nextDay.first().occurrenceDate, QDate(2026, 1, 4));
 }
@@ -152,33 +167,35 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
   task.title = QStringLiteral("Praticar");
   task.scheduledDate = QDate(2026, 1, 1);
   task.recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
-  const QDate today(2026, 1, 3);
-  const QDate tomorrow(2026, 1, 4);
+  const QDate yesterday(2026, 1, 1);
+  const QDate today(2026, 1, 2);
+  const QDate tomorrow(2026, 1, 3);
 
-  const auto pending = waypoint::assignCalendarMarkers(
-      waypoint::projectOccurrences({task}, {}, today, tomorrow), {task}, {}, today);
-  QCOMPARE(pending.size(), 2);
-  QVERIFY(pending.at(0).calendarMarker);
-  QVERIFY(!pending.at(1).calendarMarker);
+  const auto overdue = waypoint::assignCalendarMarkers(
+      waypoint::projectOccurrences({task}, {}, yesterday, tomorrow), {task}, {}, today);
+  QCOMPARE(overdue.size(), 3);
+  QVERIFY(overdue.at(0).calendarMarker);
+  QVERIFY(!overdue.at(1).calendarMarker);
+  QVERIFY(!overdue.at(2).calendarMarker);
 
-  waypoint::TaskOccurrenceState completed;
-  completed.taskId = task.id;
-  completed.occurrenceDate = today;
-  completed.status = waypoint::OccurrenceStatus::Completed;
+  waypoint::TaskOccurrenceState resolved;
+  resolved.taskId = task.id;
+  resolved.occurrenceDate = yesterday;
+  resolved.status = waypoint::OccurrenceStatus::Completed;
   const auto afterCompletion = waypoint::assignCalendarMarkers(
-      waypoint::projectOccurrences({task}, {completed}, today, tomorrow), {task}, {completed}, today);
-  QCOMPARE(afterCompletion.size(), 2);
-  QVERIFY(afterCompletion.at(0).calendarMarker);
-  QVERIFY(afterCompletion.at(0).completed);
+      waypoint::projectOccurrences({task}, {resolved}, yesterday, tomorrow), {task}, {resolved}, today);
+  QCOMPARE(afterCompletion.size(), 3);
+  QVERIFY(!afterCompletion.at(0).calendarMarker);
   QVERIFY(afterCompletion.at(1).calendarMarker);
+  QVERIFY(!afterCompletion.at(2).calendarMarker);
 
-  waypoint::TaskOccurrenceState skipped = completed;
-  skipped.status = waypoint::OccurrenceStatus::Skipped;
+  resolved.status = waypoint::OccurrenceStatus::Skipped;
   const auto afterSkip = waypoint::assignCalendarMarkers(
-      waypoint::projectOccurrences({task}, {skipped}, today, tomorrow), {task}, {skipped}, today);
-  QCOMPARE(afterSkip.size(), 1);
-  QCOMPARE(afterSkip.first().occurrenceDate, tomorrow);
-  QVERIFY(afterSkip.first().calendarMarker);
+      waypoint::projectOccurrences({task}, {resolved}, yesterday, tomorrow), {task}, {resolved}, today);
+  QCOMPARE(afterSkip.size(), 2);
+  QCOMPARE(afterSkip.at(0).occurrenceDate, today);
+  QVERIFY(afterSkip.at(0).calendarMarker);
+  QVERIFY(!afterSkip.at(1).calendarMarker);
 }
 
 void RecurrenceTest::isolateDailyCountsAcrossMidnightAndSeries() {

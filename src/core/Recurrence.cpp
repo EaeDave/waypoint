@@ -140,6 +140,20 @@ QDate nextRecurrenceSearchEnd(const TaskRecord &task, const QDate &today) {
   return base;
 }
 
+QDate firstUnresolvedDueDate(const TaskRecord &task,
+                             const QHash<QString, TaskOccurrenceState> &stateByOccurrence,
+                             const QDate &today) {
+  const QList<QDate> dueDates =
+      recurrenceDates(task.scheduledDate, task.recurrence, task.scheduledDate, today);
+  for (const QDate &date : dueDates) {
+    const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, date));
+    if (state == stateByOccurrence.cend() || state->status == OccurrenceStatus::Pending) {
+      return date;
+    }
+  }
+  return {};
+}
+
 TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const TaskOccurrenceState *state) {
   TaskOccurrence occurrence;
   occurrence.taskId = task.id;
@@ -412,23 +426,9 @@ QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences, c
       continue;
     }
 
-    const QList<QDate> dueDates =
-        recurrenceDates(task.scheduledDate, task.recurrence, task.scheduledDate, today);
-    const QDate latestDueDate = dueDates.isEmpty() ? QDate() : dueDates.constLast();
-    OccurrenceStatus latestStatus = OccurrenceStatus::Pending;
-    if (latestDueDate.isValid()) {
-      const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, latestDueDate));
-      if (state != stateByOccurrence.cend()) {
-        latestStatus = state->status;
-      }
-    }
-
-    QDate pendingMarkerDate;
-    const bool latestDueResolved =
-        latestStatus == OccurrenceStatus::Completed || latestStatus == OccurrenceStatus::Skipped;
-    if (latestDueDate.isValid() && !latestDueResolved) {
-      pendingMarkerDate = latestDueDate;
-    } else {
+    const QDate unresolvedDueDate = firstUnresolvedDueDate(task, stateByOccurrence, today);
+    QDate pendingMarkerDate = unresolvedDueDate;
+    if (!pendingMarkerDate.isValid()) {
       const QList<QDate> nextDates = recurrenceDates(task.scheduledDate, task.recurrence, today.addDays(1),
                                                      nextRecurrenceSearchEnd(task, today));
       if (!nextDates.isEmpty()) {
@@ -436,7 +436,9 @@ QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences, c
       }
     }
 
-    const bool preserveCompletedToday = latestDueDate == today && latestStatus == OccurrenceStatus::Completed;
+    const auto todayState = stateByOccurrence.constFind(occurrenceKey(task.id, today));
+    const bool preserveCompletedToday =
+        todayState != stateByOccurrence.cend() && todayState->status == OccurrenceStatus::Completed;
     for (TaskOccurrence &occurrence : occurrences) {
       if (occurrence.taskId != task.id) {
         continue;
@@ -468,22 +470,18 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
       continue;
     }
 
-    const QList<QDate> dates =
-        recurrenceDates(task.scheduledDate, task.recurrence, task.scheduledDate, today);
-    if (dates.isEmpty()) {
+    const QDate unresolvedDueDate = firstUnresolvedDueDate(task, stateByOccurrence, today);
+    if (unresolvedDueDate.isValid()) {
+      const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, unresolvedDueDate));
+      occurrences.append(occurrenceFor(task, unresolvedDueDate,
+                                       state == stateByOccurrence.cend() ? nullptr : &state.value()));
       continue;
     }
-    const QDate latestDate = dates.constLast();
-    const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, latestDate));
-    if (state != stateByOccurrence.cend() && state->status == OccurrenceStatus::Skipped) {
-      continue;
+
+    const auto todayState = stateByOccurrence.constFind(occurrenceKey(task.id, today));
+    if (todayState != stateByOccurrence.cend() && todayState->status == OccurrenceStatus::Completed) {
+      occurrences.append(occurrenceFor(task, today, &todayState.value()));
     }
-    const bool completed = state != stateByOccurrence.cend() && state->status == OccurrenceStatus::Completed;
-    if (completed && latestDate < today) {
-      continue;
-    }
-    occurrences.append(
-        occurrenceFor(task, latestDate, state == stateByOccurrence.cend() ? nullptr : &state.value()));
   }
 
   std::sort(occurrences.begin(), occurrences.end(),

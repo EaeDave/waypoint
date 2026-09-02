@@ -16,6 +16,7 @@ Panel {
     property var anchorItem: null
     property var hostWidget: null
     property var occurrences: []
+    property var todayTasks: []
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -46,7 +47,10 @@ Panel {
 
     readonly property var barIdentity: hostWidget || root
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
-    readonly property var selectedTasks: Model.occurrencesForDate(occurrences, selectedDate)
+    readonly property bool selectedDateIsToday:
+        Model.dateKey(selectedDate) === Model.dateKey(today)
+    readonly property var selectedTasks: selectedDateIsToday
+        ? todayTasks : Model.occurrencesForDate(occurrences, selectedDate)
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
@@ -745,7 +749,11 @@ Panel {
                             model: root.selectedTasks
 
                             Rectangle {
+                                id: taskRow
                                 required property var modelData
+                                readonly property bool overdue:
+                                    !modelData.completed
+                                    && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
                                 width: parent.width
                                 height: Style.space(46)
                                 radius: Style.cornerRadius
@@ -796,9 +804,16 @@ Panel {
                                             text: {
                                                 const time = String(modelData.scheduledTime || "");
                                                 const recurrence = String(modelData.recurrenceLabel || "");
-                                                return recurrence === "" ? time : time + " · " + recurrence;
+                                                const details = recurrence === ""
+                                                    ? time : time + " · " + recurrence;
+                                                if (!taskRow.overdue)
+                                                    return details;
+                                                const date = Qt.formatDate(
+                                                    Model.parseLocalDate(modelData.occurrenceDate),
+                                                    "dd MMM").toUpperCase();
+                                                return "ATRASADA · " + date + " · " + details;
                                             }
-                                            color: Color.accent
+                                            color: taskRow.overdue ? Color.urgent : Color.accent
                                             elide: Text.ElideRight
                                             font.family: root.fontFamily
                                             font.pixelSize: Style.font.caption

@@ -102,6 +102,7 @@ BarWidget {
         target.hostWidget = root;
         target.occurrences = Qt.binding(() => root.occurrences);
         target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
+        target.todayTasks = Qt.binding(() => root.today.occurrences || []);
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
