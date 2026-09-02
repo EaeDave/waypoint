@@ -11,7 +11,9 @@ int main(int argc, char *argv[]) {
   QCoreApplication::setOrganizationDomain(QStringLiteral("eaedave.org"));
   QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));
 
-  if (argc > 1 && QString::fromUtf8(argv[1]) == QStringLiteral("-widget-action-service")) {
+  const QString launchMode = argc > 1 ? QString::fromUtf8(argv[1]) : QString{};
+  if (launchMode == QStringLiteral("-widget-action-service") ||
+      launchMode == QStringLiteral("-background-sync-service")) {
     QAndroidService service(argc, argv);
     return service.exec();
   }
