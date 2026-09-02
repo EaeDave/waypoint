@@ -9,6 +9,7 @@ Item {
 
     property alias text: pickerInput.text
     property bool showInlineButton: true
+    property bool focusAcceptOnOpen: false
     readonly property bool acceptableInput: pickerInput.acceptableInput
     property int pendingHour: 0
     property int pendingMinute: 0
@@ -107,6 +108,10 @@ Item {
         padding: WaypointTheme.popupPadding
         modal: true
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: {
+            if (root.focusAcceptOnOpen)
+                Qt.callLater(() => acceptButton.forceActiveFocus());
+        }
         onClosed: {
             if (!root.committing)
                 pickerInput.text = root.originalText;
@@ -229,6 +234,7 @@ Item {
                     onClicked: root.cancelSelection()
                 }
                 AppButton {
+                    id: acceptButton
                     text: "Concluir"
                     selected: true
                     enabled: root.acceptableInput

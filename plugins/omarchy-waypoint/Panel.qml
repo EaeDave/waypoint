@@ -149,6 +149,8 @@ Panel {
         timePickerInput.text = initialTime || currentTimeKey();
         syncPickerSelectionFromText();
         timePickerVisible = true;
+        if (timePickerCreatesTask)
+            Qt.callLater(() => timePickerConfirm.forceActiveFocus());
     }
 
     function selectCurrentPickerTime() {
@@ -1327,10 +1329,12 @@ Panel {
                                 onClicked: root.closeTimePicker()
                             }
                             Button {
+                                id: timePickerConfirm
                                 text: "Concluir"
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
+                                focusable: true
                                 enabled: timePickerInput.acceptableInput
                                 onClicked: root.applyTimePicker()
                             }

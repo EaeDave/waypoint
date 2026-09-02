@@ -18,6 +18,12 @@ BarWidget {
     property string rangeFrom: ""
     property string rangeTo: ""
     property bool refreshPending: false
+    property date displayDate: clock.date
+    readonly property string clockFormat: root.vertical
+        ? root.setting("verticalFormat", "HH\n—\nmm")
+        : root.setting("format", "yyyy-MM-dd HH:mm")
+    readonly property string clockText: Qt.formatDateTime(root.displayDate, root.clockFormat)
+    readonly property var verticalLines: root.clockText.split("\n").concat(["󰄬 " + root.summary.pending])
     readonly property var summary: Model.todaySummary(today)
     readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
 
@@ -131,6 +137,23 @@ BarWidget {
     readonly property real openPanelIndicatorWidth: button.labelWidth
     readonly property real openPanelIndicatorHeight: Math.max(Style.space(10), Math.round(Style.bar.iconSlot * 0.55))
 
+    SystemClock {
+        id: clock
+        precision: SystemClock.Minutes
+        onDateChanged: root.displayDate = date
+    }
+
+    IpcHandler {
+        target: "io.waypoint.bar"
+
+        function refresh(): void { root.broadcast("refresh"); }
+        function open(): void { root.open(); }
+        function close(): void { root.close(); }
+        function show(): void { root.open(); }
+        function hide(): void { root.close(); }
+        function toggle(): void { root.toggle(); }
+    }
+
     Process {
         id: snapshotProcess
         command: ["waypointctl", "snapshot"]
@@ -205,15 +228,43 @@ BarWidget {
         id: button
         anchors.fill: parent
         bar: root.bar
-        text: root.vertical ? "󰄬" : "󰄬  " + root.summary.pending
-        labelVisible: true
-        hasVisualContent: true
+        text: root.vertical ? "" : root.clockText + "  ·  󰄬 " + root.summary.pending
+        labelVisible: !root.vertical
+        hasVisualContent: root.vertical ? root.verticalLines.length > 0 : text !== ""
+        fixedHeight: root.vertical ? root.verticalLines.length * Style.bar.iconSlot : -1
+        horizontalMargin: 8.75
+        verticalPadding: 8.75
 
         onPressed: function (mouseButton) {
             if (mouseButton === Qt.RightButton)
                 root.openSettings();
-            else
+            else if (mouseButton === Qt.MiddleButton) {
+                if (root.bar)
+                    root.bar.run("omarchy-menu-timezone");
+            } else {
                 root.toggle();
+            }
+        }
+
+        Column {
+            visible: root.vertical
+            anchors.fill: parent
+
+            Repeater {
+                model: root.verticalLines
+
+                OpticalGlyph {
+                    required property string modelData
+                    width: button.width
+                    height: Style.bar.iconSlot
+                    text: modelData
+                    fontFamily: button.fontFamily
+                    fontSize: modelData.length > 5
+                        ? button.fontSize * 0.85
+                        : button.fontSize
+                    color: button.foreground
+                }
+            }
         }
 
         Component.onCompleted: {

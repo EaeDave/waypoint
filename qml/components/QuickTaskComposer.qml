@@ -126,6 +126,7 @@ Rectangle {
         AppTimePicker {
             id: timeInput
             showInlineButton: false
+            focusAcceptOnOpen: true
             text: root.currentTimeKey()
             onSelectionAccepted: selectedTime => root.submit(selectedTime)
         }
