@@ -1,0 +1,23 @@
+appId: org.eaedave.waypoint
+---
+- launchApp
+- tapOn:
+    id: "navigation-settings"
+- tapOn:
+    id: "sync-endpoint"
+- eraseText
+- setClipboard: ${SYNC_ENDPOINT}
+- pasteText
+- tapOn:
+    id: "sync-token"
+- eraseText
+- setClipboard: ${SYNC_TOKEN}
+- pasteText
+- tapOn:
+    id: "save-sync-configuration"
+- tapOn:
+    id: "sync-now"
+- extendedWaitUntil:
+    visible: "Conectado"
+    timeout: 20000
+- assertNotVisible: "TLS initialization failed"

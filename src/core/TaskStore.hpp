@@ -1,7 +1,7 @@
 #pragma once
 
-#include "core/SyncConfiguration.hpp"
 #include "core/HabitRecord.hpp"
+#include "core/SyncConfiguration.hpp"
 #include "core/TaskRecord.hpp"
 
 #include <QJsonArray>
@@ -36,8 +36,7 @@ public:
                                                 const QTime &reminderTime, bool *claimed,
                                                 QString *errorMessage = nullptr);
   [[nodiscard]] bool releaseHabitReminderDelivery(const QString &habitId, const QDate &habitDate,
-                                                  const QTime &reminderTime,
-                                                  QString *errorMessage = nullptr);
+                                                  const QTime &reminderTime, QString *errorMessage = nullptr);
   [[nodiscard]] bool claimReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
                                            int reminderMinutesBefore, bool *claimed,
                                            QString *errorMessage = nullptr);
@@ -50,6 +49,8 @@ public:
                                            QString *errorMessage = nullptr);
   [[nodiscard]] QJsonObject holidayPreferences(QString *errorMessage = nullptr) const;
   [[nodiscard]] bool saveHolidayPreferences(const QJsonObject &preferences, QString *errorMessage = nullptr);
+  [[nodiscard]] bool applySyncedHolidayPreferences(const QJsonObject &preferences,
+                                                   QString *errorMessage = nullptr);
   [[nodiscard]] QJsonArray listHolidays(const QDate &from, const QDate &to,
                                         QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonArray holidayCoverage(QString *errorMessage = nullptr) const;
@@ -66,16 +67,15 @@ public:
                                  const QString &emoji, HabitRecord *createdHabit = nullptr,
                                  QString *errorMessage = nullptr);
   [[nodiscard]] bool editHabit(const QString &habitId, const QString &title, qint64 targetAmount,
-                               const QString &unit, HabitCheckInMode checkInMode,
-                               qint64 incrementAmount, const QList<int> &weekdays,
-                               const QList<QTime> &reminderTimes, const QString &emoji,
-                               QString *errorMessage = nullptr);
+                               const QString &unit, HabitCheckInMode checkInMode, qint64 incrementAmount,
+                               const QList<int> &weekdays, const QList<QTime> &reminderTimes,
+                               const QString &emoji, QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteHabit(const QString &habitId, QString *errorMessage = nullptr);
   [[nodiscard]] bool recordHabit(const QString &habitId, const QDate &date,
                                  const std::optional<qint64> &amount, HabitEntry *createdEntry = nullptr,
                                  QString *errorMessage = nullptr);
   [[nodiscard]] bool undoLastHabitEntry(const QString &habitId, const QDate &date,
-                                       QString *errorMessage = nullptr);
+                                        QString *errorMessage = nullptr);
   [[nodiscard]] bool createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
                                 const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
                                 const QString &emoji, TaskRecord *createdTask = nullptr,

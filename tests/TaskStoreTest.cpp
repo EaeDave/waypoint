@@ -522,6 +522,24 @@ void TaskStoreTest::persistHolidayPreferencesAndMunicipalities() {
   QVERIFY(loaded.value(QStringLiteral("includeCommemorative")).toBool());
   QVERIFY(!loaded.value(QStringLiteral("includeOptional")).toBool());
 
+  QJsonObject synchronized{
+      {QStringLiteral("stateCode"), QStringLiteral("RJ")},
+      {QStringLiteral("cityCode"), QStringLiteral("3302403")},
+      {QStringLiteral("includeNational"), true},
+      {QStringLiteral("includeState"), true},
+      {QStringLiteral("includeMunicipal"), true},
+      {QStringLiteral("includeCommemorative"), false},
+      {QStringLiteral("includeOptional"), true},
+      {QStringLiteral("revision"), 42},
+      {QStringLiteral("updatedAt"), QStringLiteral("2026-02-01T12:00:00.000Z")},
+  };
+  QVERIFY2(store.applySyncedHolidayPreferences(synchronized, &error), qPrintable(error));
+  const QJsonObject applied = store.holidayPreferences(&error);
+  QCOMPARE(applied.value(QStringLiteral("stateCode")).toString(), QStringLiteral("RJ"));
+  QCOMPARE(applied.value(QStringLiteral("cityCode")).toString(), QStringLiteral("3302403"));
+  QCOMPARE(applied.value(QStringLiteral("revision")).toInteger(), 42);
+  QCOMPARE(applied.value(QStringLiteral("updatedAt")).toString(), QStringLiteral("2026-02-01T12:00:00.000Z"));
+
   const QJsonArray municipalities{
       QJsonObject{{QStringLiteral("code"), QStringLiteral("3550308")},
                   {QStringLiteral("name"), QStringLiteral("São Paulo")}},

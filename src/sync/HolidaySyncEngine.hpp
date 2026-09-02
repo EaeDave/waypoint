@@ -38,9 +38,11 @@ signals:
 private:
   [[nodiscard]] QUrl apiUrl(const QString &path) const;
   [[nodiscard]] QNetworkRequest authorizedRequest(const QUrl &url) const;
+  void downloadPreferences();
   void uploadPreferences();
   void fetchNextYear();
   void finishPreferencesUpload(QNetworkReply *reply);
+  void finishPreferencesDownload(QNetworkReply *reply);
   void finishYearFetch(QNetworkReply *reply, int year);
   void setStatus(const QString &state, const QString &errorMessage = {});
 
@@ -53,6 +55,7 @@ private:
   QString m_state = QStringLiteral("local-only");
   QString m_lastError;
   QStringList m_coverageErrors;
+  bool m_preferencesNeedUpload = false;
   bool m_inFlight = false;
 };
 

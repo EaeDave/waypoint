@@ -7,6 +7,7 @@
 - Typecheck: `cmake --build --preset dev && cargo check --workspace`
 - Build: `cmake --build --preset dev && cargo build --workspace`
 - Container: `docker build --tag waypoint-api .`
+- Android APK: `bin/build-android` (outputs `waypoint-android-arm64-debug.apk`)
 
 ### Non-standard practices
 - Date-only tasks are floating calendar dates. Never convert `scheduled_date` through UTC.

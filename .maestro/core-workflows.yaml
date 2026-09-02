@@ -1,0 +1,44 @@
+appId: org.eaedave.waypoint
+---
+- launchApp
+- tapOn:
+    id: "create-task"
+- tapOn:
+    id: "task-editor-title"
+- setClipboard: "Tarefa de teste automatizado"
+- pasteText
+- tapOn:
+    id: "task-editor-save"
+- assertVisible: "Tarefa de teste automatizado"
+- tapOn: "Concluir tarefa Tarefa de teste automatizado"
+- assertVisible: "Reabrir tarefa Tarefa de teste automatizado"
+
+- tapOn:
+    id: "navigation-habits"
+- tapOn:
+    id: "create-habit"
+- tapOn:
+    id: "habit-editor-title"
+- inputText: "Habito de teste automatizado"
+- tapOn:
+    id: "habit-editor-save"
+- assertVisible: "Habito de teste automatizado"
+
+- tapOn:
+    id: "navigation-today"
+- assertVisible: "Habito de teste automatizado"
+- tapOn: "Registrar hábito Habito de teste automatizado"
+- assertVisible: "Hábito concluído Habito de teste automatizado"
+
+- tapOn:
+    id: "navigation-calendar"
+- assertVisible:
+    id: "calendar-previous-month"
+- assertVisible:
+    id: "calendar-next-month"
+- tapOn:
+    id: "calendar-next-month"
+- tapOn:
+    id: "calendar-today"
+- assertVisible:
+    id: "calendar-create-task"

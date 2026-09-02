@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+android_abi="${ANDROID_ABI:-arm64-v8a}"
+case "$android_abi" in
+    arm64-v8a)
+        qt_arch="android_arm64_v8a"
+        output_arch="arm64"
+        ;;
+    x86_64)
+        qt_arch="android_x86_64"
+        output_arch="x86_64"
+        ;;
+    *)
+        printf 'Unsupported Android ABI: %s\n' "$android_abi" >&2
+        exit 1
+        ;;
+esac
+qt_root="${QT_ANDROID_ROOT:-$HOME/.local/qt/6.9.3/$qt_arch}"
+qt_host_root="${QT_HOST_ROOT:-$HOME/.local/qt/6.9.3/gcc_64}"
+android_sdk_root="${ANDROID_SDK_ROOT:-$HOME/.local/android-sdk}"
+android_ndk_root="${ANDROID_NDK_ROOT:-$android_sdk_root/ndk/27.2.12479018}"
+java_home="${JAVA_HOME:-$HOME/.local/share/mise/installs/java/temurin-17.0.20+8}"
+build_directory="$repository_root/build/android-$output_arch"
+output_apk="$repository_root/waypoint-android-$output_arch-debug.apk"
+
+for required_path in \
+    "$qt_root/bin/qt-cmake" \
+    "$qt_host_root/bin/androiddeployqt" \
+    "$android_ndk_root/build/cmake/android.toolchain.cmake" \
+    "$java_home/bin/java"; do
+    if [[ ! -e "$required_path" ]]; then
+        printf 'Missing Android build dependency: %s\n' "$required_path" >&2
+        exit 1
+    fi
+done
+
+export JAVA_HOME="$java_home"
+export ANDROID_SDK_ROOT="$android_sdk_root"
+export ANDROID_NDK_ROOT="$android_ndk_root"
+export PATH="$java_home/bin:$android_sdk_root/platform-tools:/usr/bin:$PATH"
+
+"$qt_root/bin/qt-cmake" \
+    -S "$repository_root" \
+    -B "$build_directory" \
+    -GNinja \
+    -DQT_HOST_PATH="$qt_host_root" \
+    -DANDROID_SDK_ROOT="$android_sdk_root" \
+    -DANDROID_NDK_ROOT="$android_ndk_root" \
+    -DANDROID_ABI="$android_abi" \
+    -DANDROID_PLATFORM=android-28 \
+    -DBUILD_TESTING=OFF
+cmake --build "$build_directory" --target apk
+cp "$build_directory/android-build/waypoint_android.apk" "$output_apk"
+sha256sum "$output_apk"
+printf 'APK: %s\n' "$output_apk"

@@ -7,7 +7,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core DBus Gui Network Qml Quick QuickControls2 Sql Test)
+set(waypoint_qt_components Core Gui Network Qml Quick QuickControls2 Sql)
+if(NOT ANDROID)
+    list(APPEND waypoint_qt_components DBus Test)
+endif()
+find_package(Qt6 6.8 REQUIRED COMPONENTS ${waypoint_qt_components})
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
@@ -25,28 +29,6 @@ target_include_directories(waypoint_core PUBLIC src)
 target_link_libraries(waypoint_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql)
 target_compile_options(waypoint_core PRIVATE -Wall -Wextra -Wpedantic)
 
-add_library(waypoint_reminders STATIC
-    src/reminders/ReminderScheduler.cpp
-    src/reminders/ReminderScheduler.hpp
-    src/reminders/SystemNotificationSink.cpp
-    src/reminders/SystemNotificationSink.hpp
-)
-target_include_directories(waypoint_reminders PUBLIC src)
-target_link_libraries(waypoint_reminders PUBLIC waypoint_core Qt6::Core Qt6::DBus)
-target_compile_options(waypoint_reminders PRIVATE -Wall -Wextra -Wpedantic)
-
-add_library(waypoint_ipc STATIC
-    src/ipc/WaypointIpcClient.cpp
-    src/ipc/WaypointIpcClient.hpp
-    src/ipc/WaypointIpcServer.cpp
-    src/ipc/WaypointIpcServer.hpp
-    src/ipc/WaypointProtocol.cpp
-    src/ipc/WaypointProtocol.hpp
-)
-target_include_directories(waypoint_ipc PUBLIC src)
-target_link_libraries(waypoint_ipc PUBLIC waypoint_core Qt6::Core Qt6::Network)
-target_compile_options(waypoint_ipc PRIVATE -Wall -Wextra -Wpedantic)
-
 add_library(waypoint_sync STATIC
     src/sync/SyncEngine.cpp
     src/sync/HolidaySyncEngine.cpp
@@ -56,71 +38,161 @@ add_library(waypoint_sync STATIC
 target_include_directories(waypoint_sync PUBLIC src)
 target_link_libraries(waypoint_sync PUBLIC waypoint_core Qt6::Core Qt6::Network)
 target_compile_options(waypoint_sync PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(waypoint_ipc PUBLIC waypoint_sync)
 
-add_executable(waypointd src/daemon/main.cpp)
-target_link_libraries(waypointd PRIVATE waypoint_reminders waypoint_sync waypoint_ipc waypoint_core Qt6::Core)
-
-add_executable(waypointctl src/cli/main.cpp)
-target_link_libraries(waypointctl PRIVATE waypoint_ipc Qt6::Core Qt6::Network)
-
-add_library(waypoint_app_models STATIC
-    src/app/CalendarModel.cpp
-    src/app/CalendarModel.hpp
-    src/app/TaskListModel.cpp
-    src/app/TaskListModel.hpp
+add_library(waypoint_mobile_core STATIC
+    src/mobile/AndroidNotificationBridge.cpp
+    src/mobile/AndroidNotificationBridge.hpp
+    src/mobile/MobileController.cpp
+    src/mobile/MobileController.hpp
+    src/mobile/NotificationSchedule.cpp
+    src/mobile/NotificationSchedule.hpp
 )
-target_include_directories(waypoint_app_models PUBLIC src)
-target_link_libraries(waypoint_app_models PUBLIC waypoint_core Qt6::Core)
-target_compile_options(waypoint_app_models PRIVATE -Wall -Wextra -Wpedantic)
+target_include_directories(waypoint_mobile_core PUBLIC src)
+target_link_libraries(waypoint_mobile_core PUBLIC waypoint_core waypoint_sync Qt6::Core Qt6::Network)
+target_compile_options(waypoint_mobile_core PRIVATE -Wall -Wextra -Wpedantic)
 
-qt_add_executable(waypoint
-    src/app/main.cpp
-    src/app/WaypointController.cpp
-    src/app/WaypointController.hpp
-)
-set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
-set_source_files_properties(qml/data/EmojiCatalog.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+if(ANDROID)
+    include(FetchContent)
+    FetchContent_Declare(
+        android_openssl
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        URL https://github.com/KDAB/android_openssl/archive/b71f1470962019bd89534a2919f5925f93bc5779.zip
+        URL_HASH SHA256=9277d62ecdb4809801e2c369e0a639c154e0d9137e8d60863b44bf07d16ed5b3
+    )
+    FetchContent_MakeAvailable(android_openssl)
+    include("${android_openssl_SOURCE_DIR}/android_openssl.cmake")
 
-qt_add_qml_module(waypoint
-    URI Waypoint
-    VERSION 1.0
-    NO_IMPORT_SCAN
-    QML_FILES
-        qml/Main.qml
-        qml/WaypointTheme.qml
-        qml/components/CalendarDay.qml
-        qml/components/AppIcon.qml
-        qml/components/AppButton.qml
-        qml/components/AppCheckBox.qml
-        qml/components/AppComboBox.qml
-        qml/components/AppSpinBox.qml
-        qml/components/AppMenuItem.qml
-        qml/components/AppTextField.qml
-        qml/components/AppTimePicker.qml
-        qml/components/AppReminderPicker.qml
-        qml/components/AppEmojiPicker.qml
-        qml/components/AppHabitReminderPicker.qml
-        qml/components/HabitSection.qml
-        qml/components/CalendarGrid.qml
-        qml/components/QuickTaskComposer.qml
-        qml/components/TaskRow.qml
-        qml/views/MonthView.qml
-        qml/views/TodayView.qml
-        qml/views/SettingsView.qml
-        qml/data/EmojiCatalog.js
-)
-target_include_directories(waypoint PRIVATE src)
-target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
-target_compile_options(waypoint PRIVATE -Wall -Wextra -Wpedantic)
+    qt_add_executable(waypoint_android MANUAL_FINALIZATION
+        src/mobile/main.cpp
+    )
+    set_source_files_properties(qml/mobile/MobileTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    qt_add_qml_module(waypoint_android
+        URI Waypoint.Mobile
+        VERSION 1.0
+        QML_FILES
+            qml/mobile/Main.qml
+            qml/mobile/MobileTheme.qml
+            qml/mobile/components/HabitEditor.qml
+            qml/mobile/components/MobileButton.qml
+            qml/mobile/components/MobileComboBox.qml
+            qml/mobile/components/MobileCheck.qml
+            qml/mobile/components/MobileField.qml
+            qml/mobile/components/MobileIcon.qml
+            qml/mobile/components/SectionCard.qml
+            qml/mobile/components/TaskEditor.qml
+            qml/mobile/views/CalendarPage.qml
+            qml/mobile/views/HabitsPage.qml
+            qml/mobile/views/SettingsPage.qml
+            qml/mobile/views/TodayPage.qml
+    )
+    target_include_directories(waypoint_android PRIVATE src)
+    target_link_libraries(waypoint_android PRIVATE
+        waypoint_mobile_core
+        Qt6::Core
+        Qt6::Gui
+        Qt6::Qml
+        Qt6::Quick
+        Qt6::QuickControls2
+    )
+    target_compile_options(waypoint_android PRIVATE -Wall -Wextra -Wpedantic)
+    set_target_properties(waypoint_android PROPERTIES
+        QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
+        QT_ANDROID_PACKAGE_NAME "org.eaedave.waypoint"
+        QT_ANDROID_APP_NAME "Waypoint"
+        QT_ANDROID_MIN_SDK_VERSION 28
+        QT_ANDROID_TARGET_SDK_VERSION 35
+        QT_ANDROID_VERSION_CODE 1
+        QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
+    )
+    add_android_openssl_libraries(waypoint_android)
+    qt_finalize_executable(waypoint_android)
+else()
+    add_library(waypoint_reminders STATIC
+        src/reminders/ReminderScheduler.cpp
+        src/reminders/ReminderScheduler.hpp
+        src/reminders/SystemNotificationSink.cpp
+        src/reminders/SystemNotificationSink.hpp
+    )
+    target_include_directories(waypoint_reminders PUBLIC src)
+    target_link_libraries(waypoint_reminders PUBLIC waypoint_core Qt6::Core Qt6::DBus)
+    target_compile_options(waypoint_reminders PRIVATE -Wall -Wextra -Wpedantic)
 
-include(CTest)
-if(BUILD_TESTING)
-    add_subdirectory(tests)
+    add_library(waypoint_ipc STATIC
+        src/ipc/WaypointIpcClient.cpp
+        src/ipc/WaypointIpcClient.hpp
+        src/ipc/WaypointIpcServer.cpp
+        src/ipc/WaypointIpcServer.hpp
+        src/ipc/WaypointProtocol.cpp
+        src/ipc/WaypointProtocol.hpp
+    )
+    target_include_directories(waypoint_ipc PUBLIC src)
+    target_link_libraries(waypoint_ipc PUBLIC waypoint_core waypoint_sync Qt6::Core Qt6::Network)
+    target_compile_options(waypoint_ipc PRIVATE -Wall -Wextra -Wpedantic)
+
+    add_executable(waypointd src/daemon/main.cpp)
+    target_link_libraries(waypointd PRIVATE waypoint_reminders waypoint_sync waypoint_ipc waypoint_core Qt6::Core)
+
+    add_executable(waypointctl src/cli/main.cpp)
+    target_link_libraries(waypointctl PRIVATE waypoint_ipc Qt6::Core Qt6::Network)
+
+    add_library(waypoint_app_models STATIC
+        src/app/CalendarModel.cpp
+        src/app/CalendarModel.hpp
+        src/app/TaskListModel.cpp
+        src/app/TaskListModel.hpp
+    )
+    target_include_directories(waypoint_app_models PUBLIC src)
+    target_link_libraries(waypoint_app_models PUBLIC waypoint_core Qt6::Core)
+    target_compile_options(waypoint_app_models PRIVATE -Wall -Wextra -Wpedantic)
+
+    qt_add_executable(waypoint
+        src/app/main.cpp
+        src/app/WaypointController.cpp
+        src/app/WaypointController.hpp
+    )
+    set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    set_source_files_properties(qml/data/EmojiCatalog.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+
+    qt_add_qml_module(waypoint
+        URI Waypoint
+        VERSION 1.0
+        NO_IMPORT_SCAN
+        QML_FILES
+            qml/Main.qml
+            qml/WaypointTheme.qml
+            qml/components/CalendarDay.qml
+            qml/components/AppIcon.qml
+            qml/components/AppButton.qml
+            qml/components/AppCheckBox.qml
+            qml/components/AppComboBox.qml
+            qml/components/AppSpinBox.qml
+            qml/components/AppMenuItem.qml
+            qml/components/AppTextField.qml
+            qml/components/AppTimePicker.qml
+            qml/components/AppReminderPicker.qml
+            qml/components/AppEmojiPicker.qml
+            qml/components/AppHabitReminderPicker.qml
+            qml/components/HabitSection.qml
+            qml/components/CalendarGrid.qml
+            qml/components/QuickTaskComposer.qml
+            qml/components/TaskRow.qml
+            qml/views/MonthView.qml
+            qml/views/TodayView.qml
+            qml/views/SettingsView.qml
+            qml/data/EmojiCatalog.js
+    )
+    target_include_directories(waypoint PRIVATE src)
+    target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    target_compile_options(waypoint PRIVATE -Wall -Wextra -Wpedantic)
+
+    include(CTest)
+    if(BUILD_TESTING)
+        add_subdirectory(tests)
+    endif()
+
+    install(TARGETS waypoint waypointd waypointctl
+        BUNDLE DESTINATION .
+        RUNTIME DESTINATION bin
+    )
+    install(FILES packaging/waypoint.desktop DESTINATION share/applications)
 endif()
-
-install(TARGETS waypoint waypointd waypointctl
-    BUNDLE DESTINATION .
-    RUNTIME DESTINATION bin
-)
-install(FILES packaging/waypoint.desktop DESTINATION share/applications)

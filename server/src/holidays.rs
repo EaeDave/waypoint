@@ -442,6 +442,7 @@ fn recurring_legal_events(
     };
 
     for year in from.year()..=to.year() {
+        let easter = easter_sunday(year);
         if preferences.include_national {
             for (month, day, name) in [
                 (1, 1, "Ano Novo"),
@@ -476,10 +477,18 @@ fn recurring_legal_events(
                 None,
                 "rj-law-5198-2008",
             );
+            add_event(
+                easter - Duration::days(47),
+                "Terça-feira de Carnaval",
+                "Feriado estadual no Rio de Janeiro (Lei Estadual 5.243/2008).",
+                "state",
+                Some("RJ"),
+                None,
+                "rj-law-5243-2008",
+            );
         }
 
         if preferences.include_municipal && preferences.city_code.as_deref() == Some("3302403") {
-            let easter = easter_sunday(year);
             for (date, name, description) in [
                 (
                     easter - Duration::days(2),
@@ -1081,22 +1090,33 @@ mod tests {
             recurring_date(2027, 12, 31),
         );
 
-        assert_eq!(events.len(), 28);
+        assert_eq!(events.len(), 30);
         assert!(events.iter().any(|holiday| {
-            holiday.date == "2026-06-04"
-                && holiday.name == "Corpus Christi"
+            holiday.date == "2026-02-17"
+                && holiday.name == "Terça-feira de Carnaval"
                 && holiday.kind == "legal"
+                && holiday.scope == "state"
+                && holiday.source == "rj-law-5243-2008"
         }));
-        assert!(events.iter().any(|holiday| {
-            holiday.date == "2027-05-27"
-                && holiday.name == "Corpus Christi"
-                && holiday.kind == "legal"
-        }));
-        assert!(events.iter().any(|holiday| {
-            holiday.date == "2027-07-29"
-                && holiday.name == "Aniversário de Macaé"
-                && holiday.source == "macae-recurring-law"
-        }));
+        for (date, name) in [
+            ("2026-04-03", "Sexta-Feira Santa"),
+            ("2026-06-04", "Corpus Christi"),
+            ("2026-06-24", "São João Batista"),
+            ("2026-07-29", "Aniversário de Macaé"),
+            ("2027-03-26", "Sexta-Feira Santa"),
+            ("2027-05-27", "Corpus Christi"),
+            ("2027-06-24", "São João Batista"),
+            ("2027-07-29", "Aniversário de Macaé"),
+        ] {
+            assert!(events.iter().any(|holiday| {
+                holiday.date == date
+                    && holiday.name == name
+                    && holiday.kind == "legal"
+                    && holiday.scope == "municipal"
+                    && holiday.city_code.as_deref() == Some("3302403")
+                    && holiday.source == "macae-recurring-law"
+            }));
+        }
     }
 
     #[test]

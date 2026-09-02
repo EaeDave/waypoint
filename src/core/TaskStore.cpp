@@ -245,16 +245,15 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "occurrence_date TEXT NOT NULL, reminder_minutes_before INTEGER NOT NULL "
                      "CHECK(reminder_minutes_before >= 0), delivered_at TEXT NOT NULL, "
                      "PRIMARY KEY(task_id, occurrence_date, reminder_minutes_before))"),
-      QStringLiteral(
-          "CREATE TABLE IF NOT EXISTS habits ("
-          "id TEXT PRIMARY KEY, title TEXT NOT NULL CHECK(length(trim(title)) > 0), "
-          "target_amount INTEGER NOT NULL CHECK(target_amount BETWEEN 1 AND 1000000000), "
-          "unit TEXT NOT NULL DEFAULT '', "
-          "check_in_mode TEXT NOT NULL CHECK(check_in_mode IN ('fixed', 'manual', 'complete')), "
-          "increment_amount INTEGER NOT NULL CHECK(increment_amount BETWEEN 1 AND 1000000000), "
-          "weekdays TEXT NOT NULL, reminder_times TEXT NOT NULL DEFAULT '[]', "
-          "emoji TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
-          "version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS habits ("
+                     "id TEXT PRIMARY KEY, title TEXT NOT NULL CHECK(length(trim(title)) > 0), "
+                     "target_amount INTEGER NOT NULL CHECK(target_amount BETWEEN 1 AND 1000000000), "
+                     "unit TEXT NOT NULL DEFAULT '', "
+                     "check_in_mode TEXT NOT NULL CHECK(check_in_mode IN ('fixed', 'manual', 'complete')), "
+                     "increment_amount INTEGER NOT NULL CHECK(increment_amount BETWEEN 1 AND 1000000000), "
+                     "weekdays TEXT NOT NULL, reminder_times TEXT NOT NULL DEFAULT '[]', "
+                     "emoji TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+                     "version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS habits_active_idx "
                      "ON habits(created_at) WHERE deleted_at IS NULL"),
       QStringLiteral(
@@ -265,11 +264,10 @@ bool TaskStore::migrate(QString *errorMessage) {
           "deleted_at TEXT)"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS habit_entries_progress_idx "
                      "ON habit_entries(habit_id, entry_date) WHERE deleted_at IS NULL"),
-      QStringLiteral(
-          "CREATE TABLE IF NOT EXISTS habit_reminder_deliveries ("
-          "habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE, "
-          "habit_date TEXT NOT NULL, reminder_time TEXT NOT NULL, delivered_at TEXT NOT NULL, "
-          "PRIMARY KEY(habit_id, habit_date, reminder_time))"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS habit_reminder_deliveries ("
+                     "habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE, "
+                     "habit_date TEXT NOT NULL, reminder_time TEXT NOT NULL, delivered_at TEXT NOT NULL, "
+                     "PRIMARY KEY(habit_id, habit_date, reminder_time))"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS sync_state ("
                      "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS holiday_cache ("
@@ -463,10 +461,10 @@ QList<TaskRecord> TaskStore::listActiveTasks(QString *errorMessage) const {
 QList<HabitRecord> TaskStore::listActiveHabits(QString *errorMessage) const {
   QList<HabitRecord> habits;
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
-      "reminder_times, emoji, created_at, updated_at, version "
-      "FROM habits WHERE deleted_at IS NULL ORDER BY created_at, id"));
+  query.prepare(
+      QStringLiteral("SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
+                     "reminder_times, emoji, created_at, updated_at, version "
+                     "FROM habits WHERE deleted_at IS NULL ORDER BY created_at, id"));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot list active habits"), query));
     return habits;
@@ -485,10 +483,10 @@ QList<HabitEntry> TaskStore::listHabitEntries(const QString &habitId, const QDat
     return entries;
   }
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "SELECT id, habit_id, entry_date, amount, logged_at, updated_at, version "
-      "FROM habit_entries WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL "
-      "ORDER BY logged_at, id"));
+  query.prepare(
+      QStringLiteral("SELECT id, habit_id, entry_date, amount, logged_at, updated_at, version "
+                     "FROM habit_entries WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL "
+                     "ORDER BY logged_at, id"));
   query.addBindValue(habitId);
   query.addBindValue(date.toString(Qt::ISODate));
   if (!query.exec()) {
@@ -515,9 +513,8 @@ QList<HabitProgress> TaskStore::listHabitProgress(const QDate &date, QString *er
 
   QHash<QString, qint64> amounts;
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "SELECT habit_id, COALESCE(SUM(amount), 0) FROM habit_entries "
-      "WHERE entry_date = ? AND deleted_at IS NULL GROUP BY habit_id"));
+  query.prepare(QStringLiteral("SELECT habit_id, COALESCE(SUM(amount), 0) FROM habit_entries "
+                               "WHERE entry_date = ? AND deleted_at IS NULL GROUP BY habit_id"));
   query.addBindValue(date.toString(Qt::ISODate));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot calculate habit progress"), query));
@@ -537,17 +534,15 @@ QList<HabitProgress> TaskStore::listHabitProgress(const QDate &date, QString *er
 }
 
 bool TaskStore::claimHabitReminderDelivery(const QString &habitId, const QDate &habitDate,
-                                           const QTime &reminderTime, bool *claimed,
-                                           QString *errorMessage) {
+                                           const QTime &reminderTime, bool *claimed, QString *errorMessage) {
   if (habitId.isEmpty() || !habitDate.isValid() || !reminderTime.isValid() || claimed == nullptr) {
     setError(errorMessage,
              QStringLiteral("Habit reminder delivery requires a habit, date, time, and result"));
     return false;
   }
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "INSERT OR IGNORE INTO habit_reminder_deliveries "
-      "(habit_id, habit_date, reminder_time, delivered_at) VALUES (?, ?, ?, ?)"));
+  query.prepare(QStringLiteral("INSERT OR IGNORE INTO habit_reminder_deliveries "
+                               "(habit_id, habit_date, reminder_time, delivered_at) VALUES (?, ?, ?, ?)"));
   query.addBindValue(habitId);
   query.addBindValue(habitDate.toString(Qt::ISODate));
   query.addBindValue(reminderTime.toString(QStringLiteral("HH:mm")));
@@ -567,9 +562,8 @@ bool TaskStore::releaseHabitReminderDelivery(const QString &habitId, const QDate
     return false;
   }
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "DELETE FROM habit_reminder_deliveries "
-      "WHERE habit_id = ? AND habit_date = ? AND reminder_time = ?"));
+  query.prepare(QStringLiteral("DELETE FROM habit_reminder_deliveries "
+                               "WHERE habit_id = ? AND habit_date = ? AND reminder_time = ?"));
   query.addBindValue(habitId);
   query.addBindValue(habitDate.toString(Qt::ISODate));
   query.addBindValue(reminderTime.toString(QStringLiteral("HH:mm")));
@@ -737,8 +731,8 @@ bool TaskStore::createHabit(const QString &title, const qint64 targetAmount, con
                        habit.toJson(), errorMessage) ||
       !commitTransaction(errorMessage)) {
     if (insert.lastError().isValid()) {
-      setError(errorMessage, queryFailure(QStringLiteral("Cannot create habit '%1'").arg(habit.title),
-                                          insert));
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot create habit '%1'").arg(habit.title), insert));
     }
     rollbackTransaction();
     return false;
@@ -753,13 +747,12 @@ bool TaskStore::createHabit(const QString &title, const qint64 targetAmount, con
 bool TaskStore::editHabit(const QString &habitId, const QString &title, const qint64 targetAmount,
                           const QString &unit, const HabitCheckInMode checkInMode,
                           const qint64 incrementAmount, const QList<int> &weekdays,
-                          const QList<QTime> &reminderTimes, const QString &emoji,
-                          QString *errorMessage) {
+                          const QList<QTime> &reminderTimes, const QString &emoji, QString *errorMessage) {
   QSqlQuery select(m_database);
-  select.prepare(QStringLiteral(
-      "SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
-      "reminder_times, emoji, created_at, updated_at, version "
-      "FROM habits WHERE id = ? AND deleted_at IS NULL"));
+  select.prepare(
+      QStringLiteral("SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
+                     "reminder_times, emoji, created_at, updated_at, version "
+                     "FROM habits WHERE id = ? AND deleted_at IS NULL"));
   select.addBindValue(habitId);
   if (!select.exec() || !select.next()) {
     setError(errorMessage, select.lastError().isValid()
@@ -831,14 +824,13 @@ bool TaskStore::editHabit(const QString &habitId, const QString &title, const qi
 bool TaskStore::deleteHabit(const QString &habitId, QString *errorMessage) {
   const QDateTime deletedAt = QDateTime::currentDateTimeUtc();
   QSqlQuery selectVersion(m_database);
-  selectVersion.prepare(QStringLiteral(
-      "SELECT version FROM habits WHERE id = ? AND deleted_at IS NULL"));
+  selectVersion.prepare(QStringLiteral("SELECT version FROM habits WHERE id = ? AND deleted_at IS NULL"));
   selectVersion.addBindValue(habitId);
   if (!selectVersion.exec() || !selectVersion.next()) {
-    setError(errorMessage, selectVersion.lastError().isValid()
-                               ? queryFailure(QStringLiteral("Cannot read habit %1").arg(habitId),
-                                              selectVersion)
-                               : QStringLiteral("Cannot delete missing habit: %1").arg(habitId));
+    setError(errorMessage,
+             selectVersion.lastError().isValid()
+                 ? queryFailure(QStringLiteral("Cannot read habit %1").arg(habitId), selectVersion)
+                 : QStringLiteral("Cannot delete missing habit: %1").arg(habitId));
     return false;
   }
   const qint64 tombstoneVersion = selectVersion.value(0).toLongLong() + 1;
@@ -846,9 +838,8 @@ bool TaskStore::deleteHabit(const QString &habitId, QString *errorMessage) {
     return false;
   }
   QSqlQuery update(m_database);
-  update.prepare(QStringLiteral(
-      "UPDATE habits SET deleted_at = ?, updated_at = ?, version = version + 1 "
-      "WHERE id = ? AND deleted_at IS NULL"));
+  update.prepare(QStringLiteral("UPDATE habits SET deleted_at = ?, updated_at = ?, version = version + 1 "
+                                "WHERE id = ? AND deleted_at IS NULL"));
   update.addBindValue(deletedAt.toString(Qt::ISODateWithMs));
   update.addBindValue(deletedAt.toString(Qt::ISODateWithMs));
   update.addBindValue(habitId);
@@ -864,8 +855,8 @@ bool TaskStore::deleteHabit(const QString &habitId, QString *errorMessage) {
       {QStringLiteral("deletedAt"), deletedAt.toString(Qt::ISODateWithMs)},
       {QStringLiteral("version"), tombstoneVersion},
   };
-  if (!enqueueMutation(newIdentifier(), QStringLiteral("habit"), habitId, QStringLiteral("delete"),
-                       tombstone, errorMessage) ||
+  if (!enqueueMutation(newIdentifier(), QStringLiteral("habit"), habitId, QStringLiteral("delete"), tombstone,
+                       errorMessage) ||
       !commitTransaction(errorMessage)) {
     rollbackTransaction();
     return false;
@@ -874,14 +865,13 @@ bool TaskStore::deleteHabit(const QString &habitId, QString *errorMessage) {
   return true;
 }
 
-bool TaskStore::recordHabit(const QString &habitId, const QDate &date,
-                            const std::optional<qint64> &amount, HabitEntry *createdEntry,
-                            QString *errorMessage) {
+bool TaskStore::recordHabit(const QString &habitId, const QDate &date, const std::optional<qint64> &amount,
+                            HabitEntry *createdEntry, QString *errorMessage) {
   QSqlQuery select(m_database);
-  select.prepare(QStringLiteral(
-      "SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
-      "reminder_times, emoji, created_at, updated_at, version "
-      "FROM habits WHERE id = ? AND deleted_at IS NULL"));
+  select.prepare(
+      QStringLiteral("SELECT id, title, target_amount, unit, check_in_mode, increment_amount, weekdays, "
+                     "reminder_times, emoji, created_at, updated_at, version "
+                     "FROM habits WHERE id = ? AND deleted_at IS NULL"));
   select.addBindValue(habitId);
   if (!select.exec() || !select.next()) {
     setError(errorMessage, select.lastError().isValid()
@@ -896,9 +886,8 @@ bool TaskStore::recordHabit(const QString &habitId, const QDate &date,
   }
 
   QSqlQuery totalQuery(m_database);
-  totalQuery.prepare(QStringLiteral(
-      "SELECT COALESCE(SUM(amount), 0) FROM habit_entries "
-      "WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL"));
+  totalQuery.prepare(QStringLiteral("SELECT COALESCE(SUM(amount), 0) FROM habit_entries "
+                                    "WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL"));
   totalQuery.addBindValue(habitId);
   totalQuery.addBindValue(date.toString(Qt::ISODate));
   if (!totalQuery.exec() || !totalQuery.next()) {
@@ -983,10 +972,10 @@ bool TaskStore::undoLastHabitEntry(const QString &habitId, const QDate &date, QS
     return false;
   }
   QSqlQuery select(m_database);
-  select.prepare(QStringLiteral(
-      "SELECT id, habit_id, entry_date, amount, logged_at, updated_at, version "
-      "FROM habit_entries WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL "
-      "ORDER BY logged_at DESC, id DESC LIMIT 1"));
+  select.prepare(
+      QStringLiteral("SELECT id, habit_id, entry_date, amount, logged_at, updated_at, version "
+                     "FROM habit_entries WHERE habit_id = ? AND entry_date = ? AND deleted_at IS NULL "
+                     "ORDER BY logged_at DESC, id DESC LIMIT 1"));
   select.addBindValue(habitId);
   select.addBindValue(date.toString(Qt::ISODate));
   if (!select.exec() || !select.next()) {
@@ -1005,9 +994,8 @@ bool TaskStore::undoLastHabitEntry(const QString &habitId, const QDate &date, QS
     return false;
   }
   QSqlQuery update(m_database);
-  update.prepare(QStringLiteral(
-      "UPDATE habit_entries SET deleted_at = ?, updated_at = ?, version = ? "
-      "WHERE id = ? AND deleted_at IS NULL"));
+  update.prepare(QStringLiteral("UPDATE habit_entries SET deleted_at = ?, updated_at = ?, version = ? "
+                                "WHERE id = ? AND deleted_at IS NULL"));
   update.addBindValue(entry.updatedAt.toString(Qt::ISODateWithMs));
   update.addBindValue(entry.updatedAt.toString(Qt::ISODateWithMs));
   update.addBindValue(entry.version);
@@ -1595,6 +1583,43 @@ bool TaskStore::saveHolidayPreferences(const QJsonObject &preferences, QString *
   return true;
 }
 
+bool TaskStore::applySyncedHolidayPreferences(const QJsonObject &preferences, QString *errorMessage) {
+  const QString stateCode = preferences.value(QStringLiteral("stateCode")).toString().trimmed().toUpper();
+  const QString cityCode = preferences.value(QStringLiteral("cityCode")).toString().trimmed();
+  const bool stateValid = stateCode.isEmpty() ||
+                          (stateCode.size() == 2 && stateCode.at(0).isLetter() && stateCode.at(1).isLetter());
+  if (!stateValid) {
+    setError(errorMessage, QStringLiteral("Brazilian state code must contain exactly two letters"));
+    return false;
+  }
+  if (!cityCode.isEmpty() && stateCode.isEmpty()) {
+    setError(errorMessage, QStringLiteral("A city can only be selected together with a state"));
+    return false;
+  }
+
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "UPDATE holiday_preferences SET state_code = ?, city_code = ?, include_national = ?, "
+      "include_state = ?, include_municipal = ?, include_commemorative = ?, include_optional = ?, "
+      "revision = ?, updated_at = ? WHERE singleton = 1"));
+  query.addBindValue(stateCode.isEmpty() ? QVariant() : stateCode);
+  query.addBindValue(cityCode.isEmpty() ? QVariant() : cityCode);
+  query.addBindValue(preferences.value(QStringLiteral("includeNational")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeState")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeMunicipal")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("includeCommemorative")).toBool(false));
+  query.addBindValue(preferences.value(QStringLiteral("includeOptional")).toBool(true));
+  query.addBindValue(preferences.value(QStringLiteral("revision")).toInteger());
+  query.addBindValue(preferences.value(QStringLiteral("updatedAt")).toString());
+  if (!query.exec()) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot apply synchronized holiday preferences"), query));
+    return false;
+  }
+  emit holidayPreferencesChanged();
+  return true;
+}
+
 QJsonArray TaskStore::listHolidays(const QDate &from, const QDate &to, QString *errorMessage) const {
   QJsonArray holidays;
   if (!from.isValid() || !to.isValid() || from > to) {
@@ -1828,9 +1853,9 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
       return false;
     }
     tasksWereChanged = tasksWereChanged || entityType == QStringLiteral("task") ||
-                      entityType == QStringLiteral("occurrence");
+                       entityType == QStringLiteral("occurrence");
     habitsWereChanged = habitsWereChanged || entityType == QStringLiteral("habit") ||
-                       entityType == QStringLiteral("habit-entry");
+                        entityType == QStringLiteral("habit-entry");
 
     QSqlQuery apply(m_database);
     if (entityType == QStringLiteral("task")) {
@@ -1944,9 +1969,8 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
       if (operation == QStringLiteral("delete")) {
         const QString deletedAt = payload.value(QStringLiteral("deletedAt")).toString();
         const qint64 version = payload.value(QStringLiteral("version")).toInteger();
-        apply.prepare(QStringLiteral(
-            "UPDATE habits SET deleted_at = ?, updated_at = ?, version = ? "
-            "WHERE id = ? AND version <= ?"));
+        apply.prepare(QStringLiteral("UPDATE habits SET deleted_at = ?, updated_at = ?, version = ? "
+                                     "WHERE id = ? AND version <= ?"));
         apply.addBindValue(deletedAt);
         apply.addBindValue(deletedAt);
         apply.addBindValue(version);
@@ -1994,9 +2018,8 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
       }
       if (operation == QStringLiteral("delete")) {
         const QString deletedAt = payload.value(QStringLiteral("deletedAt")).toString();
-        apply.prepare(QStringLiteral(
-            "UPDATE habit_entries SET deleted_at = ?, updated_at = ?, version = ? "
-            "WHERE id = ? AND version <= ?"));
+        apply.prepare(QStringLiteral("UPDATE habit_entries SET deleted_at = ?, updated_at = ?, version = ? "
+                                     "WHERE id = ? AND version <= ?"));
         apply.addBindValue(deletedAt);
         apply.addBindValue(entry.updatedAt.toUTC().toString(Qt::ISODateWithMs));
         apply.addBindValue(entry.version);

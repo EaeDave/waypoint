@@ -539,8 +539,9 @@ fn validate_habit_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
         let reminder = value
             .as_str()
             .ok_or_else(|| ApiError::bad_request("habit reminder time must be a string"))?;
-        NaiveTime::parse_from_str(reminder, "%H:%M")
-            .map_err(|_| ApiError::bad_request(format!("invalid habit reminder time: {reminder}")))?;
+        NaiveTime::parse_from_str(reminder, "%H:%M").map_err(|_| {
+            ApiError::bad_request(format!("invalid habit reminder time: {reminder}"))
+        })?;
         if seen_reminders.contains(&reminder) {
             return Err(ApiError::bad_request(
                 "habit reminder times cannot contain duplicates",

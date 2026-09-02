@@ -44,6 +44,7 @@ bool HolidaySyncEngine::updatePreferences(const QJsonObject &preferences, QStrin
   if (!m_taskStore->saveHolidayPreferences(preferences, errorMessage)) {
     return false;
   }
+  m_preferencesNeedUpload = true;
   syncNow();
   return true;
 }
@@ -73,7 +74,61 @@ void HolidaySyncEngine::syncNow() {
   m_coverageErrors.clear();
   m_inFlight = true;
   setStatus(QStringLiteral("syncing"));
-  uploadPreferences();
+  if (m_preferencesNeedUpload) {
+    uploadPreferences();
+  } else {
+    downloadPreferences();
+  }
+}
+
+void HolidaySyncEngine::downloadPreferences() {
+  QNetworkReply *reply = m_network.get(authorizedRequest(apiUrl(QStringLiteral("holiday-preferences"))));
+  connect(reply, &QNetworkReply::finished, this, [this, reply] { finishPreferencesDownload(reply); });
+}
+
+void HolidaySyncEngine::finishPreferencesDownload(QNetworkReply *reply) {
+  if (reply->error() != QNetworkReply::NoError) {
+    const QString error = networkError(reply, QStringLiteral("Cannot download holiday preferences"));
+    reply->deleteLater();
+    m_inFlight = false;
+    setStatus(QStringLiteral("offline"), error);
+    return;
+  }
+  const QByteArray body = reply->readAll();
+  reply->deleteLater();
+  if (m_preferencesNeedUpload) {
+    uploadPreferences();
+    return;
+  }
+
+  QJsonParseError parseError;
+  const QJsonObject remotePreferences = QJsonDocument::fromJson(body, &parseError).object();
+  if (parseError.error != QJsonParseError::NoError || remotePreferences.isEmpty()) {
+    m_inFlight = false;
+    setStatus(QStringLiteral("error"),
+              QStringLiteral("Holiday preferences response is invalid: %1").arg(parseError.errorString()));
+    return;
+  }
+
+  QString error;
+  const QJsonObject localPreferences = m_taskStore->holidayPreferences(&error);
+  if (!error.isEmpty()) {
+    m_inFlight = false;
+    setStatus(QStringLiteral("error"), error);
+    return;
+  }
+  if (localPreferences.value(QStringLiteral("revision")).toInteger() >
+      remotePreferences.value(QStringLiteral("revision")).toInteger()) {
+    m_preferencesNeedUpload = true;
+    uploadPreferences();
+    return;
+  }
+  if (!m_taskStore->applySyncedHolidayPreferences(remotePreferences, &error)) {
+    m_inFlight = false;
+    setStatus(QStringLiteral("error"), error);
+    return;
+  }
+  fetchNextYear();
 }
 
 void HolidaySyncEngine::uploadPreferences() {
@@ -84,6 +139,7 @@ void HolidaySyncEngine::uploadPreferences() {
     setStatus(QStringLiteral("error"), error);
     return;
   }
+  m_preferencesNeedUpload = false;
   QNetworkRequest request = authorizedRequest(apiUrl(QStringLiteral("holiday-preferences")));
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   QNetworkReply *reply = m_network.put(request, QJsonDocument(preferences).toJson(QJsonDocument::Compact));
@@ -91,11 +147,33 @@ void HolidaySyncEngine::uploadPreferences() {
 }
 
 void HolidaySyncEngine::finishPreferencesUpload(QNetworkReply *reply) {
-  reply->deleteLater();
   if (reply->error() != QNetworkReply::NoError) {
+    const QString error = networkError(reply, QStringLiteral("Cannot synchronize holiday preferences"));
+    reply->deleteLater();
+    m_preferencesNeedUpload = true;
     m_inFlight = false;
-    setStatus(QStringLiteral("offline"),
-              networkError(reply, QStringLiteral("Cannot synchronize holiday preferences")));
+    setStatus(QStringLiteral("offline"), error);
+    return;
+  }
+  const QByteArray body = reply->readAll();
+  reply->deleteLater();
+  if (m_preferencesNeedUpload) {
+    uploadPreferences();
+    return;
+  }
+
+  QJsonParseError parseError;
+  const QJsonObject synchronizedPreferences = QJsonDocument::fromJson(body, &parseError).object();
+  if (parseError.error != QJsonParseError::NoError || synchronizedPreferences.isEmpty()) {
+    m_inFlight = false;
+    setStatus(QStringLiteral("error"),
+              QStringLiteral("Holiday preferences response is invalid: %1").arg(parseError.errorString()));
+    return;
+  }
+  QString error;
+  if (!m_taskStore->applySyncedHolidayPreferences(synchronizedPreferences, &error)) {
+    m_inFlight = false;
+    setStatus(QStringLiteral("error"), error);
     return;
   }
   fetchNextYear();
@@ -104,6 +182,10 @@ void HolidaySyncEngine::finishPreferencesUpload(QNetworkReply *reply) {
 void HolidaySyncEngine::fetchNextYear() {
   if (m_pendingYears.isEmpty()) {
     m_inFlight = false;
+    if (m_preferencesNeedUpload) {
+      QTimer::singleShot(0, this, &HolidaySyncEngine::syncNow);
+      return;
+    }
     if (!m_coverageErrors.isEmpty()) {
       setStatus(QStringLiteral("partial"), m_coverageErrors.join(QStringLiteral("; ")));
       return;
@@ -157,7 +239,6 @@ void HolidaySyncEngine::finishYearFetch(QNetworkReply *reply, int year) {
                                                    : failedSources.join(QStringLiteral(", "));
     m_coverageErrors.append(QStringLiteral("%1: %2").arg(year).arg(detail));
   }
-
 
   QString error;
   if (!m_taskStore->replaceHolidaySnapshot(QDate(year, 1, 1), QDate(year, 12, 31),

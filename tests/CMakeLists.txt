@@ -51,3 +51,12 @@ add_test(NAME waypoint_reminder_tests COMMAND waypoint_reminder_tests -o -,txt)
 set_tests_properties(waypoint_reminder_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+qt_add_executable(waypoint_mobile_tests
+    MobileControllerTest.cpp
+)
+target_link_libraries(waypoint_mobile_tests PRIVATE waypoint_mobile_core waypoint_core Qt6::Core Qt6::Sql Qt6::Test)
+add_test(NAME waypoint_mobile_tests COMMAND waypoint_mobile_tests -o -,txt)
+set_tests_properties(waypoint_mobile_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)

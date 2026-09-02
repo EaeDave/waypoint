@@ -1,0 +1,17 @@
+appId: org.eaedave.waypoint
+---
+- launchApp
+- assertVisible:
+    id: "navigation-today"
+- assertVisible:
+    id: "create-task"
+- tapOn:
+    id: "navigation-settings"
+- assertVisible:
+    id: "sync-endpoint"
+- assertVisible:
+    id: "save-sync-configuration"
+- tapOn:
+    id: "navigation-today"
+- assertVisible:
+    id: "create-task"

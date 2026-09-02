@@ -6,3 +6,5 @@
 .env
 .env.*
 !.env.example
+/waypoint-android-*.apk
+/aqtinstall.log
