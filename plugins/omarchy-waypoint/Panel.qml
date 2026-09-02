@@ -1566,6 +1566,7 @@ Panel {
                             }
                             Button {
                                 id: habitManualRegister
+                                focusable: true
                                 text: "Registrar"
                                 foreground: Color.popups.text
                                 accent: Color.accent
