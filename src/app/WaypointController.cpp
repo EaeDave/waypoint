@@ -204,6 +204,17 @@ bool WaypointController::setOccurrenceCompleted(const QString &taskId, const QSt
   return true;
 }
 
+bool WaypointController::skipOccurrence(const QString &taskId, const QString &occurrenceDateKey) {
+  const QDate occurrenceDate = QDate::fromString(occurrenceDateKey, Qt::ISODate);
+  QString error;
+  if (!m_client.skipOccurrence(taskId, occurrenceDate, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
 bool WaypointController::deleteOccurrence(const QString &taskId, const QString &occurrenceDateKey,
                                           const QString &scope) {
   const QDate occurrenceDate = QDate::fromString(occurrenceDateKey, Qt::ISODate);

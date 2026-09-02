@@ -28,6 +28,8 @@ public:
                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
                                             bool completed, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
+                                    QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                       const QString &scope, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,

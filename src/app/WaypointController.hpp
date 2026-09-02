@@ -73,6 +73,7 @@ public:
                            int occurrenceCount, const QString &emoji);
   Q_INVOKABLE bool setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
                                           bool completed);
+  Q_INVOKABLE bool skipOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteOccurrence(const QString &taskId, const QString &occurrenceDateKey,
                                     const QString &scope);
   Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey,

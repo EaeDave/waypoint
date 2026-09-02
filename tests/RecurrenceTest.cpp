@@ -16,6 +16,7 @@ private slots:
   void honorEndingConditions();
   void projectOccurrenceStateByDate();
   void exposeOnlyLatestDueRecurringOccurrence();
+  void hideSkippedOccurrenceUntilNextRecurrence();
   void isolateDailyCountsAcrossMidnightAndSeries();
 };
 
@@ -124,6 +125,24 @@ void RecurrenceTest::exposeOnlyLatestDueRecurringOccurrence() {
   QCOMPARE(occurrences.size(), 1);
   QCOMPARE(occurrences.first().occurrenceDate, QDate(2026, 1, 3));
   QVERIFY(!occurrences.first().completed);
+}
+void RecurrenceTest::hideSkippedOccurrenceUntilNextRecurrence() {
+  waypoint::TaskRecord task;
+  task.id = QStringLiteral("task-a");
+  task.title = QStringLiteral("Praticar");
+  task.scheduledDate = QDate(2026, 1, 1);
+  task.recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+
+  waypoint::TaskOccurrenceState skipped;
+  skipped.taskId = task.id;
+  skipped.occurrenceDate = QDate(2026, 1, 3);
+  skipped.status = waypoint::OccurrenceStatus::Skipped;
+
+  QVERIFY(waypoint::projectActionableOccurrences({task}, {skipped}, QDate(2026, 1, 3)).isEmpty());
+
+  const auto nextDay = waypoint::projectActionableOccurrences({task}, {skipped}, QDate(2026, 1, 4));
+  QCOMPARE(nextDay.size(), 1);
+  QCOMPARE(nextDay.first().occurrenceDate, QDate(2026, 1, 4));
 }
 
 void RecurrenceTest::isolateDailyCountsAcrossMidnightAndSeries() {

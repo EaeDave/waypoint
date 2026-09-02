@@ -177,6 +177,18 @@ bool WaypointIpcClient::setOccurrenceCompleted(const QString &taskId, const QDat
   return responseSucceeded(response, errorMessage);
 }
 
+bool WaypointIpcClient::skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
+                                       QString *errorMessage) const {
+  const QJsonObject response = request(
+      {
+          {QStringLiteral("command"), QStringLiteral("skip")},
+          {QStringLiteral("taskId"), taskId},
+          {QStringLiteral("occurrenceDate"), occurrenceDate.toString(Qt::ISODate)},
+      },
+      errorMessage);
+  return responseSucceeded(response, errorMessage);
+}
+
 bool WaypointIpcClient::deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                          const QString &scope, QString *errorMessage) const {
   const QJsonObject response = request(

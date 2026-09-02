@@ -63,6 +63,9 @@ BarWidget {
         runAction([completed ? "complete" : "reopen", taskId,
                    "--date", occurrenceDate]);
     }
+    function skipOccurrence(taskId, occurrenceDate) {
+        runAction(["skip", taskId, "--date", occurrenceDate]);
+    }
     function editTask(taskId, title, scheduledTime, recurrence, emoji) {
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
                            "--emoji", emoji || "",

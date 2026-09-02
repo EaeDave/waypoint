@@ -122,7 +122,7 @@ Rectangle {
             text: "⋯"
             onClicked: root.openActionsMenuFromButton()
             ToolTip.visible: hovered
-            ToolTip.text: "Editar ou excluir tarefa"
+            ToolTip.text: "Editar, marcar ou excluir tarefa"
 
             Menu {
                 id: actionsMenu
@@ -156,12 +156,10 @@ Rectangle {
                                                                   "series")
                 }
                 AppMenuItem {
-                    visible: root.recurring
-                    destructive: true
-                    text: "Excluir esta ocorrência"
-                    onTriggered: root.controller.deleteOccurrence(root.taskId,
-                                                                  root.scheduledDateKey,
-                                                                  "occurrence")
+                    visible: root.recurring && !root.completed
+                    text: "Marcar como não feita"
+                    onTriggered: root.controller.skipOccurrence(root.taskId,
+                                                                root.scheduledDateKey)
                 }
                 AppMenuItem {
                     visible: root.recurring

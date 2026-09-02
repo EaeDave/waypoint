@@ -26,6 +26,8 @@ Panel {
     property int viewMonth: selectedDate.getMonth()
     property bool taskEditorVisible: false
     property string editingTaskId: ""
+    property string editingOccurrenceDate: ""
+    property bool editingCompleted: false
     property bool timePickerVisible: false
     property var timePickerTarget: null
     property bool timePickerCreatesTask: false
@@ -245,6 +247,8 @@ Panel {
 
     function openTaskEditor(task) {
         editingTaskId = String(task.taskId || "");
+        editingOccurrenceDate = String(task.occurrenceDate || "");
+        editingCompleted = task.completed === true;
         taskTitleInput.text = String(task.title || "");
         taskTimeInput.text = String(task.scheduledTime || "");
         editingEmoji = String(task.emoji || "");
@@ -301,6 +305,13 @@ Panel {
         hostWidget.deleteTask(editingTaskId);
         closeTaskEditor();
     }
+    function skipEditedOccurrence() {
+        if (!hostWidget)
+            return;
+        hostWidget.skipOccurrence(editingTaskId, editingOccurrenceDate);
+        closeTaskEditor();
+    }
+
 
 
     KeyboardPanel {
@@ -1154,6 +1165,14 @@ Panel {
                                 accent: Color.urgent
                                 bordered: true
                                 onClicked: root.deleteEditedTask()
+                            }
+                            Button {
+                                visible: root.editingRecurringTask && !root.editingCompleted
+                                text: "Marcar não feita"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.skipEditedOccurrence()
                             }
                             Item {
                                 Layout.fillWidth: true

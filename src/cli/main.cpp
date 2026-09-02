@@ -33,7 +33,7 @@ int main(int argc, char *argv[]) {
   parser.addVersionOption();
   parser.addPositionalArgument(
       QStringLiteral("command"),
-      QStringLiteral("ping, snapshot, add, complete, reopen, edit, reschedule, delete, sync-status, "
+      QStringLiteral("ping, snapshot, add, complete, reopen, skip, edit, reschedule, delete, sync-status, "
                      "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
                      "holiday-preferences, configure-holidays, municipalities, holidays, or "
                      "refresh-holidays"));
@@ -307,6 +307,12 @@ int main(int argc, char *argv[]) {
     succeeded = occurrenceDate.isValid()
                     ? client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)
                     : client.setTaskCompleted(taskId, completed, &error);
+  } else if (command == QStringLiteral("skip")) {
+    const QDate occurrenceDate = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+    if (!occurrenceDate.isValid()) {
+      return printError(QStringLiteral("skip requires --date YYYY-MM-DD"));
+    }
+    succeeded = client.skipOccurrence(taskId, occurrenceDate, &error);
   } else if (command == QStringLiteral("edit")) {
     const QString title = parser.value(QStringLiteral("title")).trimmed();
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
@@ -337,8 +343,8 @@ int main(int argc, char *argv[]) {
          {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
          {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
          {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
-    succeeded = client.editTask(taskId, title, time, recurrence, parser.value(QStringLiteral("emoji")),
-                                &error);
+    succeeded =
+        client.editTask(taskId, title, time, recurrence, parser.value(QStringLiteral("emoji")), &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

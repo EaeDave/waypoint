@@ -175,6 +175,15 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     return {{QStringLiteral("ok"), true}};
   }
+  if (command == QStringLiteral("skip")) {
+    const QString taskId = request.value(QStringLiteral("taskId")).toString();
+    const QDate occurrenceDate =
+        QDate::fromString(request.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
+    if (!m_taskStore->skipOccurrence(taskId, occurrenceDate, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
   if (command == QStringLiteral("delete-occurrence")) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const QDate occurrenceDate =
