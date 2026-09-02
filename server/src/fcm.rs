@@ -250,4 +250,15 @@ mod tests {
         );
         assert!(message["message"].get("notification").is_none());
     }
+
+    #[test]
+    fn signing_provider_is_available() {
+        let token = encode(
+            &Header::new(Algorithm::HS256),
+            &json!({"sub": "provider-check"}),
+            &EncodingKey::from_secret(b"test-key"),
+        );
+
+        assert!(token.is_ok());
+    }
 }
