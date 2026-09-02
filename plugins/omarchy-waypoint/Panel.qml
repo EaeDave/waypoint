@@ -891,8 +891,12 @@ Panel {
                                             text: {
                                                 const time = String(modelData.scheduledTime || "");
                                                 const recurrence = String(modelData.recurrenceLabel || "");
-                                                const details = recurrence === ""
-                                                    ? time : time + " · " + recurrence;
+                                                const reminderCount =
+                                                    (modelData.reminderMinutesBefore || []).length;
+                                                const reminder = reminderCount > 0
+                                                    ? " · 󰂚 " + reminderCount : "";
+                                                const details = (recurrence === ""
+                                                    ? time : time + " · " + recurrence) + reminder;
                                                 if (!taskRow.overdue)
                                                     return details;
                                                 const date = Qt.formatDate(

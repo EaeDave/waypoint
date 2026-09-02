@@ -108,7 +108,10 @@ Rectangle {
         }
 
         Text {
+            readonly property int reminderCount:
+                (root.reminderMinutesBefore || []).length
             text: root.scheduledTimeKey
+                  + (reminderCount > 0 ? " · 󰂚 " + reminderCount : "")
             color: root.completed ? WaypointTheme.disabledText : WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.bodySmallSize
