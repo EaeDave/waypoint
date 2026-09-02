@@ -1,5 +1,7 @@
 #include "core/TaskStore.hpp"
 #include "ipc/WaypointIpcServer.hpp"
+#include "reminders/ReminderScheduler.hpp"
+#include "reminders/SystemNotificationSink.hpp"
 #include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
 
@@ -38,6 +40,16 @@ int main(int argc, char *argv[]) {
 
   waypoint::SyncEngine syncEngine(&taskStore);
   waypoint::HolidaySyncEngine holidaySyncEngine(&taskStore);
+  waypoint::SystemNotificationSink notificationSink;
+  waypoint::ReminderScheduler reminderScheduler(&taskStore, &notificationSink);
+  QObject::connect(&reminderScheduler, &waypoint::ReminderScheduler::deliveryFailed,
+                   [](const QString &message) { logJson(QStringLiteral("error"), message); });
+  QObject::connect(
+      &reminderScheduler, &waypoint::ReminderScheduler::reminderDelivered,
+      [](const QString &taskId, const QString &title) {
+        logJson(QStringLiteral("info"),
+                QStringLiteral("Delivered reminder for task %1: %2").arg(taskId, title));
+      });
   waypoint::WaypointIpcServer server(&taskStore, &syncEngine, &holidaySyncEngine);
   if (!server.listen(&error)) {
     logJson(QStringLiteral("error"), error);
@@ -45,6 +57,7 @@ int main(int argc, char *argv[]) {
   }
   syncEngine.start();
   holidaySyncEngine.start();
+  reminderScheduler.start();
 
   logJson(QStringLiteral("info"), QStringLiteral("Waypoint daemon is ready"));
   return application.exec();

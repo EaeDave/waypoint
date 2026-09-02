@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Network Qml Quick QuickControls2 Sql Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core DBus Gui Network Qml Quick QuickControls2 Sql Test)
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
@@ -22,6 +22,16 @@ add_library(waypoint_core STATIC
 target_include_directories(waypoint_core PUBLIC src)
 target_link_libraries(waypoint_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql)
 target_compile_options(waypoint_core PRIVATE -Wall -Wextra -Wpedantic)
+
+add_library(waypoint_reminders STATIC
+    src/reminders/ReminderScheduler.cpp
+    src/reminders/ReminderScheduler.hpp
+    src/reminders/SystemNotificationSink.cpp
+    src/reminders/SystemNotificationSink.hpp
+)
+target_include_directories(waypoint_reminders PUBLIC src)
+target_link_libraries(waypoint_reminders PUBLIC waypoint_core Qt6::Core Qt6::DBus)
+target_compile_options(waypoint_reminders PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(waypoint_ipc STATIC
     src/ipc/WaypointIpcClient.cpp
@@ -47,7 +57,7 @@ target_compile_options(waypoint_sync PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(waypoint_ipc PUBLIC waypoint_sync)
 
 add_executable(waypointd src/daemon/main.cpp)
-target_link_libraries(waypointd PRIVATE waypoint_sync waypoint_ipc waypoint_core Qt6::Core)
+target_link_libraries(waypointd PRIVATE waypoint_reminders waypoint_sync waypoint_ipc waypoint_core Qt6::Core)
 
 add_executable(waypointctl src/cli/main.cpp)
 target_link_libraries(waypointctl PRIVATE waypoint_ipc Qt6::Core Qt6::Network)

@@ -179,6 +179,11 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "PRIMARY KEY(task_id, occurrence_date))"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS occurrence_states_date_idx "
                      "ON task_occurrence_states(occurrence_date)"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS reminder_deliveries ("
+                     "task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, "
+                     "occurrence_date TEXT NOT NULL, scheduled_time TEXT NOT NULL, "
+                     "delivered_at TEXT NOT NULL, "
+                     "PRIMARY KEY(task_id, occurrence_date, scheduled_time))"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS sync_state ("
                      "key TEXT PRIMARY KEY, value TEXT NOT NULL)"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS holiday_cache ("
@@ -359,6 +364,50 @@ QList<TaskOccurrence> TaskStore::listOccurrences(const QDate &from, const QDate 
     return {};
   }
   return projectOccurrences(tasks, states, from, to);
+}
+
+bool TaskStore::claimReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
+                                      const QTime &scheduledTime, bool *claimed,
+                                      QString *errorMessage) {
+  if (taskId.isEmpty() || !occurrenceDate.isValid() || !scheduledTime.isValid() || claimed == nullptr) {
+    setError(errorMessage, QStringLiteral("Reminder delivery requires a task, date, time, and result"));
+    return false;
+  }
+
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "INSERT OR IGNORE INTO reminder_deliveries "
+      "(task_id, occurrence_date, scheduled_time, delivered_at) VALUES (?, ?, ?, ?)"));
+  query.addBindValue(taskId);
+  query.addBindValue(occurrenceDate.toString(Qt::ISODate));
+  query.addBindValue(scheduledTime.toString(QStringLiteral("HH:mm")));
+  query.addBindValue(QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot claim task reminder delivery"), query));
+    return false;
+  }
+  *claimed = query.numRowsAffected() == 1;
+  return true;
+}
+
+bool TaskStore::releaseReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
+                                        const QTime &scheduledTime, QString *errorMessage) {
+  if (taskId.isEmpty() || !occurrenceDate.isValid() || !scheduledTime.isValid()) {
+    setError(errorMessage, QStringLiteral("Reminder delivery release requires a task, date, and time"));
+    return false;
+  }
+
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("DELETE FROM reminder_deliveries "
+                               "WHERE task_id = ? AND occurrence_date = ? AND scheduled_time = ?"));
+  query.addBindValue(taskId);
+  query.addBindValue(occurrenceDate.toString(Qt::ISODate));
+  query.addBindValue(scheduledTime.toString(QStringLiteral("HH:mm")));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot release task reminder delivery"), query));
+    return false;
+  }
+  return true;
 }
 
 QList<TaskOccurrence> TaskStore::listActionableOccurrences(const QDate &today, QString *errorMessage) const {

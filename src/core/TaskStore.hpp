@@ -24,6 +24,12 @@ public:
                                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
                                                                 QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool claimReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
+                                           const QTime &scheduledTime, bool *claimed,
+                                           QString *errorMessage = nullptr);
+  [[nodiscard]] bool releaseReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
+                                             const QTime &scheduledTime,
+                                             QString *errorMessage = nullptr);
   [[nodiscard]] QJsonArray pendingMutations(QString *errorMessage = nullptr) const;
   [[nodiscard]] QString syncCursor(QString *errorMessage = nullptr) const;
   [[nodiscard]] SyncConfiguration syncConfiguration(QString *errorMessage = nullptr) const;
