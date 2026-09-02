@@ -122,6 +122,23 @@ QDate clampedYearDate(const QDate &anchorDate, const int yearsFromAnchor) {
   const QDate targetMonth(year, anchorDate.month(), 1);
   return QDate(year, anchorDate.month(), std::min(anchorDate.day(), targetMonth.daysInMonth()));
 }
+QDate nextRecurrenceSearchEnd(const TaskRecord &task, const QDate &today) {
+  const QDate base = task.scheduledDate > today ? task.scheduledDate : today;
+  const int interval = std::max(1, task.recurrence.interval);
+  switch (task.recurrence.frequency) {
+  case RecurrenceFrequency::Daily:
+    return base.addDays(interval);
+  case RecurrenceFrequency::Weekly:
+    return base.addDays(interval * 7 + 6);
+  case RecurrenceFrequency::Monthly:
+    return base.addMonths(interval + 1);
+  case RecurrenceFrequency::Yearly:
+    return base.addYears(interval + 1);
+  case RecurrenceFrequency::None:
+    return base;
+  }
+  return base;
+}
 
 TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const TaskOccurrenceState *state) {
   TaskOccurrence occurrence;
@@ -132,6 +149,7 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.emoji = task.emoji;
   occurrence.completed = state != nullptr && state->status == OccurrenceStatus::Completed;
   occurrence.recurring = task.recurrence.isRecurring();
+  occurrence.calendarMarker = !occurrence.recurring;
   occurrence.recurrenceLabel = task.recurrence.label();
   occurrence.recurrence = task.recurrence;
   return occurrence;
@@ -275,6 +293,7 @@ QJsonObject TaskOccurrence::toJson() const {
       {QStringLiteral("emoji"), emoji},
       {QStringLiteral("completed"), completed},
       {QStringLiteral("recurring"), recurring},
+      {QStringLiteral("calendarMarker"), calendarMarker},
       {QStringLiteral("recurrenceLabel"), recurrenceLabel},
       {QStringLiteral("recurrence"), recurrence.toJson()},
   };
@@ -378,6 +397,55 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
               }
               return left.taskId < right.taskId;
             });
+  return occurrences;
+}
+
+QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences, const QList<TaskRecord> &tasks,
+                                            const QList<TaskOccurrenceState> &states, const QDate &today) {
+  QHash<QString, TaskOccurrenceState> stateByOccurrence;
+  for (const TaskOccurrenceState &state : states) {
+    stateByOccurrence.insert(occurrenceKey(state.taskId, state.occurrenceDate), state);
+  }
+
+  for (const TaskRecord &task : tasks) {
+    if (!task.recurrence.isRecurring()) {
+      continue;
+    }
+
+    const QList<QDate> dueDates =
+        recurrenceDates(task.scheduledDate, task.recurrence, task.scheduledDate, today);
+    const QDate latestDueDate = dueDates.isEmpty() ? QDate() : dueDates.constLast();
+    OccurrenceStatus latestStatus = OccurrenceStatus::Pending;
+    if (latestDueDate.isValid()) {
+      const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, latestDueDate));
+      if (state != stateByOccurrence.cend()) {
+        latestStatus = state->status;
+      }
+    }
+
+    QDate pendingMarkerDate;
+    const bool latestDueResolved =
+        latestStatus == OccurrenceStatus::Completed || latestStatus == OccurrenceStatus::Skipped;
+    if (latestDueDate.isValid() && !latestDueResolved) {
+      pendingMarkerDate = latestDueDate;
+    } else {
+      const QList<QDate> nextDates = recurrenceDates(task.scheduledDate, task.recurrence, today.addDays(1),
+                                                     nextRecurrenceSearchEnd(task, today));
+      if (!nextDates.isEmpty()) {
+        pendingMarkerDate = nextDates.constFirst();
+      }
+    }
+
+    const bool preserveCompletedToday = latestDueDate == today && latestStatus == OccurrenceStatus::Completed;
+    for (TaskOccurrence &occurrence : occurrences) {
+      if (occurrence.taskId != task.id) {
+        continue;
+      }
+      occurrence.calendarMarker =
+          occurrence.occurrenceDate == pendingMarkerDate ||
+          (preserveCompletedToday && occurrence.occurrenceDate == today && occurrence.completed);
+    }
+  }
   return occurrences;
 }
 

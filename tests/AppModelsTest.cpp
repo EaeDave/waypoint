@@ -8,7 +8,7 @@ class AppModelsTest final : public QObject {
 
 private slots:
   void aggregateTaskMarkersByCalendarDate();
-  void showRecurringTaskMarkerOnlyForToday();
+  void showOnlyEligibleRecurringTaskMarkers();
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
   void sortTasksByFloatingLocalTime();
@@ -54,14 +54,21 @@ void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
   QVERIFY(foundToday);
 }
 
-void AppModelsTest::showRecurringTaskMarkerOnlyForToday() {
+void AppModelsTest::showOnlyEligibleRecurringTaskMarkers() {
   waypoint::CalendarModel model;
   const QDate today = QDate::currentDate();
   const QDate tomorrow = today.addDays(1);
+  waypoint::TaskOccurrence hiddenFuture =
+      occurrence(QStringLiteral("hidden-recurring-tomorrow"), tomorrow, false, true);
+  hiddenFuture.calendarMarker = false;
+  waypoint::TaskOccurrence hiddenCompleted =
+      occurrence(QStringLiteral("completed-recurring-tomorrow"), tomorrow, true, true);
+  hiddenCompleted.calendarMarker = false;
   model.setSourceOccurrences({
       occurrence(QStringLiteral("recurring-today"), today, false, true),
-      occurrence(QStringLiteral("recurring-tomorrow"), tomorrow, false, true),
-      occurrence(QStringLiteral("completed-recurring-tomorrow"), tomorrow, true, true),
+      occurrence(QStringLiteral("next-recurring-tomorrow"), tomorrow, false, true),
+      hiddenFuture,
+      hiddenCompleted,
       occurrence(QStringLiteral("one-off-tomorrow"), tomorrow, false),
   });
 
@@ -76,7 +83,7 @@ void AppModelsTest::showRecurringTaskMarkerOnlyForToday() {
   };
 
   QCOMPARE(countForDate(today, waypoint::CalendarModel::PendingCountRole), 1);
-  QCOMPARE(countForDate(tomorrow, waypoint::CalendarModel::PendingCountRole), 1);
+  QCOMPARE(countForDate(tomorrow, waypoint::CalendarModel::PendingCountRole), 2);
   QCOMPARE(countForDate(tomorrow, waypoint::CalendarModel::CompletedCountRole), 0);
 }
 

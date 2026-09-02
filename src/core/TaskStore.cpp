@@ -363,21 +363,21 @@ QList<TaskOccurrence> TaskStore::listOccurrences(const QDate &from, const QDate 
     setError(errorMessage, error);
     return {};
   }
-  return projectOccurrences(tasks, states, from, to);
+  return assignCalendarMarkers(projectOccurrences(tasks, states, from, to), tasks, states,
+                               QDate::currentDate());
 }
 
 bool TaskStore::claimReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
-                                      const QTime &scheduledTime, bool *claimed,
-                                      QString *errorMessage) {
+                                      const QTime &scheduledTime, bool *claimed, QString *errorMessage) {
   if (taskId.isEmpty() || !occurrenceDate.isValid() || !scheduledTime.isValid() || claimed == nullptr) {
     setError(errorMessage, QStringLiteral("Reminder delivery requires a task, date, time, and result"));
     return false;
   }
 
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "INSERT OR IGNORE INTO reminder_deliveries "
-      "(task_id, occurrence_date, scheduled_time, delivered_at) VALUES (?, ?, ?, ?)"));
+  query.prepare(
+      QStringLiteral("INSERT OR IGNORE INTO reminder_deliveries "
+                     "(task_id, occurrence_date, scheduled_time, delivered_at) VALUES (?, ?, ?, ?)"));
   query.addBindValue(taskId);
   query.addBindValue(occurrenceDate.toString(Qt::ISODate));
   query.addBindValue(scheduledTime.toString(QStringLiteral("HH:mm")));
@@ -1226,8 +1226,7 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         const TaskRecord task = TaskRecord::fromJson(payload);
         if (!isValidTaskEmoji(task.emoji)) {
           rollbackTransaction();
-          setError(errorMessage,
-                   QStringLiteral("Remote task emoji must be empty or contain one grapheme"));
+          setError(errorMessage, QStringLiteral("Remote task emoji must be empty or contain one grapheme"));
           return false;
         }
         apply.prepare(QStringLiteral(

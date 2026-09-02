@@ -51,6 +51,7 @@ struct TaskOccurrence final {
   QString emoji;
   bool completed = false;
   bool recurring = false;
+  bool calendarMarker = true;
   QString recurrenceLabel;
   RecurrenceRule recurrence;
 
@@ -69,6 +70,10 @@ struct OccurrenceSummary final {
 [[nodiscard]] QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
                                                        const QList<TaskOccurrenceState> &states,
                                                        const QDate &from, const QDate &to);
+[[nodiscard]] QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences,
+                                                          const QList<TaskRecord> &tasks,
+                                                          const QList<TaskOccurrenceState> &states,
+                                                          const QDate &today);
 [[nodiscard]] QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &tasks,
                                                                  const QList<TaskOccurrenceState> &states,
                                                                  const QDate &today);

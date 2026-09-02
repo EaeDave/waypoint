@@ -101,6 +101,7 @@ QList<TaskOccurrence> WaypointIpcClient::listOccurrences(const QDate &from, cons
     occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
     occurrence.completed = json.value(QStringLiteral("completed")).toBool();
     occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
+    occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
     occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
     occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
     occurrences.append(occurrence);
@@ -129,6 +130,7 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
     occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
     occurrence.completed = json.value(QStringLiteral("completed")).toBool();
     occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
+    occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
     occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
     occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
     occurrences.append(occurrence);

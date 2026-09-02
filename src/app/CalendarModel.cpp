@@ -20,7 +20,6 @@ int holidayKindPriority(const QString &kind) {
 
 } // namespace
 
-
 CalendarModel::CalendarModel(QObject *parent) : QAbstractListModel(parent) {
   const QDate today = QDate::currentDate();
   m_visibleMonth = QDate(today.year(), today.month(), 1);
@@ -100,8 +99,7 @@ int CalendarModel::weekNumberAtRow(int row) const {
   return m_cells.at(index).date.weekNumber();
 }
 
-void CalendarModel::setSourceOccurrences(
-    const QList<TaskOccurrence> &occurrences) {
+void CalendarModel::setSourceOccurrences(const QList<TaskOccurrence> &occurrences) {
   m_sourceOccurrences = occurrences;
   rebuildCells();
 }
@@ -146,7 +144,7 @@ void CalendarModel::rebuildCells() {
       if (occurrence.occurrenceDate != cell.date) {
         continue;
       }
-      if (occurrence.recurring && cell.date != today) {
+      if (!occurrence.calendarMarker) {
         continue;
       }
       if (occurrence.completed) {
