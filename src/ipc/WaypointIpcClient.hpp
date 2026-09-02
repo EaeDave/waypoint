@@ -7,6 +7,8 @@
 #include <QList>
 #include <QObject>
 
+#include <optional>
+
 namespace waypoint {
 
 class WaypointIpcClient final : public QObject {
@@ -22,8 +24,8 @@ public:
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
                                                                 QString *errorMessage = nullptr) const;
   [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                             const RecurrenceRule &recurrence, const QString &emoji,
-                             QString *errorMessage = nullptr) const;
+                             const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
+                             const QString &emoji, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed,
                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
@@ -35,7 +37,8 @@ public:
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                              const RecurrenceRule &recurrence, const QString &emoji,
+                              const RecurrenceRule &recurrence,
+                              const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
                               QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncConfiguration(QString *errorMessage = nullptr) const;

@@ -70,7 +70,8 @@ public:
   Q_INVOKABLE bool addTask(const QString &title, const QString &scheduledDateKey,
                            const QString &scheduledTimeKey, const QString &frequency, int interval,
                            const QVariantList &weekdays, const QString &endMode, const QString &untilDateKey,
-                           int occurrenceCount, const QString &emoji);
+                           int occurrenceCount, const QVariantList &reminderMinutesBefore,
+                           const QString &emoji);
   Q_INVOKABLE bool setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
                                           bool completed);
   Q_INVOKABLE bool skipOccurrence(const QString &taskId, const QString &occurrenceDateKey);
@@ -81,7 +82,7 @@ public:
   Q_INVOKABLE bool editTask(const QString &taskId, const QString &title, const QString &scheduledTimeKey,
                             const QString &frequency, int interval, const QVariantList &weekdays,
                             const QString &endMode, const QString &untilDateKey, int occurrenceCount,
-                            const QString &emoji);
+                            const QVariantList &reminderMinutesBefore, const QString &emoji);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();

@@ -53,10 +53,13 @@ BarWidget {
         actionProcess.running = true;
     }
 
-    function addTask(title, date, scheduledTime, emoji) {
+    function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji) {
         const time = scheduledTime || Qt.formatTime(new Date(), "HH:mm");
+        const reminders = reminderMinutesBefore.length === 0
+            ? "none" : reminderMinutesBefore.join(",");
         runAction(["add", "--date", Model.dateKey(date),
-                   "--time", time, "--title", title, "--emoji", emoji || ""]);
+                   "--time", time, "--reminders", reminders,
+                   "--title", title, "--emoji", emoji || ""]);
     }
 
     function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
@@ -66,9 +69,12 @@ BarWidget {
     function skipOccurrence(taskId, occurrenceDate) {
         runAction(["skip", taskId, "--date", occurrenceDate]);
     }
-    function editTask(taskId, title, scheduledTime, recurrence, emoji) {
+    function editTask(taskId, title, scheduledTime, recurrence,
+                      reminderMinutesBefore, emoji) {
+        const reminders = reminderMinutesBefore.length === 0
+            ? "none" : reminderMinutesBefore.join(",");
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
-                           "--emoji", emoji || "",
+                           "--reminders", reminders, "--emoji", emoji || "",
                            "--frequency", recurrence.frequency || "none",
                            "--interval", String(recurrence.interval || 1),
                            "--end-mode", recurrence.endMode || "never",

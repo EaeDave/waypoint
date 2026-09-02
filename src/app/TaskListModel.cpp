@@ -26,6 +26,14 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
   case ScheduledTimeRole:
     return occurrence.scheduledTime.isValid() ? occurrence.scheduledTime.toString(QStringLiteral("HH:mm"))
                                               : QString();
+  case ReminderMinutesBeforeRole: {
+    QVariantList reminders;
+    reminders.reserve(occurrence.reminderMinutesBefore.size());
+    for (const int minutes : occurrence.reminderMinutesBefore) {
+      reminders.append(minutes);
+    }
+    return reminders;
+  }
   case EmojiRole:
     return occurrence.emoji;
   case CompletedRole:
@@ -50,6 +58,7 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
       {TitleRole, "title"},
       {ScheduledDateRole, "scheduledDateKey"},
       {ScheduledTimeRole, "scheduledTimeKey"},
+      {ReminderMinutesBeforeRole, "reminderMinutesBefore"},
       {EmojiRole, "emoji"},
       {CompletedRole, "completed"},
       {OverdueRole, "overdue"},

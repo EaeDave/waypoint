@@ -179,6 +179,7 @@ void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
   const QDate today = QDate::currentDate();
   waypoint::TaskOccurrence decorated = occurrence(QStringLiteral("decorated"), today, false);
   decorated.emoji = QStringLiteral("👨‍💻");
+  decorated.reminderMinutesBefore = {60, 30, 0};
   waypoint::TaskListModel model;
   model.setSourceOccurrences(
       {decorated, occurrence(QStringLiteral("legacy"), today, false, false, QTime(10, 0))});
@@ -187,6 +188,12 @@ void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
            QStringLiteral("👨‍💻"));
   QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::EmojiRole).toString(), QString());
   QCOMPARE(model.roleNames().value(waypoint::TaskListModel::EmojiRole), QByteArrayLiteral("emoji"));
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::ReminderMinutesBeforeRole).toList(),
+           QVariantList({60, 30, 0}));
+  QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::ReminderMinutesBeforeRole).toList(),
+           QVariantList({0}));
+  QCOMPARE(model.roleNames().value(waypoint::TaskListModel::ReminderMinutesBeforeRole),
+           QByteArrayLiteral("reminderMinutesBefore"));
 }
 void AppModelsTest::sortTasksByFloatingLocalTime() {
   const QDate today = QDate::currentDate();

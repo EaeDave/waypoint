@@ -96,6 +96,7 @@ qt_add_qml_module(waypoint
         qml/components/AppMenuItem.qml
         qml/components/AppTextField.qml
         qml/components/AppTimePicker.qml
+        qml/components/AppReminderPicker.qml
         qml/components/AppEmojiPicker.qml
         qml/components/CalendarGrid.qml
         qml/components/QuickTaskComposer.qml

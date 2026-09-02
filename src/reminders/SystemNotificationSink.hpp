@@ -6,7 +6,7 @@ namespace waypoint {
 
 class SystemNotificationSink final : public TaskNotificationSink {
 public:
-  [[nodiscard]] bool send(const TaskOccurrence &occurrence,
+  [[nodiscard]] bool send(const TaskOccurrence &occurrence, int reminderMinutesBefore,
                           QString *errorMessage = nullptr) override;
 };
 

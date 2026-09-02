@@ -30,12 +30,15 @@ Panel {
     property string editingOccurrenceDate: ""
     property bool editingCompleted: false
     property bool timePickerVisible: false
+    property bool reminderPickerVisible: false
     property var timePickerTarget: null
     property bool timePickerCreatesTask: false
+    property bool reminderPickerCreatesTask: false
     property string pendingQuickTitle: ""
     property date pendingQuickDate: new Date()
     property string quickEmoji: ""
     property string pendingQuickEmoji: ""
+    property string pendingQuickTime: ""
     property string editingEmoji: ""
     property string emojiPickerTarget: ""
     property int pickerHour: 0
@@ -44,6 +47,8 @@ Panel {
     property var editingRecurrence: ({ frequency: "none", interval: 1, weekdays: [],
                                        endMode: "never", untilDate: "", occurrenceCount: 0 })
     property int editingWeekdayMask: 0
+    property var editingReminderMinutesBefore: [0]
+    readonly property int maximumReminderCount: 5
 
     readonly property var barIdentity: hostWidget || root
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
@@ -201,16 +206,17 @@ Panel {
             return;
         const selectedTime = timePickerInput.text;
         if (timePickerCreatesTask) {
-            if (!hostWidget)
-                return;
-            hostWidget.addTask(pendingQuickTitle, pendingQuickDate, selectedTime,
-                               pendingQuickEmoji);
-            quickAdd.text = "";
-            quickEmoji = "";
-            quickAdd.forceActiveFocus();
-        } else if (timePickerTarget) {
-            timePickerTarget.text = selectedTime;
+            pendingQuickTime = selectedTime;
+            timePickerVisible = false;
+            timePickerTarget = null;
+            timePickerCreatesTask = false;
+            setEditingReminders([0]);
+            reminderPickerCreatesTask = true;
+            reminderPickerVisible = true;
+            return;
         }
+        if (timePickerTarget)
+            timePickerTarget.text = selectedTime;
         closeTimePicker();
     }
 
@@ -249,6 +255,85 @@ Panel {
         return selected;
     }
 
+    function setEditingReminders(values) {
+        const normalized = [];
+        for (const value of (values || [])) {
+            const minutes = Number(value);
+            if (minutes >= 0 && Math.floor(minutes) === minutes
+                    && normalized.indexOf(minutes) < 0
+                    && normalized.length < maximumReminderCount)
+                normalized.push(minutes);
+        }
+        normalized.sort((left, right) => right - left);
+        editingReminderMinutesBefore = normalized;
+    }
+
+    function containsEditingReminder(minutes) {
+        return editingReminderMinutesBefore.indexOf(minutes) >= 0;
+    }
+
+    function toggleEditingReminder(minutes) {
+        const updated = editingReminderMinutesBefore.slice();
+        const index = updated.indexOf(minutes);
+        if (index >= 0)
+            updated.splice(index, 1);
+        else if (updated.length < maximumReminderCount)
+            updated.push(minutes);
+        setEditingReminders(updated);
+    }
+
+    function reminderLabel(minutes) {
+        if (minutes === 0)
+            return "No horário";
+        if (minutes % 10080 === 0) {
+            const weeks = minutes / 10080;
+            return weeks === 1 ? "1 semana antes" : weeks + " semanas antes";
+        }
+        if (minutes % 1440 === 0) {
+            const days = minutes / 1440;
+            return days === 1 ? "1 dia antes" : days + " dias antes";
+        }
+        if (minutes % 60 === 0) {
+            const hours = minutes / 60;
+            return hours === 1 ? "1 hora antes" : hours + " horas antes";
+        }
+        return minutes === 1 ? "1 minuto antes" : minutes + " minutos antes";
+    }
+
+    function addCustomReminder() {
+        const minutes = reminderCustomAmount.value * Number(reminderCustomUnit.value);
+        if (!containsEditingReminder(minutes)
+                && editingReminderMinutesBefore.length < maximumReminderCount)
+            toggleEditingReminder(minutes);
+    }
+
+    function closeReminderPicker() {
+        reminderPickerVisible = false;
+        if (reminderPickerCreatesTask) {
+            pendingQuickTitle = "";
+            pendingQuickTime = "";
+            pendingQuickEmoji = "";
+        }
+        reminderPickerCreatesTask = false;
+    }
+
+    function applyReminderPicker() {
+        if (reminderPickerCreatesTask) {
+            if (!hostWidget)
+                return;
+            hostWidget.addTask(pendingQuickTitle, pendingQuickDate,
+                               pendingQuickTime, editingReminderMinutesBefore,
+                               pendingQuickEmoji);
+            quickAdd.text = "";
+            quickEmoji = "";
+            closeReminderPicker();
+            quickAdd.forceActiveFocus();
+            return;
+        }
+        closeReminderPicker();
+    }
+
+
     function openTaskEditor(task) {
         editingTaskId = String(task.taskId || "");
         editingOccurrenceDate = String(task.occurrenceDate || "");
@@ -256,6 +341,7 @@ Panel {
         taskTitleInput.text = String(task.title || "");
         taskTimeInput.text = String(task.scheduledTime || "");
         editingEmoji = String(task.emoji || "");
+        setEditingReminders(task.reminderMinutesBefore || [0]);
         editingRecurrence = task.recurrence || ({ frequency: "none", interval: 1, weekdays: [],
                                                   endMode: "never", untilDate: "",
                                                   occurrenceCount: 0 });
@@ -300,7 +386,8 @@ Panel {
             untilDate: endMode === "onDate" ? taskCustomUntilDate.text.trim() : "",
             occurrenceCount: endMode === "afterCount" ? taskCustomOccurrenceCount.value : 0
         };
-        hostWidget.editTask(editingTaskId, title, time, recurrence, editingEmoji);
+        hostWidget.editTask(editingTaskId, title, time, recurrence,
+                            editingReminderMinutesBefore, editingEmoji);
         closeTaskEditor();
     }
     function deleteEditedTask() {
@@ -1010,6 +1097,19 @@ Panel {
                             onClicked: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
                         }
 
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Notificações · " + root.editingReminderMinutesBefore.length
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            tooltipText: "Configurar até 5 notificações"
+                            onClicked: {
+                                root.reminderPickerCreatesTask = false;
+                                root.reminderPickerVisible = true;
+                            }
+                        }
+
                         Dropdown {
                             id: taskRecurrenceInput
                             Layout.fillWidth: true
@@ -1205,6 +1305,159 @@ Panel {
                                 accent: Color.accent
                                 selected: true
                                 onClicked: root.saveTaskEdit()
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 210
+                visible: root.reminderPickerVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.closeReminderPicker()
+                }
+
+                BorderSurface {
+                    id: reminderPickerCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(500))
+                    height: contentTopInset + contentBottomInset
+                            + reminderPickerColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea {
+                        anchors.fill: parent
+                    }
+
+                    ColumnLayout {
+                        id: reminderPickerColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: reminderPickerCard.contentLeftInset
+                        anchors.rightMargin: reminderPickerCard.contentRightInset
+                        spacing: Style.space(8)
+
+                        Text {
+                            text: "NOTIFICAÇÕES · "
+                                  + root.editingReminderMinutesBefore.length
+                                  + "/" + root.maximumReminderCount
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.subtitle
+                            font.bold: true
+                        }
+
+                        Repeater {
+                            model: [
+                                { label: "No horário", minutes: 0 },
+                                { label: "5 minutos antes", minutes: 5 },
+                                { label: "30 minutos antes", minutes: 30 },
+                                { label: "1 hora antes", minutes: 60 },
+                                { label: "1 dia antes", minutes: 1440 }
+                            ]
+
+                            Button {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                text: (selected ? "✓  " : "")
+                                      + String(modelData.label)
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                selected: root.containsEditingReminder(
+                                              Number(modelData.minutes))
+                                enabled: selected
+                                         || root.editingReminderMinutesBefore.length
+                                            < root.maximumReminderCount
+                                onClicked: root.toggleEditingReminder(
+                                               Number(modelData.minutes))
+                            }
+                        }
+
+                        Text {
+                            text: "PERSONALIZADO"
+                            color: Color.popups.text
+                            opacity: 0.7
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Style.space(8)
+
+                            NumberField {
+                                id: reminderCustomAmount
+                                from: 1
+                                to: 999
+                                value: 1
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                            }
+                            Dropdown {
+                                id: reminderCustomUnit
+                                Layout.fillWidth: true
+                                showLabel: false
+                                foreground: Color.popups.text
+                                background: Color.popups.background
+                                accent: Color.accent
+                                options: [
+                                    { label: "minuto(s)", value: 1 },
+                                    { label: "hora(s)", value: 60 },
+                                    { label: "dia(s)", value: 1440 },
+                                    { label: "semana(s)", value: 10080 }
+                                ]
+                            }
+                            Button {
+                                text: "Adicionar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                enabled: !root.containsEditingReminder(
+                                             reminderCustomAmount.value
+                                             * Number(reminderCustomUnit.value))
+                                         && root.editingReminderMinutesBefore.length
+                                            < root.maximumReminderCount
+                                onClicked: root.addCustomReminder()
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.editingReminderMinutesBefore.length > 0
+                            text: root.editingReminderMinutesBefore.map(
+                                      value => root.reminderLabel(value)).join(" · ")
+                            color: Color.popups.text
+                            opacity: 0.7
+                            wrapMode: Text.Wrap
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+
+                            Item {
+                                Layout.fillWidth: true
+                            }
+                            Button {
+                                text: "Concluir"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
+                                onClicked: root.applyReminderPicker()
                             }
                         }
                     }

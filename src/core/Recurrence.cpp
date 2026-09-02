@@ -160,6 +160,7 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.title = task.title;
   occurrence.occurrenceDate = date;
   occurrence.scheduledTime = task.scheduledTime;
+  occurrence.reminderMinutesBefore = task.reminderMinutesBefore;
   occurrence.emoji = task.emoji;
   occurrence.completed = state != nullptr && state->status == OccurrenceStatus::Completed;
   occurrence.recurring = task.recurrence.isRecurring();
@@ -304,6 +305,7 @@ QJsonObject TaskOccurrence::toJson() const {
       {QStringLiteral("scheduledDate"), date},
       {QStringLiteral("scheduledTime"),
        scheduledTime.isValid() ? scheduledTime.toString(QStringLiteral("HH:mm")) : QString()},
+      {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       {QStringLiteral("emoji"), emoji},
       {QStringLiteral("completed"), completed},
       {QStringLiteral("recurring"), recurring},

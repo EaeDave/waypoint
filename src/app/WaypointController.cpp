@@ -35,6 +35,17 @@ RecurrenceEndMode recurrenceEndMode(const QString &name) {
   return RecurrenceEndMode::Never;
 }
 
+QList<int> taskReminderMinutesBefore(const QVariantList &values) {
+  QList<int> reminders;
+  reminders.reserve(values.size());
+  for (const QVariant &value : values) {
+    bool valid = false;
+    const int minutes = value.toInt(&valid);
+    reminders.append(valid ? minutes : -1);
+  }
+  return reminders;
+}
+
 } // namespace
 
 WaypointController::WaypointController(QObject *parent)
@@ -164,7 +175,7 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
                                  const QString &scheduledTimeKey, const QString &frequency,
                                  const int interval, const QVariantList &weekdays, const QString &endMode,
                                  const QString &untilDateKey, const int occurrenceCount,
-                                 const QString &emoji) {
+                                 const QVariantList &reminderMinutesBefore, const QString &emoji) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
@@ -184,7 +195,8 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
   recurrence.occurrenceCount = occurrenceCount;
 
   QString error;
-  if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence, emoji, &error)) {
+  if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence,
+                        taskReminderMinutesBefore(reminderMinutesBefore), emoji, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -249,7 +261,7 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
                                   const QString &scheduledTimeKey, const QString &frequency,
                                   const int interval, const QVariantList &weekdays, const QString &endMode,
                                   const QString &untilDateKey, const int occurrenceCount,
-                                  const QString &emoji) {
+                                  const QVariantList &reminderMinutesBefore, const QString &emoji) {
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledTime.isValid()) {
     updateConnection(m_online, QStringLiteral("Invalid task time: %1").arg(scheduledTimeKey));
@@ -266,7 +278,8 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
   recurrence.occurrenceCount = occurrenceCount;
 
   QString error;
-  if (!m_client.editTask(taskId, title, scheduledTime, recurrence, emoji, &error)) {
+  if (!m_client.editTask(taskId, title, scheduledTime, recurrence,
+                         taskReminderMinutesBefore(reminderMinutesBefore), emoji, &error)) {
     updateConnection(false, error);
     return false;
   }

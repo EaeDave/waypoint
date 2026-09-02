@@ -11,6 +11,7 @@ private slots:
   void deliverDuePendingTaskExactlyOnce();
   void retryNotificationFailureWithinDueMinute();
   void deliverRecurringOccurrenceOnItsDate();
+  void deliverEveryConfiguredReminderAcrossDates();
 };
 
 namespace {
@@ -19,8 +20,10 @@ class RecordingNotificationSink final : public waypoint::TaskNotificationSink {
 public:
   bool failNextSend = false;
   QList<waypoint::TaskOccurrence> deliveries;
+  QList<int> reminderMinutesBefore;
 
-  bool send(const waypoint::TaskOccurrence &occurrence, QString *errorMessage) override {
+  bool send(const waypoint::TaskOccurrence &occurrence, const int minutesBefore,
+            QString *errorMessage) override {
     if (failNextSend) {
       failNextSend = false;
       if (errorMessage != nullptr) {
@@ -29,6 +32,7 @@ public:
       return false;
     }
     deliveries.append(occurrence);
+    reminderMinutesBefore.append(minutesBefore);
     return true;
   }
 };
@@ -45,14 +49,16 @@ void ReminderSchedulerTest::deliverDuePendingTaskExactlyOnce() {
   const QDate date(2026, 9, 1);
   const QTime dueTime(9, 30);
   waypoint::TaskRecord dueTask;
-  QVERIFY2(
-      store.createTask(QStringLiteral("Reunião"), date, dueTime, {}, QStringLiteral("📣"), &dueTask, &error),
-      qPrintable(error));
+  QVERIFY2(store.createTask(QStringLiteral("Reunião"), date, dueTime, {}, QList<int>{0}, QStringLiteral("📣"),
+                            &dueTask, &error),
+           qPrintable(error));
   waypoint::TaskRecord completedTask;
-  QVERIFY2(store.createTask(QStringLiteral("Concluída"), date, dueTime, {}, {}, &completedTask, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Concluída"), date, dueTime, {}, QList<int>{0}, {}, &completedTask,
+                            &error),
            qPrintable(error));
   QVERIFY2(store.setTaskCompleted(completedTask.id, true, &error), qPrintable(error));
-  QVERIFY2(store.createTask(QStringLiteral("Mais tarde"), date, QTime(10, 0), {}, {}, nullptr, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Mais tarde"), date, QTime(10, 0), {}, QList<int>{0}, {}, nullptr,
+                            &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -80,7 +86,8 @@ void ReminderSchedulerTest::retryNotificationFailureWithinDueMinute() {
 
   const QDate date(2026, 9, 1);
   const QTime dueTime(14, 5);
-  QVERIFY2(store.createTask(QStringLiteral("Tentar novamente"), date, dueTime, {}, {}, nullptr, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Tentar novamente"), date, dueTime, {}, QList<int>{0}, {}, nullptr,
+                            &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -106,7 +113,8 @@ void ReminderSchedulerTest::deliverRecurringOccurrenceOnItsDate() {
   const QDate anchorDate(2026, 9, 1);
   const QTime dueTime(7, 45);
   waypoint::TaskRecord task;
-  QVERIFY2(store.createTask(QStringLiteral("Alongar"), anchorDate, dueTime, recurrence, {}, &task, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Alongar"), anchorDate, dueTime, recurrence, QList<int>{60, 0}, {},
+                            &task, &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -116,12 +124,44 @@ void ReminderSchedulerTest::deliverRecurringOccurrenceOnItsDate() {
   QVERIFY2(error.isEmpty(), qPrintable(error));
   QCOMPARE(actionable.size(), 1);
   QCOMPARE(actionable.first().occurrenceDate, anchorDate);
+  QCOMPARE(actionable.first().reminderMinutesBefore, QList<int>({60, 0}));
+
+  QVERIFY2(scheduler.dispatchDueReminders(QDateTime(occurrenceDate, dueTime).addSecs(-60 * 60), &error),
+           qPrintable(error));
+  QCOMPARE(sink.deliveries.size(), 1);
+  QCOMPARE(sink.reminderMinutesBefore, QList<int>({60}));
 
   QVERIFY2(scheduler.dispatchDueReminders(QDateTime(occurrenceDate, dueTime), &error), qPrintable(error));
-  QCOMPARE(sink.deliveries.size(), 1);
+  QCOMPARE(sink.deliveries.size(), 2);
   QCOMPARE(sink.deliveries.first().taskId, task.id);
   QCOMPARE(sink.deliveries.first().occurrenceDate, occurrenceDate);
   QVERIFY(sink.deliveries.first().recurring);
+  QCOMPARE(sink.reminderMinutesBefore, QList<int>({60, 0}));
+}
+
+void ReminderSchedulerTest::deliverEveryConfiguredReminderAcrossDates() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate dueDate(2026, 9, 2);
+  const QTime dueTime(2, 0);
+  const QList<int> reminders{300, 180, 60, 30, 0};
+  QVERIFY2(store.createTask(QStringLiteral("Viagem"), dueDate, dueTime, {}, reminders, {}, nullptr, &error),
+           qPrintable(error));
+
+  RecordingNotificationSink sink;
+  waypoint::ReminderScheduler scheduler(&store, &sink);
+  const QDateTime dueMoment(dueDate, dueTime);
+  for (const int minutesBefore : reminders) {
+    QVERIFY2(scheduler.dispatchDueReminders(dueMoment.addSecs(-minutesBefore * 60), &error),
+             qPrintable(error));
+  }
+
+  QCOMPARE(sink.deliveries.size(), reminders.size());
+  QCOMPARE(sink.reminderMinutesBefore, reminders);
+  QCOMPARE(sink.deliveries.first().occurrenceDate, dueDate);
 }
 
 QTEST_MAIN(ReminderSchedulerTest)

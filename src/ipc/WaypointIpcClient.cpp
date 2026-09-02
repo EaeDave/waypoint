@@ -19,6 +19,25 @@ bool responseSucceeded(const QJsonObject &response, QString *errorMessage) {
   return false;
 }
 
+TaskOccurrence occurrenceFromJson(const QJsonObject &json) {
+  TaskOccurrence occurrence;
+  occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
+  occurrence.title = json.value(QStringLiteral("title")).toString();
+  occurrence.occurrenceDate =
+      QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
+  occurrence.scheduledTime =
+      QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
+  occurrence.reminderMinutesBefore =
+      taskReminderMinutesBeforeFromJson(json.value(QStringLiteral("reminderMinutesBefore")));
+  occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
+  occurrence.completed = json.value(QStringLiteral("completed")).toBool();
+  occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
+  occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
+  occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
+  occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
+  return occurrence;
+}
+
 } // namespace
 
 WaypointIpcClient::WaypointIpcClient(QObject *parent) : QObject(parent) {}
@@ -90,21 +109,7 @@ QList<TaskOccurrence> WaypointIpcClient::listOccurrences(const QDate &from, cons
   }
   QList<TaskOccurrence> occurrences;
   for (const QJsonValue &value : response.value(QStringLiteral("occurrences")).toArray()) {
-    const QJsonObject json = value.toObject();
-    TaskOccurrence occurrence;
-    occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
-    occurrence.title = json.value(QStringLiteral("title")).toString();
-    occurrence.occurrenceDate =
-        QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
-    occurrence.scheduledTime =
-        QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
-    occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
-    occurrence.completed = json.value(QStringLiteral("completed")).toBool();
-    occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
-    occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
-    occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
-    occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
-    occurrences.append(occurrence);
+    occurrences.append(occurrenceFromJson(value.toObject()));
   }
   return occurrences;
 }
@@ -119,28 +124,14 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
   }
   QList<TaskOccurrence> occurrences;
   for (const QJsonValue &value : response.value(QStringLiteral("occurrences")).toArray()) {
-    const QJsonObject json = value.toObject();
-    TaskOccurrence occurrence;
-    occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
-    occurrence.title = json.value(QStringLiteral("title")).toString();
-    occurrence.occurrenceDate =
-        QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
-    occurrence.scheduledTime =
-        QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
-    occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
-    occurrence.completed = json.value(QStringLiteral("completed")).toBool();
-    occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
-    occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
-    occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
-    occurrence.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
-    occurrences.append(occurrence);
+    occurrences.append(occurrenceFromJson(value.toObject()));
   }
   return occurrences;
 }
 
 bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                                const RecurrenceRule &recurrence, const QString &emoji,
-                                QString *errorMessage) const {
+                                const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
+                                const QString &emoji, QString *errorMessage) const {
   const QJsonObject response = request(
       {
           {QStringLiteral("command"), QStringLiteral("add")},
@@ -150,6 +141,7 @@ bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate
            scheduledTime.isValid() ? scheduledTime.toString(QStringLiteral("HH:mm")) : QString()},
           {QStringLiteral("recurrence"), recurrence.toJson()},
           {QStringLiteral("emoji"), emoji},
+          {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);
@@ -217,18 +209,22 @@ bool WaypointIpcClient::rescheduleTask(const QString &taskId, const QDate &sched
   return responseSucceeded(response, errorMessage);
 }
 bool WaypointIpcClient::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                                 const RecurrenceRule &recurrence, const QString &emoji,
+                                 const RecurrenceRule &recurrence,
+                                 const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
                                  QString *errorMessage) const {
-  const QJsonObject response = request(
-      {
-          {QStringLiteral("command"), QStringLiteral("edit")},
-          {QStringLiteral("taskId"), taskId},
-          {QStringLiteral("title"), title},
-          {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
-          {QStringLiteral("recurrence"), recurrence.toJson()},
-          {QStringLiteral("emoji"), emoji},
-      },
-      errorMessage);
+  QJsonObject message{
+      {QStringLiteral("command"), QStringLiteral("edit")},
+      {QStringLiteral("taskId"), taskId},
+      {QStringLiteral("title"), title},
+      {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
+      {QStringLiteral("recurrence"), recurrence.toJson()},
+      {QStringLiteral("emoji"), emoji},
+  };
+  if (reminderMinutesBefore.has_value()) {
+    message.insert(QStringLiteral("reminderMinutesBefore"),
+                   taskReminderMinutesBeforeToJson(*reminderMinutesBefore));
+  }
+  const QJsonObject response = request(message, errorMessage);
   return responseSucceeded(response, errorMessage);
 }
 

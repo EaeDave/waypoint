@@ -312,6 +312,31 @@ fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
             )));
         }
     }
+    if let Some(reminder_value) = mutation.payload.get("reminderMinutesBefore") {
+        let reminders = reminder_value
+            .as_array()
+            .ok_or_else(|| ApiError::bad_request("task reminderMinutesBefore must be an array"))?;
+        if reminders.len() > 5 {
+            return Err(ApiError::bad_request("a task can have at most 5 reminders"));
+        }
+        let mut seen = Vec::with_capacity(reminders.len());
+        for value in reminders {
+            let minutes = value.as_u64().ok_or_else(|| {
+                ApiError::bad_request("task reminder minutes must be non-negative integers")
+            })?;
+            if minutes > i32::MAX as u64 {
+                return Err(ApiError::bad_request(
+                    "task reminder minutes exceed the supported range",
+                ));
+            }
+            if seen.contains(&minutes) {
+                return Err(ApiError::bad_request(
+                    "task reminders cannot contain duplicate times",
+                ));
+            }
+            seen.push(minutes);
+        }
+    }
 
     let Some(recurrence) = mutation.payload.get("recurrence") else {
         return Ok(());
@@ -510,6 +535,7 @@ mod tests {
                 "title": "Plan month",
                 "scheduledDate": "2026-09-01",
                 "scheduledTime": "09:30",
+                "reminderMinutesBefore": [300, 180, 60, 30, 0],
                 "recurrence": {
                     "frequency": "weekly",
                     "interval": 2,
@@ -520,6 +546,30 @@ mod tests {
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_task_reminder_lists() {
+        for reminders in [
+            json!([360, 300, 180, 60, 30, 0]),
+            json!([30, 30]),
+            json!([-1]),
+        ] {
+            let task_id = Uuid::new_v4().to_string();
+            let mutation = SyncMutation {
+                mutation_id: Uuid::new_v4().to_string(),
+                entity_type: "task".to_owned(),
+                entity_id: task_id.clone(),
+                operation: "upsert".to_owned(),
+                payload: json!({
+                    "id": task_id,
+                    "title": "Invalid reminders",
+                    "scheduledDate": "2026-09-01",
+                    "reminderMinutesBefore": reminders
+                }),
+            };
+            assert!(validate_request(&request_with(vec![mutation])).is_err());
+        }
     }
 
     #[test]

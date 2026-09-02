@@ -78,13 +78,14 @@ Rectangle {
                                     selectedWeekdays(), endMode,
                                     endMode === "onDate" ? untilDate.text.trim() : "",
                                     endMode === "afterCount" ? occurrenceCount.value : 0,
-                                    root.selectedEmoji)) {
+                                    reminderInput.minutesBefore, root.selectedEmoji)) {
             input.text = "";
             root.selectedEmoji = "";
             preset.currentIndex = 0;
             interval.value = 1;
             ending.currentIndex = 0;
             weekdayMask = 0;
+            reminderInput.setMinutesBefore([0]);
             repeatPopup.close();
             input.forceActiveFocus();
         }
@@ -129,6 +130,11 @@ Rectangle {
             focusAcceptOnOpen: true
             text: root.currentTimeKey()
             onSelectionAccepted: selectedTime => root.submit(selectedTime)
+        }
+
+        AppReminderPicker {
+            id: reminderInput
+            compact: root.compact
         }
 
         AppButton {

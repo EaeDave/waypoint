@@ -13,7 +13,7 @@ class TaskStore;
 class TaskNotificationSink {
 public:
   virtual ~TaskNotificationSink() = default;
-  [[nodiscard]] virtual bool send(const TaskOccurrence &occurrence,
+  [[nodiscard]] virtual bool send(const TaskOccurrence &occurrence, int reminderMinutesBefore,
                                   QString *errorMessage = nullptr) = 0;
 };
 
@@ -21,12 +21,10 @@ class ReminderScheduler final : public QObject {
   Q_OBJECT
 
 public:
-  ReminderScheduler(TaskStore *taskStore, TaskNotificationSink *notificationSink,
-                    QObject *parent = nullptr);
+  ReminderScheduler(TaskStore *taskStore, TaskNotificationSink *notificationSink, QObject *parent = nullptr);
 
   void start();
-  [[nodiscard]] bool dispatchDueReminders(const QDateTime &localNow,
-                                          QString *errorMessage = nullptr);
+  [[nodiscard]] bool dispatchDueReminders(const QDateTime &localNow, QString *errorMessage = nullptr);
 
 signals:
   void reminderDelivered(const QString &taskId, const QString &title);

@@ -17,6 +17,7 @@ Rectangle {
     required property bool recurring
     required property string recurrenceLabel
     required property var recurrence
+    required property var reminderMinutesBefore
     required property var controller
     property int weekdayMask: 0
 
@@ -238,6 +239,7 @@ Rectangle {
         editTitle.text = root.title;
         editTime.text = root.scheduledTimeKey;
         editEmoji.emoji = root.emoji;
+        editReminders.setMinutesBefore(root.reminderMinutesBefore || [0]);
         const frequency = String(root.recurrence.frequency || "none");
         customFrequency.currentIndex = Math.max(
             0, customFrequency.indexOfValue(frequency === "none" ? "daily" : frequency));
@@ -271,7 +273,7 @@ Rectangle {
                 custom ? customInterval.value : 1, root.selectedWeekdays(), endMode,
                 endMode === "onDate" ? customUntilDate.text.trim() : "",
                 endMode === "afterCount" ? customOccurrenceCount.value : 0,
-                editEmoji.emoji))
+                editReminders.minutesBefore, editEmoji.emoji))
             editPopup.close();
     }
 
@@ -324,6 +326,11 @@ Rectangle {
 
             AppTimePicker {
                 id: editTime
+                Layout.fillWidth: true
+            }
+
+            AppReminderPicker {
+                id: editReminders
                 Layout.fillWidth: true
             }
 

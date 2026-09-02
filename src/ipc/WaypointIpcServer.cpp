@@ -10,6 +10,8 @@
 #include <QProcess>
 #include <QStandardPaths>
 
+#include <optional>
+
 namespace waypoint {
 namespace {
 
@@ -153,7 +155,10 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
         QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
     const RecurrenceRule recurrence =
         RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
-    if (!m_taskStore->createTask(title, date, time, recurrence, emoji, &task, &error)) {
+    const QList<int> reminderMinutesBefore =
+        taskReminderMinutesBeforeFromJson(request.value(QStringLiteral("reminderMinutesBefore")));
+    if (!m_taskStore->createTask(title, date, time, recurrence, reminderMinutesBefore, emoji, &task,
+                                 &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("task"), task.toJson()}};
@@ -210,7 +215,12 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
         QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
     const RecurrenceRule recurrence =
         RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
-    if (!m_taskStore->editTask(taskId, title, time, recurrence, emoji, &error)) {
+    std::optional<QList<int>> reminderMinutesBefore;
+    if (request.contains(QStringLiteral("reminderMinutesBefore"))) {
+      reminderMinutesBefore =
+          taskReminderMinutesBeforeFromJson(request.value(QStringLiteral("reminderMinutesBefore")));
+    }
+    if (!m_taskStore->editTask(taskId, title, time, recurrence, reminderMinutesBefore, emoji, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};

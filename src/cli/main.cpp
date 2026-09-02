@@ -7,6 +7,9 @@
 #include <QJsonObject>
 #include <cstdio>
 
+#include <algorithm>
+#include <optional>
+
 namespace {
 
 int printError(const QString &message) {
@@ -18,6 +21,30 @@ int printError(const QString &message) {
 void printJson(const QJsonObject &json) {
   const QByteArray bytes = QJsonDocument(json).toJson(QJsonDocument::Compact);
   fprintf(stdout, "%s\n", bytes.constData());
+}
+
+std::optional<QList<int>> parseReminderMinutesBefore(const QString &value, QString *errorMessage) {
+  if (value.trimmed() == QStringLiteral("none")) {
+    return QList<int>{};
+  }
+
+  QList<int> reminders;
+  const QStringList values = value.split(QLatin1Char(','), Qt::SkipEmptyParts);
+  reminders.reserve(values.size());
+  for (const QString &item : values) {
+    bool valid = false;
+    const int minutes = item.trimmed().toInt(&valid);
+    if (!valid) {
+      *errorMessage = QStringLiteral("--reminders must be 'none' or comma-separated minutes");
+      return std::nullopt;
+    }
+    reminders.append(minutes);
+  }
+  std::ranges::sort(reminders, std::greater{});
+  if (!waypoint::validateTaskReminderMinutesBefore(reminders, errorMessage)) {
+    return std::nullopt;
+  }
+  return reminders;
 }
 
 } // namespace
@@ -48,6 +75,9 @@ int main(int argc, char *argv[]) {
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
   parser.addOption({QStringLiteral("emoji"), QStringLiteral("Optional task emoji"), QStringLiteral("emoji")});
+  parser.addOption({QStringLiteral("reminders"),
+                    QStringLiteral("Comma-separated minutes before the task, up to 5; use 'none' to disable"),
+                    QStringLiteral("minutes")});
   parser.addOption({QStringLiteral("frequency"),
                     QStringLiteral("Recurrence frequency: none, daily, weekly, monthly, or yearly"),
                     QStringLiteral("frequency"), QStringLiteral("none")});
@@ -164,7 +194,14 @@ int main(int argc, char *argv[]) {
     if (parser.isSet(QStringLiteral("time")) && !time.isValid()) {
       return printError(QStringLiteral("--time requires HH:mm"));
     }
-    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {},
+    const auto reminders = parseReminderMinutesBefore(parser.isSet(QStringLiteral("reminders"))
+                                                          ? parser.value(QStringLiteral("reminders"))
+                                                          : QStringLiteral("0"),
+                                                      &error);
+    if (!reminders.has_value()) {
+      return printError(error);
+    }
+    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {}, *reminders,
                         parser.value(QStringLiteral("emoji")), &error)) {
       return printError(error);
     }
@@ -343,8 +380,17 @@ int main(int argc, char *argv[]) {
          {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
          {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
          {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
-    succeeded =
-        client.editTask(taskId, title, time, recurrence, parser.value(QStringLiteral("emoji")), &error);
+    std::optional<QList<int>> reminders;
+    if (parser.isSet(QStringLiteral("reminders"))) {
+      const auto parsedReminders =
+          parseReminderMinutesBefore(parser.value(QStringLiteral("reminders")), &error);
+      if (!parsedReminders.has_value()) {
+        return printError(error);
+      }
+      reminders = *parsedReminders;
+    }
+    succeeded = client.editTask(taskId, title, time, recurrence, reminders,
+                                parser.value(QStringLiteral("emoji")), &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
