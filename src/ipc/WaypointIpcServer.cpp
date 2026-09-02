@@ -7,8 +7,24 @@
 
 #include <QJsonArray>
 #include <QLocalSocket>
+#include <QProcess>
+#include <QStandardPaths>
 
 namespace waypoint {
+namespace {
+
+constexpr auto completionSoundName = "complete";
+
+void playCompletionSound() {
+  const QString soundPlayer = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
+  if (soundPlayer.isEmpty()) {
+    return;
+  }
+  QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(completionSoundName),
+                                        QStringLiteral("-d"), QStringLiteral("Waypoint task completed")});
+}
+
+} // namespace
 
 WaypointIpcServer::WaypointIpcServer(TaskStore *taskStore, SyncEngine *syncEngine,
                                      HolidaySyncEngine *holidaySyncEngine, QObject *parent)
@@ -153,6 +169,9 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
                                                   completed, &error);
     if (!succeeded) {
       return protocol::errorResponse(error);
+    }
+    if (completed) {
+      playCompletionSound();
     }
     return {{QStringLiteral("ok"), true}};
   }
