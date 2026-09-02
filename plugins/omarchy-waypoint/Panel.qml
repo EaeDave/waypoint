@@ -524,6 +524,7 @@ Panel {
         manualHabitId = habitId;
         habitManualAmount.value = 1;
         habitManualVisible = true;
+        Qt.callLater(() => habitManualRegister.forceActiveFocus());
     }
 
     function recordManualHabit() {
@@ -1564,6 +1565,7 @@ Panel {
                                 onClicked: root.habitManualVisible = false
                             }
                             Button {
+                                id: habitManualRegister
                                 text: "Registrar"
                                 foreground: Color.popups.text
                                 accent: Color.accent
