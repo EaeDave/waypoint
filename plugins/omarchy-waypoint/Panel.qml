@@ -1377,6 +1377,7 @@ Panel {
                                 value: 1
                                 foreground: Color.popups.text
                                 accent: Color.accent
+                                onModified: updatedValue => value = updatedValue
                             }
                             TextField {
                                 id: habitUnitInput
@@ -1420,6 +1421,7 @@ Panel {
                                 value: 1
                                 foreground: Color.popups.text
                                 accent: Color.accent
+                                onModified: updatedValue => value = updatedValue
                             }
                         }
 
@@ -1549,6 +1551,7 @@ Panel {
                             value: 1
                             foreground: Color.popups.text
                             accent: Color.accent
+                            onModified: updatedValue => value = updatedValue
                         }
                         RowLayout {
                             Layout.fillWidth: true
