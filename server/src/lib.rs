@@ -11,7 +11,7 @@ use axum::{
     },
     routing::{get, post},
 };
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{DateTime, NaiveDate, NaiveTime};
 use fcm::FcmClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -452,6 +452,18 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     }
 }
 
+fn validate_delete_tombstone(mutation: &SyncMutation, entity_name: &str) -> Result<(), ApiError> {
+    let deleted_at = mutation
+        .payload
+        .get("deletedAt")
+        .and_then(Value::as_str)
+        .ok_or_else(|| ApiError::bad_request(format!("{entity_name} deletedAt is required")))?;
+    DateTime::parse_from_rfc3339(deleted_at).map_err(|_| {
+        ApiError::bad_request(format!("invalid {entity_name} deletedAt: {deleted_at}"))
+    })?;
+    Ok(())
+}
+
 fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     Uuid::parse_str(&mutation.entity_id).map_err(|_| {
         ApiError::bad_request(format!("invalid task entityId: {}", mutation.entity_id))
@@ -463,7 +475,7 @@ fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
         )));
     }
     if mutation.operation == "delete" {
-        return Ok(());
+        return validate_delete_tombstone(mutation, "task");
     }
 
     let title = mutation
@@ -642,7 +654,7 @@ fn validate_habit_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
         )));
     }
     if mutation.operation == "delete" {
-        return Ok(());
+        return validate_delete_tombstone(mutation, "habit");
     }
 
     let title = mutation
@@ -782,7 +794,7 @@ fn validate_habit_entry_mutation(mutation: &SyncMutation) -> Result<(), ApiError
     NaiveDate::parse_from_str(entry_date, "%Y-%m-%d")
         .map_err(|_| ApiError::bad_request(format!("invalid habit entryDate: {entry_date}")))?;
     if mutation.operation == "delete" {
-        return Ok(());
+        return validate_delete_tombstone(mutation, "habit entry");
     }
     let amount = mutation
         .payload
@@ -906,6 +918,20 @@ mod tests {
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+
+    #[test]
+    fn rejects_task_delete_without_tombstone_timestamp() {
+        let task_id = Uuid::new_v4().to_string();
+        let mutation = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
+            operation: "delete".to_owned(),
+            payload: json!({"id": task_id}),
+        };
+
+        assert!(validate_request(&request_with(vec![mutation])).is_err());
     }
 
     #[test]
