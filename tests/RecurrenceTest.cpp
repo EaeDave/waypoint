@@ -189,6 +189,17 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
   QVERIFY(afterCompletion.at(1).calendarMarker);
   QVERIFY(!afterCompletion.at(2).calendarMarker);
 
+  waypoint::TaskOccurrenceState completedToday = resolved;
+  completedToday.occurrenceDate = today;
+  const QList<waypoint::TaskOccurrenceState> completedThroughToday{resolved, completedToday};
+  const auto nextPending = waypoint::assignCalendarMarkers(
+      waypoint::projectOccurrences({task}, completedThroughToday, yesterday, tomorrow), {task},
+      completedThroughToday, today);
+  QCOMPARE(nextPending.size(), 3);
+  QVERIFY(!nextPending.at(0).calendarMarker);
+  QVERIFY(!nextPending.at(1).calendarMarker);
+  QVERIFY(nextPending.at(2).calendarMarker);
+
   resolved.status = waypoint::OccurrenceStatus::Skipped;
   const auto afterSkip = waypoint::assignCalendarMarkers(
       waypoint::projectOccurrences({task}, {resolved}, yesterday, tomorrow), {task}, {resolved}, today);

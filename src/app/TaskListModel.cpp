@@ -93,10 +93,11 @@ void TaskListModel::rebuildVisibleTasks() {
   QList<TaskOccurrence> visible;
   const QDate today = QDate::currentDate();
   for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
+    const bool calendarVisible = m_focusDate == today || !occurrence.recurring || occurrence.calendarMarker;
     const bool belongsToFocusDate = occurrence.occurrenceDate == m_focusDate;
     const bool overdueOnTodayView = m_focusDate == today && !occurrence.completed &&
                                     occurrence.occurrenceDate.isValid() && occurrence.occurrenceDate < today;
-    if (belongsToFocusDate || overdueOnTodayView) {
+    if (calendarVisible && (belongsToFocusDate || overdueOnTodayView)) {
       visible.append(occurrence);
     }
   }

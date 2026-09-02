@@ -105,7 +105,9 @@ function yearProgress(date) {
 
 function occurrencesForDate(occurrences, date) {
     const key = dateKey(date)
-    return (occurrences || []).filter(occurrence => occurrence.occurrenceDate === key)
+    return (occurrences || []).filter(occurrence =>
+        occurrence.occurrenceDate === key
+        && (occurrence.recurring !== true || occurrence.calendarMarker !== false))
 }
 function holidaysForDate(holidays, date) {
     const key = dateKey(date)

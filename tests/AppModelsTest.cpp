@@ -11,6 +11,7 @@ private slots:
   void showOnlyEligibleRecurringTaskMarkers();
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
+  void showOnlyCurrentRecurringOccurrenceInDateLists();
   void sortTasksByFloatingLocalTime();
   void exposeEmojiRoleWithoutBreakingLegacyTasks();
 };
@@ -139,6 +140,39 @@ void AppModelsTest::includeOverdueTasksOnlyInTodayView() {
                .value(QStringLiteral("frequency"))
                .toString(),
            QStringLiteral("daily"));
+}
+
+void AppModelsTest::showOnlyCurrentRecurringOccurrenceInDateLists() {
+  const QDate today = QDate::currentDate();
+  const QDate tomorrow = today.addDays(1);
+  const QDate later = today.addDays(5);
+  waypoint::TaskOccurrence completedToday = occurrence(QStringLiteral("completed-today"), today, true, true);
+  completedToday.calendarMarker = false;
+  waypoint::TaskOccurrence projectedLater = occurrence(QStringLiteral("projected-later"), later, false, true);
+  projectedLater.calendarMarker = false;
+
+  waypoint::TaskListModel model;
+  model.setSourceOccurrences({
+      completedToday,
+      occurrence(QStringLiteral("current-tomorrow"), tomorrow, false, true),
+      projectedLater,
+      occurrence(QStringLiteral("one-off-later"), later, false),
+  });
+
+  model.setFocusDate(later);
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("one-off-later"));
+
+  model.setFocusDate(tomorrow);
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("current-tomorrow"));
+
+  model.setFocusDate(today);
+  QCOMPARE(model.rowCount(), 1);
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
+           QStringLiteral("completed-today"));
 }
 
 void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {

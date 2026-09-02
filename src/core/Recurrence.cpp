@@ -436,16 +436,11 @@ QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences, c
       }
     }
 
-    const auto todayState = stateByOccurrence.constFind(occurrenceKey(task.id, today));
-    const bool preserveCompletedToday =
-        todayState != stateByOccurrence.cend() && todayState->status == OccurrenceStatus::Completed;
     for (TaskOccurrence &occurrence : occurrences) {
       if (occurrence.taskId != task.id) {
         continue;
       }
-      occurrence.calendarMarker =
-          occurrence.occurrenceDate == pendingMarkerDate ||
-          (preserveCompletedToday && occurrence.occurrenceDate == today && occurrence.completed);
+      occurrence.calendarMarker = occurrence.occurrenceDate == pendingMarkerDate;
     }
   }
   return occurrences;
