@@ -20,4 +20,8 @@ struct WidgetTaskActionResult final {
                                              const QDateTime &now, WidgetTaskActionResult *result,
                                              QString *errorMessage = nullptr);
 
+[[nodiscard]] bool applyWidgetHabitCheckIn(TaskStore &store, const QString &habitId, const QDate &date,
+                                           qint64 amount, const QDateTime &now,
+                                           WidgetTaskActionResult *result, QString *errorMessage = nullptr);
+
 } // namespace waypoint

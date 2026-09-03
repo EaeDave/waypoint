@@ -60,6 +60,16 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                                R.id.widget_task_title_2, R.id.widget_task_title_3};
   private static final int[] TASK_TIME_IDS = {R.id.widget_task_time_0, R.id.widget_task_time_1,
                                               R.id.widget_task_time_2, R.id.widget_task_time_3};
+  private static final int[] HABIT_ROW_IDS = {R.id.widget_habit_row_0, R.id.widget_habit_row_1,
+                                              R.id.widget_habit_row_2, R.id.widget_habit_row_3};
+  private static final int[] HABIT_TITLE_IDS = {R.id.widget_habit_title_0, R.id.widget_habit_title_1,
+                                                R.id.widget_habit_title_2, R.id.widget_habit_title_3};
+  private static final int[] HABIT_PROGRESS_IDS = {R.id.widget_habit_progress_0,
+                                                   R.id.widget_habit_progress_1,
+                                                   R.id.widget_habit_progress_2,
+                                                   R.id.widget_habit_progress_3};
+  private static final int[] HABIT_ACTION_IDS = {R.id.widget_habit_action_0, R.id.widget_habit_action_1,
+                                                 R.id.widget_habit_action_2, R.id.widget_habit_action_3};
 
   @Override
   public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
@@ -119,11 +129,19 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static void updateWidget(Context context, AppWidgetManager manager, int appWidgetId) {
     LocalDate today = LocalDate.now();
     LocalDate selectedDate = selectedDate(context, appWidgetId, today);
-    JSONObject dates = snapshotDates(context);
+    JSONObject snapshot = snapshot(context);
+    JSONObject dates = snapshot.optJSONObject("dates");
+    if (dates == null) {
+      dates = new JSONObject();
+    }
+    JSONArray habits = snapshot.optJSONArray("habits");
     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.waypoint_widget);
+    int[] detailLimits =
+        detailLimits(context, manager, appWidgetId, selectedDate.equals(today) && habits != null);
 
     renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
-    renderTasks(context, manager, views, appWidgetId, selectedDate, dates);
+    renderTasks(context, views, appWidgetId, selectedDate, dates, detailLimits[0]);
+    renderHabits(context, views, appWidgetId, habits, detailLimits[1]);
 
     PendingIntent openApp = openAppIntent(context, appWidgetId);
     views.setOnClickPendingIntent(R.id.widget_root, null);
@@ -175,30 +193,49 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     }
   }
 
-  private static void renderTasks(Context context, AppWidgetManager manager, RemoteViews views,
-                                  int appWidgetId, LocalDate selectedDate, JSONObject dates) {
-    String dateLabel = selectedDate.format(DATE_LABEL);
-    views.setTextViewText(R.id.widget_selected_date,
-                          dateLabel.substring(0, 1).toUpperCase(PORTUGUESE) + dateLabel.substring(1));
-
+  private static int[] detailLimits(Context context, AppWidgetManager manager, int appWidgetId,
+                                    boolean includeHabits) {
     Bundle options = manager.getAppWidgetOptions(appWidgetId);
     String heightOption = context.getResources().getConfiguration().orientation ==
                                   android.content.res.Configuration.ORIENTATION_LANDSCAPE
                               ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
                               : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT;
     int availableHeight = options.getInt(heightOption, 455);
-    int taskLimit;
-    if (availableHeight >= 500) {
-      taskLimit = 4;
-    } else if (availableHeight >= 440) {
-      taskLimit = 3;
-    } else if (availableHeight >= 390) {
-      taskLimit = 2;
-    } else if (availableHeight >= 345) {
-      taskLimit = 1;
-    } else {
-      taskLimit = 0;
+    if (includeHabits) {
+      if (availableHeight >= 676) {
+        return new int[] {4, 4};
+      }
+      if (availableHeight >= 580) {
+        return new int[] {3, 3};
+      }
+      if (availableHeight >= 494) {
+        return new int[] {2, 2};
+      }
+      if (availableHeight >= 413) {
+        return new int[] {1, 1};
+      }
     }
+    if (availableHeight >= 500) {
+      return new int[] {4, 0};
+    }
+    if (availableHeight >= 440) {
+      return new int[] {3, 0};
+    }
+    if (availableHeight >= 390) {
+      return new int[] {2, 0};
+    }
+    if (availableHeight >= 345) {
+      return new int[] {1, 0};
+    }
+    return new int[] {0, 0};
+  }
+
+  private static void renderTasks(Context context, RemoteViews views, int appWidgetId,
+                                  LocalDate selectedDate, JSONObject dates, int taskLimit) {
+    String dateLabel = selectedDate.format(DATE_LABEL);
+    views.setTextViewText(R.id.widget_selected_date,
+                          dateLabel.substring(0, 1).toUpperCase(PORTUGUESE) + dateLabel.substring(1));
+
     boolean showDetails = taskLimit > 0;
     JSONObject dateData = dates.optJSONObject(selectedDate.toString());
     int holidayCount = renderHolidays(views, dateData, showDetails);
@@ -256,6 +293,67 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     }
   }
 
+  private static void renderHabits(Context context, RemoteViews views, int appWidgetId,
+                                   JSONArray habits, int habitLimit) {
+    boolean showHabits = habitLimit > 0;
+    views.setViewVisibility(R.id.widget_habits_divider, showHabits ? View.VISIBLE : View.GONE);
+    views.setViewVisibility(R.id.widget_habits_header, showHabits ? View.VISIBLE : View.GONE);
+    int habitCount = habits == null ? 0 : habits.length();
+    views.setViewVisibility(R.id.widget_empty_habits,
+                            showHabits && habitCount == 0 ? View.VISIBLE : View.GONE);
+
+    PendingIntent openApp = openAppIntent(context, appWidgetId);
+    for (int index = 0; index < HABIT_ROW_IDS.length; ++index) {
+      if (index >= habitLimit || index >= habitCount) {
+        views.setViewVisibility(HABIT_ROW_IDS[index], View.GONE);
+        continue;
+      }
+      JSONObject habit = habits.optJSONObject(index);
+      if (habit == null) {
+        views.setViewVisibility(HABIT_ROW_IDS[index], View.GONE);
+        continue;
+      }
+
+      boolean completed = habit.optBoolean("completed", false);
+      String emoji = habit.optString("emoji", "").trim();
+      String title = habit.optString("title", "Hábito");
+      if (!emoji.isEmpty()) {
+        title = emoji + "  " + title;
+      }
+      long amount = habit.optLong("amount", 0);
+      long target = habit.optLong("targetAmount", 1);
+      String unit = habit.optString("unit", "").trim();
+      String progress = amount + " / " + target + (unit.isEmpty() ? "" : " " + unit);
+      String checkInMode = habit.optString("checkInMode", "complete");
+      long actionAmount = "manual".equals(checkInMode) ? 1 : 0;
+      String actionLabel;
+      if (completed) {
+        actionLabel = "FEITO";
+      } else if ("fixed".equals(checkInMode)) {
+        long increment = habit.optLong("incrementAmount", 1);
+        actionLabel = "+" + increment + (unit.isEmpty() ? "" : " " + unit);
+      } else if ("manual".equals(checkInMode)) {
+        actionLabel = "+1" + (unit.isEmpty() ? "" : " " + unit);
+      } else {
+        actionLabel = "CONCLUIR";
+      }
+
+      views.setViewVisibility(HABIT_ROW_IDS[index], View.VISIBLE);
+      views.setTextViewText(HABIT_TITLE_IDS[index], title);
+      views.setTextColor(HABIT_TITLE_IDS[index], completed ? COLOR_DISABLED : COLOR_FOREGROUND);
+      views.setTextViewText(HABIT_PROGRESS_IDS[index], progress);
+      views.setTextColor(HABIT_PROGRESS_IDS[index], completed ? COLOR_ACCENT : COLOR_SUBDUED);
+      views.setTextViewText(HABIT_ACTION_IDS[index], actionLabel);
+      views.setTextColor(HABIT_ACTION_IDS[index], completed ? COLOR_DISABLED : COLOR_FOREGROUND);
+      views.setInt(HABIT_ACTION_IDS[index], "setBackgroundResource",
+                   completed ? android.R.color.transparent : R.drawable.waypoint_widget_selected_day);
+      views.setOnClickPendingIntent(HABIT_ROW_IDS[index], openApp);
+      views.setOnClickPendingIntent(
+          HABIT_ACTION_IDS[index],
+          completed ? null : habitCheckInIntent(context, appWidgetId, habit, index, actionAmount));
+    }
+  }
+
   private static int renderHolidays(RemoteViews views, JSONObject dateData, boolean showDetails) {
     JSONArray holidays = dateData == null ? null : dateData.optJSONArray("holidays");
     if (!showDetails || holidays == null || holidays.length() == 0) {
@@ -310,7 +408,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return coverage.isEmpty() ? category : category + " " + coverage;
   }
 
-  private static JSONObject snapshotDates(Context context) {
+  private static JSONObject snapshot(Context context) {
     String snapshot =
         context.getSharedPreferences(WaypointWidgetBridge.SNAPSHOT_PREFERENCES, Context.MODE_PRIVATE)
             .getString(WaypointWidgetBridge.SNAPSHOT_KEY, "");
@@ -318,9 +416,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       return new JSONObject();
     }
     try {
-      return new JSONObject(snapshot).optJSONObject("dates") == null
-          ? new JSONObject()
-          : new JSONObject(snapshot).getJSONObject("dates");
+      return new JSONObject(snapshot);
     } catch (JSONException ignored) {
       return new JSONObject();
     }
@@ -406,6 +502,28 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
             .putExtra(WaypointWidgetActionService.EXTRA_RECURRING, task.optBoolean("recurring", false))
             .putExtra(WaypointWidgetActionService.EXTRA_COMPLETED, completed);
     return PendingIntent.getForegroundService(context, appWidgetId * 100 + 60 + requestOffset, intent,
+                                              PendingIntent.FLAG_UPDATE_CURRENT |
+                                                  PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  private static PendingIntent habitCheckInIntent(Context context, int appWidgetId, JSONObject habit,
+                                                  int requestOffset, long amount) {
+    String habitId = habit.optString("id", "");
+    String date = habit.optString("date", "");
+    Intent intent =
+        new Intent(context, WaypointWidgetActionService.class)
+            .setData(new Uri.Builder()
+                         .scheme("waypoint")
+                         .authority("widget")
+                         .appendPath(Integer.toString(appWidgetId))
+                         .appendPath("habit")
+                         .appendPath(habitId)
+                         .appendPath(date)
+                         .build())
+            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_ID, habitId)
+            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_DATE, date)
+            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_AMOUNT, amount);
+    return PendingIntent.getForegroundService(context, appWidgetId * 100 + 70 + requestOffset, intent,
                                               PendingIntent.FLAG_UPDATE_CURRENT |
                                                   PendingIntent.FLAG_IMMUTABLE);
   }

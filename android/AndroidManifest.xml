@@ -79,6 +79,7 @@
         <service
             android:name="org.eaedave.waypoint.WaypointBackgroundSyncService"
             android:exported="false"
+            android:process=":background_sync"
             android:foregroundServiceType="dataSync">
             <meta-data
                 android:name="android.app.lib_name"

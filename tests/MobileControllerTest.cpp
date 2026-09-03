@@ -1,5 +1,5 @@
-#include "mobile/BackgroundSync.hpp"
 #include "mobile/MobileController.hpp"
+#include "mobile/BackgroundSync.hpp"
 #include "mobile/NotificationSchedule.hpp"
 #include "mobile/WidgetSnapshot.hpp"
 #include "mobile/WidgetTaskAction.hpp"
@@ -22,6 +22,7 @@ private slots:
   void capNotificationsBelowAndroidAlarmLimit();
   void buildWidgetCalendarSnapshot();
   void applyWidgetTaskCompletionAndUndo();
+  void applyWidgetHabitCheckIns();
   void prepareAndApplyBackgroundSync();
 };
 
@@ -140,10 +141,16 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
   };
   QVERIFY2(store.replaceHolidaySnapshot(QDate(2026, 1, 1), QDate(2026, 12, 31), holidays, {}, &error),
            qPrintable(error));
+  waypoint::HabitRecord habit;
+  QVERIFY2(store.createHabit(QStringLiteral("Beber água"), 8, QStringLiteral("copos"),
+                             waypoint::HabitCheckInMode::Fixed, 2, {today.dayOfWeek()}, {},
+                             QStringLiteral("💧"), &habit, &error),
+           qPrintable(error));
+  QVERIFY2(store.recordHabit(habit.id, today, std::nullopt, nullptr, &error), qPrintable(error));
 
   const QJsonObject snapshot = waypoint::buildWidgetSnapshot(store, today, 1, 1, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 1);
+  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 2);
   QCOMPARE(snapshot.value(QStringLiteral("today")).toString(), QStringLiteral("2026-09-02"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeStart")).toString(), QStringLiteral("2026-08-01"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeEnd")).toString(), QStringLiteral("2026-10-31"));
@@ -175,6 +182,11 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
   }
   QVERIFY(foundOverdue);
   QVERIFY(foundCompleted);
+  const QJsonArray habits = snapshot.value(QStringLiteral("habits")).toArray();
+  QCOMPARE(habits.size(), 1);
+  QCOMPARE(habits.first().toObject().value(QStringLiteral("id")).toString(), habit.id);
+  QCOMPARE(habits.first().toObject().value(QStringLiteral("amount")).toInteger(), 2);
+  QCOMPARE(habits.first().toObject().value(QStringLiteral("targetAmount")).toInteger(), 8);
 }
 
 void MobileControllerTest::buildFutureTaskAndHabitNotifications() {
@@ -329,6 +341,52 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
                       }));
 }
 
+void MobileControllerTest::applyWidgetHabitCheckIns() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("waypoint.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate date(2026, 9, 2);
+  const QDateTime now(date, QTime(12, 0));
+  const QList<int> weekdays{date.dayOfWeek()};
+  waypoint::HabitRecord fixed;
+  waypoint::HabitRecord manual;
+  waypoint::HabitRecord complete;
+  QVERIFY2(store.createHabit(QStringLiteral("Água"), 8, QStringLiteral("copos"),
+                             waypoint::HabitCheckInMode::Fixed, 2, weekdays, {}, QStringLiteral("💧"), &fixed,
+                             &error),
+           qPrintable(error));
+  QVERIFY2(store.createHabit(QStringLiteral("Páginas"), 10, QStringLiteral("páginas"),
+                             waypoint::HabitCheckInMode::Manual, 1, weekdays, {}, QStringLiteral("📖"),
+                             &manual, &error),
+           qPrintable(error));
+  QVERIFY2(store.createHabit(QStringLiteral("Meditar"), 1, {}, waypoint::HabitCheckInMode::CompleteAll, 1,
+                             weekdays, {}, QStringLiteral("🧘"), &complete, &error),
+           qPrintable(error));
+
+  waypoint::WidgetTaskActionResult result;
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, fixed.id, date, 0, now, &result, &error),
+           qPrintable(error));
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, manual.id, date, 1, now, &result, &error),
+           qPrintable(error));
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, complete.id, date, 0, now, &result, &error),
+           qPrintable(error));
+
+  const QJsonArray habits = result.snapshot.value(QStringLiteral("habits")).toArray();
+  const auto progressFor = [&habits](const QString &habitId) {
+    const auto progress = std::find_if(habits.cbegin(), habits.cend(), [&habitId](const QJsonValue &value) {
+      return value.toObject().value(QStringLiteral("id")).toString() == habitId;
+    });
+    return progress == habits.cend() ? QJsonObject{} : progress->toObject();
+  };
+  QCOMPARE(progressFor(fixed.id).value(QStringLiteral("amount")).toInteger(), 2);
+  QCOMPARE(progressFor(manual.id).value(QStringLiteral("amount")).toInteger(), 1);
+  QCOMPARE(progressFor(complete.id).value(QStringLiteral("amount")).toInteger(), 1);
+  QVERIFY(progressFor(complete.id).value(QStringLiteral("completed")).toBool());
+  QCOMPARE(result.notificationSchedule.size(), 0);
+}
+
 void MobileControllerTest::prepareAndApplyBackgroundSync() {
   QTemporaryDir directory;
   waypoint::TaskStore store(directory.filePath(QStringLiteral("waypoint.sqlite3")));
@@ -354,7 +412,7 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
   };
   waypoint::BackgroundSyncResult result;
   QVERIFY2(waypoint::applyBackgroundSync(store, response, &result, &error), qPrintable(error));
-  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 1);
+  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 2);
   QVERIFY(result.notificationSchedule.isEmpty());
 }
 

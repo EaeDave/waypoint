@@ -862,4 +862,213 @@
             android:textColor="#94FFFFFF"
             android:textSize="10sp" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/widget_habits_divider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="5dp"
+        android:background="#1FFFFFFF"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_habits_header"
+        android:layout_width="match_parent"
+        android:layout_height="30dp"
+        android:fontFamily="monospace"
+        android:gravity="center_vertical"
+        android:text="HÁBITOS DE HOJE"
+        android:textColor="#FF979FEC"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/widget_empty_habits"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:fontFamily="monospace"
+        android:gravity="center"
+        android:paddingBottom="8dp"
+        android:paddingTop="8dp"
+        android:text="Nenhum hábito marcado para hoje."
+        android:textColor="#66FFFFFF"
+        android:textSize="10sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_habit_row_0"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_habit_title_0"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_progress_0"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#94FFFFFF"
+            android:textSize="9sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_action_0"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:minWidth="54dp"
+            android:paddingEnd="7dp"
+            android:paddingStart="7dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_habit_row_1"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_habit_title_1"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_progress_1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#94FFFFFF"
+            android:textSize="9sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_action_1"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:minWidth="54dp"
+            android:paddingEnd="7dp"
+            android:paddingStart="7dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_habit_row_2"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_habit_title_2"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_progress_2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#94FFFFFF"
+            android:textSize="9sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_action_2"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:minWidth="54dp"
+            android:paddingEnd="7dp"
+            android:paddingStart="7dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_habit_row_3"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/widget_habit_title_3"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_progress_3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:fontFamily="monospace"
+            android:maxLines="1"
+            android:textColor="#94FFFFFF"
+            android:textSize="9sp" />
+
+        <TextView
+            android:id="@+id/widget_habit_action_3"
+            android:layout_width="wrap_content"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:minWidth="54dp"
+            android:paddingEnd="7dp"
+            android:paddingStart="7dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 </LinearLayout>
