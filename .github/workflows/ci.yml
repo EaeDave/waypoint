@@ -55,6 +55,16 @@ jobs:
           # rsa is an inactive, lockfile-only sqlx-postgres dependency.
           cargo audit --ignore RUSTSEC-2023-0071
 
+  container:
+    name: Server container build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Build server image
+        run: docker build --tag waypoint-api .
+
   android:
     name: Android arm64 build
     runs-on: ubuntu-24.04
