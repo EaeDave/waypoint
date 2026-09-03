@@ -1,5 +1,6 @@
 #include "mobile/MobileController.hpp"
 
+#include "mobile/AndroidBackgroundSyncBridge.hpp"
 #include "mobile/AndroidNotificationBridge.hpp"
 #include "mobile/AndroidWidgetBridge.hpp"
 #include "mobile/WidgetSnapshot.hpp"
@@ -186,6 +187,8 @@ void MobileController::start() {
   m_ready = true;
   emit readyChanged();
   m_syncEngine.start();
+  refreshSyncProperties();
+  AndroidBackgroundSyncBridge::configure(m_syncConfigured);
   m_holidaySyncEngine.start();
   m_updateChecker.start();
   m_refreshTimer.start();
@@ -394,6 +397,7 @@ bool MobileController::saveSyncConfiguration(const QString &endpoint, const QStr
     return false;
   }
   refreshSyncProperties();
+  AndroidBackgroundSyncBridge::configure(m_syncConfigured);
   emit syncConfigurationChanged();
   emit syncStatusChanged();
   m_holidaySyncEngine.syncNow();

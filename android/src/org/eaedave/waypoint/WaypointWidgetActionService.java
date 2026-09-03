@@ -47,7 +47,7 @@ public final class WaypointWidgetActionService extends QtService {
       }
       WaypointWidgetBridge.publishSnapshot(this, response.getJSONObject("snapshot").toString());
       WaypointNotifications.replaceSchedule(this, response.getJSONArray("schedule").toString());
-      WaypointBackgroundSyncService.start(this);
+      WaypointBackgroundSyncScheduler.requestImmediate(this);
       if (habitAction || intent.getBooleanExtra(EXTRA_COMPLETED, false)) {
         WaypointNotifications.playCompletionSound(this);
       }

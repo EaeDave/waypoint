@@ -78,7 +78,8 @@ Java_org_eaedave_waypoint_WaypointBackgroundSyncService_prepareBackgroundSync(JN
   QString error;
   waypoint::TaskStore store(fromJavaString(environment, databasePath));
   waypoint::BackgroundSyncRequest request;
-  const bool prepared = store.open(&error) && waypoint::prepareBackgroundSync(store, &request, &error);
+  const bool opened = store.open(&error);
+  const bool prepared = opened && waypoint::prepareBackgroundSync(store, &request, &error);
   response.insert(QStringLiteral("ok"), prepared);
   if (prepared) {
     response.insert(QStringLiteral("endpoint"), request.endpoint.toString(QUrl::FullyEncoded));
@@ -86,6 +87,8 @@ Java_org_eaedave_waypoint_WaypointBackgroundSyncService_prepareBackgroundSync(JN
     response.insert(QStringLiteral("request"), request.payload);
   } else {
     response.insert(QStringLiteral("error"), error);
+    response.insert(QStringLiteral("retry"),
+                    !opened || error != QStringLiteral("Remote synchronization is disabled"));
   }
   return toJavaString(environment, QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)));
 }

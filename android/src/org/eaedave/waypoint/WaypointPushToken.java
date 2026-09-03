@@ -19,7 +19,7 @@ final class WaypointPushToken {
       return;
     }
     preferences.edit().putString(TOKEN, token).remove(REGISTERED_TARGET).apply();
-    WaypointBackgroundSyncService.start(context);
+    WaypointBackgroundSyncScheduler.requestImmediate(context);
   }
 
   static String current(Context context) {

@@ -21,6 +21,7 @@ public final class WaypointActivity extends QtActivity {
     sanitizeWidgetLaunchIntent(getIntent());
     super.onCreate(savedInstanceState);
     WaypointFirebase.initialize(this);
+    WaypointBackgroundSyncScheduler.restore(this);
     configureSystemBars();
     if (!requestNotificationPermission()) {
       offerExactAlarmAccessOnce();

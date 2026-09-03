@@ -72,6 +72,11 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                                  R.id.widget_habit_action_2, R.id.widget_habit_action_3};
 
   @Override
+  public void onEnabled(Context context) {
+    WaypointBackgroundSyncScheduler.requestImmediate(context);
+  }
+
+  @Override
   public void onUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds) {
     for (int appWidgetId : appWidgetIds) {
       updateWidget(context, appWidgetManager, appWidgetId);

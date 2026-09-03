@@ -1,12 +1,14 @@
 package org.eaedave.waypoint;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
 import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
+import android.os.RemoteException;
 import android.util.Log;
-import androidx.core.app.NotificationCompat;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -23,62 +25,48 @@ import org.json.JSONObject;
 import org.qtproject.qt.android.bindings.QtService;
 
 public final class WaypointBackgroundSyncService extends QtService {
-  private static final String TAG = "WaypointBackgroundSync";
-  private static final String CHANNEL_ID = "waypoint-background-sync";
-  private static final int NOTIFICATION_ID = -4819;
-  private static final Object STATE_LOCK = new Object();
-  private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
-  private static boolean running;
-  private static boolean pending;
+  static final int MESSAGE_SYNCHRONIZE = 1;
+  static final int RESULT_SUCCESS = 0;
+  static final int RESULT_RETRY = 1;
 
-  public static void start(Context context) {
-    Intent intent = new Intent(context, WaypointBackgroundSyncService.class);
-    if (Build.VERSION.SDK_INT >= 26) {
-      context.startForegroundService(intent);
-    } else {
-      context.startService(intent);
-    }
-  }
+  private static final String TAG = "WaypointBackgroundSync";
+  private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
+
+  private final Messenger requestMessenger =
+      new Messenger(new Handler(Looper.getMainLooper(), this::handleRequest));
 
   @Override
-  public int onStartCommand(Intent intent, int flags, int startId) {
-    startForeground(NOTIFICATION_ID, foregroundNotification());
-    super.onStartCommand(intent, flags, startId);
-    synchronized (STATE_LOCK) {
-      pending = true;
-      if (running) {
-        return START_NOT_STICKY;
-      }
-      running = true;
-    }
-    EXECUTOR.execute(() -> drainSyncRequests(startId));
-    return START_NOT_STICKY;
+  public IBinder onBind(Intent intent) {
+    return requestMessenger.getBinder();
   }
 
-  private void drainSyncRequests(int startId) {
-    while (true) {
-      synchronized (STATE_LOCK) {
-        pending = false;
-      }
-      synchronizeOnce();
-      synchronized (STATE_LOCK) {
-        if (!pending) {
-          running = false;
-          break;
-        }
-      }
+  private boolean handleRequest(Message message) {
+    if (message.what != MESSAGE_SYNCHRONIZE) {
+      return false;
     }
-    stopForeground(STOP_FOREGROUND_REMOVE);
-    stopSelf(startId);
+    Messenger replyTo = message.replyTo;
+    EXECUTOR.execute(() -> reply(replyTo, synchronizeOnce()));
+    return true;
   }
 
-  private void synchronizeOnce() {
+  private static void reply(Messenger recipient, int result) {
+    if (recipient == null) {
+      return;
+    }
+    try {
+      recipient.send(Message.obtain(null, MESSAGE_SYNCHRONIZE, result, 0));
+    } catch (RemoteException error) {
+      Log.w(TAG, "Background synchronization result receiver disappeared", error);
+    }
+  }
+
+  private int synchronizeOnce() {
     try {
       String databasePath = getFilesDir().getAbsolutePath() + "/waypoint.sqlite3";
       JSONObject prepared = new JSONObject(prepareBackgroundSync(databasePath));
       if (!prepared.optBoolean("ok", false)) {
         Log.i(TAG, prepared.optString("error", "Background synchronization is unavailable"));
-        return;
+        return prepared.optBoolean("retry", true) ? RESULT_RETRY : RESULT_SUCCESS;
       }
 
       String endpoint = prepared.getString("endpoint");
@@ -89,12 +77,14 @@ public final class WaypointBackgroundSyncService extends QtService {
       JSONObject applied = new JSONObject(applyBackgroundSync(databasePath, response));
       if (!applied.optBoolean("ok", false)) {
         Log.w(TAG, applied.optString("error", "Unable to apply synchronization response"));
-        return;
+        return RESULT_RETRY;
       }
       WaypointWidgetBridge.publishSnapshot(this, applied.getJSONObject("snapshot").toString());
       WaypointNotifications.replaceSchedule(this, applied.getJSONArray("schedule").toString());
+      return RESULT_SUCCESS;
     } catch (IOException | JSONException error) {
       Log.w(TAG, "Background synchronization failed", error);
+      return RESULT_RETRY;
     }
   }
 
@@ -169,26 +159,6 @@ public final class WaypointBackgroundSyncService extends QtService {
       }
     }
     return result.toString();
-  }
-
-  private android.app.Notification foregroundNotification() {
-    if (Build.VERSION.SDK_INT >= 26) {
-      NotificationChannel channel = new NotificationChannel(
-          CHANNEL_ID, "Sincronização em segundo plano", NotificationManager.IMPORTANCE_MIN);
-      channel.setDescription("Mantém widgets e lembretes do Waypoint atualizados");
-      channel.enableVibration(false);
-      channel.setShowBadge(false);
-      NotificationManager manager = (NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
-      manager.createNotificationChannel(channel);
-    }
-    return new NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(android.R.drawable.ic_popup_sync)
-        .setContentTitle("Waypoint")
-        .setContentText("Sincronizando")
-        .setPriority(NotificationCompat.PRIORITY_MIN)
-        .setSilent(true)
-        .setOngoing(true)
-        .build();
   }
 
   private static native String prepareBackgroundSync(String databasePath);

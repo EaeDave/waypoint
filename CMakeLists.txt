@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.3 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.4 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -59,6 +59,8 @@ target_link_libraries(waypoint_sync PUBLIC waypoint_core Qt6::Core Qt6::Network)
 target_compile_options(waypoint_sync PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(waypoint_mobile_core STATIC
+    src/mobile/AndroidBackgroundSyncBridge.cpp
+    src/mobile/AndroidBackgroundSyncBridge.hpp
     src/mobile/AndroidWidgetBridge.cpp
     src/mobile/AndroidUpdateBridge.cpp
     src/mobile/AndroidUpdateBridge.hpp
