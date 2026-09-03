@@ -73,7 +73,8 @@ if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${install_base}/share/applications" >/dev/null 2>&1 || true
 fi
 if command -v systemctl >/dev/null 2>&1 && systemctl --user daemon-reload; then
-  systemctl --user enable --now waypointd.service
+  systemctl --user enable waypointd.service
+  systemctl --user restart waypointd.service
 else
   printf 'Could not start the user service. Run waypointd manually before opening Waypoint.\n' >&2
 fi
