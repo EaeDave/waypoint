@@ -103,7 +103,7 @@ void SyncEngineTest::syncsImmediatelyWhenEventArrives() {
     QVERIFY(socket != nullptr);
     QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 2000);
     const QByteArray request = socket->readAll();
-    QVERIFY2(request.contains("Authorization: Bearer token"), request.constData());
+    QVERIFY2(request.toLower().contains("authorization: bearer token"), request.constData());
     if (request.startsWith("GET /v1/events ")) {
       eventSocket = socket;
       const QByteArray headers = QByteArrayLiteral(
