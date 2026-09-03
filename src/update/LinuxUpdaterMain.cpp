@@ -317,11 +317,13 @@ int main(int argc, char *argv[]) {
         QStringLiteral("The new daemon did not become ready; Waypoint restored the previous version"));
   }
 
-  writeStatus(QStringLiteral("complete"), releaseVersion);
   const QString omarchy = QStandardPaths::findExecutable(QStringLiteral("omarchy"));
-  if (!omarchy.isEmpty() && QFileInfo::exists(pluginTarget)) {
-    QProcess::startDetached(omarchy, {QStringLiteral("restart"), QStringLiteral("shell")});
+  if (!omarchy.isEmpty() && QFileInfo::exists(pluginTarget) &&
+      !run(omarchy, {QStringLiteral("restart"), QStringLiteral("shell")}, nullptr, &error)) {
+    return fail(QStringLiteral("Waypoint was updated, but the Omarchy shell could not restart: %1")
+                    .arg(error));
   }
+  writeStatus(QStringLiteral("complete"), releaseVersion);
   if (relaunchDesktop) {
     launchDesktop(installBase);
   }

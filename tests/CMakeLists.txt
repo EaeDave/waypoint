@@ -16,6 +16,19 @@ set_tests_properties(waypoint_update_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+qt_add_executable(waypoint_linux_updater_tests
+    LinuxUpdaterTest.cpp
+)
+target_link_libraries(waypoint_linux_updater_tests PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(waypoint_linux_updater_tests PRIVATE
+    WAYPOINT_UPDATER_PATH="$<TARGET_FILE:waypoint-updater>"
+)
+add_dependencies(waypoint_linux_updater_tests waypoint-updater)
+add_test(NAME waypoint_linux_updater_tests COMMAND waypoint_linux_updater_tests -o -,txt)
+set_tests_properties(waypoint_linux_updater_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 qt_add_executable(waypoint_habit_tests
     HabitStoreTest.cpp
 )
