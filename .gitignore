@@ -7,5 +7,9 @@
 .env.*
 !.env.example
 /waypoint-android-*.apk
+*.jks
+*.keystore
+/dist/
+/firebase-service-account*.json
 /android/google-services.json
 /aqtinstall.log

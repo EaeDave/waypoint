@@ -1,0 +1,35 @@
+name: waypoint
+
+services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-waypoint}
+      POSTGRES_USER: ${POSTGRES_USER:-waypoint}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - waypoint-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-waypoint}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-waypoint}
+      WAYPOINT_BIND: 0.0.0.0:8787
+    ports:
+      - "127.0.0.1:${WAYPOINT_PORT:-8787}:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  waypoint-postgres:

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
 use std::{convert::Infallible, sync::Arc, time::Duration};
+use subtle::ConstantTimeEq;
 use tokio::sync::broadcast;
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use unicode_segmentation::UnicodeSegmentation;
@@ -403,7 +404,10 @@ pub(crate) fn authorize(headers: &HeaderMap, expected_token: &str) -> Result<(),
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "));
-    if supplied == Some(expected_token) {
+    let authorized = supplied
+        .filter(|token| token.len() == expected_token.len())
+        .is_some_and(|token| bool::from(token.as_bytes().ct_eq(expected_token.as_bytes())));
+    if authorized {
         return Ok(());
     }
     Err(ApiError::Unauthorized)

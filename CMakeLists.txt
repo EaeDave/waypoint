@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(Waypoint VERSION 0.1.0 LANGUAGES CXX)
+include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,6 +73,8 @@ if(ANDROID)
     FetchContent_MakeAvailable(android_openssl)
     include("${android_openssl_SOURCE_DIR}/android_openssl.cmake")
 
+    math(EXPR waypoint_android_version_code
+        "${PROJECT_VERSION_MAJOR} * 1000000 + ${PROJECT_VERSION_MINOR} * 1000 + ${PROJECT_VERSION_PATCH}")
     qt_add_executable(waypoint_android MANUAL_FINALIZATION
         src/mobile/main.cpp
         src/mobile/AndroidWidgetAction.cpp
@@ -113,7 +116,7 @@ if(ANDROID)
         QT_ANDROID_APP_NAME "Waypoint"
         QT_ANDROID_MIN_SDK_VERSION 28
         QT_ANDROID_TARGET_SDK_VERSION 35
-        QT_ANDROID_VERSION_CODE 1
+        QT_ANDROID_VERSION_CODE "${waypoint_android_version_code}"
         QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
     )
     add_android_openssl_libraries(waypoint_android)
@@ -204,7 +207,12 @@ else()
 
     install(TARGETS waypoint waypointd waypointctl
         BUNDLE DESTINATION .
-        RUNTIME DESTINATION bin
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
-    install(FILES packaging/waypoint.desktop DESTINATION share/applications)
+    install(FILES packaging/waypoint.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+    install(FILES packaging/waypoint.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+    install(FILES packaging/systemd/waypointd.service
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
 endif()

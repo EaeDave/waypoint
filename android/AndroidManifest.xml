@@ -26,7 +26,7 @@
 
     <application
         android:name="org.qtproject.qt.android.bindings.QtApplication"
-        android:usesCleartextTraffic="true"
+        android:usesCleartextTraffic="false"
         android:allowBackup="false"
         android:fullBackupOnly="false"
         android:hardwareAccelerated="true"

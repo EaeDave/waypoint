@@ -3,6 +3,9 @@
 FROM rust:1.89-bookworm AS dependencies
 WORKDIR /source
 ENV CARGO_INCREMENTAL=0
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends cmake \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY server/Cargo.toml ./Cargo.toml
 COPY Cargo.lock ./

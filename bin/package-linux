@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+build_directory="${1:-${repository_root}/build/release}"
+output_directory="${2:-${repository_root}/dist}"
+version="${3:-}"
+linuxdeploy="${LINUXDEPLOY:-}"
+linuxdeploy_plugin_qt="${LINUXDEPLOY_PLUGIN_QT:-}"
+qmake="${QMAKE:-}"
+
+if [[ -z "${version}" ]]; then
+  printf 'Usage: %s BUILD_DIRECTORY OUTPUT_DIRECTORY VERSION\n' "$0" >&2
+  exit 2
+fi
+if [[ ! -x "${qmake}" ]]; then
+  printf 'Set QMAKE to the qmake executable from the Qt build being packaged.\n' >&2
+  exit 1
+fi
+
+for required_file in \
+  "${build_directory}/waypoint" \
+  "${build_directory}/waypointd" \
+  "${build_directory}/waypointctl" \
+  "${linuxdeploy}" \
+  "${linuxdeploy_plugin_qt}"; do
+  if [[ ! -f "${required_file}" ]]; then
+    printf 'Missing Linux packaging input: %s\n' "${required_file}" >&2
+    exit 1
+  fi
+done
+
+work_directory="${output_directory}/linux-package"
+app_directory="${work_directory}/AppDir"
+tool_directory="${work_directory}/tools"
+archive="${output_directory}/waypoint-linux-x86_64.tar.gz"
+
+rm -rf "${work_directory}"
+mkdir -p "${app_directory}" "${tool_directory}" "${output_directory}"
+DESTDIR="${app_directory}" cmake --install "${build_directory}" --prefix /usr
+install -m 0755 "${linuxdeploy}" "${tool_directory}/linuxdeploy"
+install -m 0755 "${linuxdeploy_plugin_qt}" "${tool_directory}/linuxdeploy-plugin-qt"
+
+qt_prefix="$("${qmake}" -query QT_INSTALL_PREFIX)"
+qt_plugins="$("${qmake}" -query QT_INSTALL_PLUGINS)"
+qt_libraries="$("${qmake}" -query QT_INSTALL_LIBS)"
+filtered_plugins="${work_directory}/qt-plugins"
+filtered_qmake="${tool_directory}/qmake"
+if [[ ! -f "${qt_plugins}/sqldrivers/libqsqlite.so" ]]; then
+  printf 'Qt SQLite plugin was not found under %s.\n' "${qt_plugins}" >&2
+  exit 1
+fi
+cp -a "${qt_plugins}/." "${filtered_plugins}"
+rm -rf "${filtered_plugins}/sqldrivers"
+mkdir -p "${filtered_plugins}/sqldrivers"
+cp -a "${qt_plugins}/sqldrivers/libqsqlite.so" "${filtered_plugins}/sqldrivers/"
+install -m 0755 "${qmake}" "${filtered_qmake}"
+filtered_plugins="$(realpath "${filtered_plugins}")"
+filtered_qmake="$(realpath "${filtered_qmake}")"
+printf '[Paths]\nPrefix=%s\nPlugins=%s\n' \
+  "${qt_prefix}" "${filtered_plugins}" >"${tool_directory}/qt.conf"
+
+APPIMAGE_EXTRACT_AND_RUN=1 \
+NO_STRIP=1 \
+QML_SOURCES_PATHS="${repository_root}/qml" \
+LD_LIBRARY_PATH="${qt_libraries}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
+QMAKE="${filtered_qmake}" \
+PATH="${tool_directory}:${PATH}" \
+"${tool_directory}/linuxdeploy" \
+  --appdir "${app_directory}" \
+  --executable "${app_directory}/usr/bin/waypoint" \
+  --executable "${app_directory}/usr/bin/waypointd" \
+  --executable "${app_directory}/usr/bin/waypointctl" \
+  --desktop-file "${app_directory}/usr/share/applications/waypoint.desktop" \
+  --icon-file "${app_directory}/usr/share/icons/hicolor/scalable/apps/waypoint.svg" \
+  --plugin qt
+
+mkdir -p "${app_directory}/usr/share/waypoint"
+cp -a "${repository_root}/plugins/omarchy-waypoint" \
+  "${app_directory}/usr/share/waypoint/omarchy-waypoint"
+
+printf '%s\n' "${version}" >"${app_directory}/usr/share/waypoint/VERSION"
+tar \
+  --sort=name \
+  --mtime='UTC 1970-01-01' \
+  --owner=0 \
+  --group=0 \
+  --numeric-owner \
+  -C "${app_directory}" \
+  -czf "${archive}" \
+  .
+sha256sum "${archive}" >"${archive}.sha256"
+printf 'Linux package: %s\n' "${archive}"

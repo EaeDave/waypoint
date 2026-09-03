@@ -17,13 +17,27 @@ case "$android_abi" in
         exit 1
         ;;
 esac
+android_build_type="${ANDROID_BUILD_TYPE:-Debug}"
+case "$android_build_type" in
+    Debug)
+        build_variant="debug"
+        ;;
+    Release)
+        build_variant="release"
+        ;;
+    *)
+        printf 'Unsupported Android build type: %s\n' "$android_build_type" >&2
+        exit 1
+        ;;
+esac
+sign_apk="${QT_ANDROID_SIGN_APK:-OFF}"
 qt_root="${QT_ANDROID_ROOT:-$HOME/.local/qt/6.9.3/$qt_arch}"
 qt_host_root="${QT_HOST_ROOT:-$HOME/.local/qt/6.9.3/gcc_64}"
 android_sdk_root="${ANDROID_SDK_ROOT:-$HOME/.local/android-sdk}"
 android_ndk_root="${ANDROID_NDK_ROOT:-$android_sdk_root/ndk/27.2.12479018}"
 java_home="${JAVA_HOME:-$HOME/.local/share/mise/installs/java/temurin-17.0.20+8}"
 build_directory="$repository_root/build/android-$output_arch"
-output_apk="$repository_root/waypoint-android-$output_arch-debug.apk"
+output_apk="$repository_root/waypoint-android-$output_arch-$build_variant.apk"
 
 for required_path in \
     "$qt_root/bin/qt-cmake" \
@@ -35,6 +49,19 @@ for required_path in \
         exit 1
     fi
 done
+
+if [[ "$sign_apk" == "ON" ]]; then
+    for required_variable in \
+        QT_ANDROID_KEYSTORE_PATH \
+        QT_ANDROID_KEYSTORE_ALIAS \
+        QT_ANDROID_KEYSTORE_STORE_PASS \
+        QT_ANDROID_KEYSTORE_KEY_PASS; do
+        if [[ -z "${!required_variable:-}" ]]; then
+            printf 'Missing Android signing variable: %s\n' "$required_variable" >&2
+            exit 1
+        fi
+    done
+fi
 
 export JAVA_HOME="$java_home"
 export ANDROID_SDK_ROOT="$android_sdk_root"
@@ -50,8 +77,21 @@ export PATH="$java_home/bin:$android_sdk_root/platform-tools:/usr/bin:$PATH"
     -DANDROID_NDK_ROOT="$android_ndk_root" \
     -DANDROID_ABI="$android_abi" \
     -DANDROID_PLATFORM=android-28 \
+    -DCMAKE_BUILD_TYPE="$android_build_type" \
+    -DQT_ANDROID_SIGN_APK="$sign_apk" \
     -DBUILD_TESTING=OFF
 cmake --build "$build_directory" --target apk
-cp "$build_directory/android-build/waypoint_android.apk" "$output_apk"
+shopt -s nullglob
+if [[ "$sign_apk" == "ON" ]]; then
+    apk_candidates=("$build_directory/android-build/build/outputs/apk/$build_variant/"*signed*.apk)
+else
+    apk_candidates=("$build_directory/android-build/build/outputs/apk/$build_variant/"*.apk)
+fi
+if (( ${#apk_candidates[@]} != 1 )); then
+    printf 'Expected exactly one Android APK, found %d in %s output\n' \
+        "${#apk_candidates[@]}" "$build_variant" >&2
+    exit 1
+fi
+cp "${apk_candidates[0]}" "$output_apk"
 sha256sum "$output_apk"
 printf 'APK: %s\n' "$output_apk"

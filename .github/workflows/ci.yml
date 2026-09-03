@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AQT_VERSION: 3.3.0
+  QT_VERSION: 6.9.3
+
+jobs:
+  linux:
+    name: Linux build and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0
+          python3 -m pip install --user "aqtinstall==${AQT_VERSION}"
+      - name: Install Qt
+        run: |
+          python3 -m aqt install-qt linux desktop "${QT_VERSION}" linux_gcc_64 \
+            --outputdir "${RUNNER_TEMP}/Qt"
+      - name: Configure
+        run: |
+          cmake --preset dev \
+            -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/Qt/${QT_VERSION}/gcc_64"
+      - name: Build
+        run: cmake --build --preset dev
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          ctest --preset dev
+          cargo test --workspace
+      - name: Lint
+        run: |
+          cmake --build build/dev --target waypoint_qmllint
+          cargo clippy --workspace --all-targets -- -D warnings
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit --locked
+          # rsa is an inactive, lockfile-only sqlx-postgres dependency.
+          cargo audit --ignore RUSTSEC-2023-0071
+
+  android:
+    name: Android arm64 build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build openjdk-17-jdk-headless
+          python3 -m pip install --user "aqtinstall==${AQT_VERSION}"
+      - name: Install Qt
+        run: |
+          python3 -m aqt install-qt linux desktop "${QT_VERSION}" linux_gcc_64 \
+            --outputdir "${RUNNER_TEMP}/Qt"
+          python3 -m aqt install-qt linux android "${QT_VERSION}" android_arm64_v8a \
+            --outputdir "${RUNNER_TEMP}/Qt"
+      - name: Install Android SDK packages
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" >/dev/null
+      - name: Build APK
+        env:
+          ANDROID_ABI: arm64-v8a
+          ANDROID_BUILD_TYPE: Debug
+          ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          QT_ANDROID_ROOT: ${{ runner.temp }}/Qt/6.9.3/android_arm64_v8a
+          QT_HOST_ROOT: ${{ runner.temp }}/Qt/6.9.3/gcc_64
+          # CI intentionally omits Firebase values; polling fallback remains enabled.
+        run: bin/build-android
+      - name: Upload APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: waypoint-android-arm64-debug
+          path: waypoint-android-arm64-debug.apk
+          if-no-files-found: error

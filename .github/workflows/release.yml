@@ -1,0 +1,229 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: waypoint-release
+  cancel-in-progress: false
+
+env:
+  AQT_VERSION: 3.3.0
+  QT_VERSION: 6.9.3
+
+jobs:
+  prepare:
+    name: Resolve release version
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-24.04
+    outputs:
+      release_needed: ${{ steps.version.outputs.release_needed }}
+      tag: ${{ steps.version.outputs.tag }}
+      version: ${{ steps.version.outputs.version }}
+      sha: ${{ steps.revision.outputs.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+      - name: Resolve source revision
+        id: revision
+        run: echo "sha=$(git rev-parse HEAD)" >>"${GITHUB_OUTPUT}"
+      - name: Validate project version
+        id: version
+        run: |
+          python3 <<'PY'
+          import os
+          import pathlib
+          import re
+          import subprocess
+          import tomllib
+
+          root = pathlib.Path.cwd()
+          cmake = (root / "CMakeLists.txt").read_text()
+          match = re.search(r"project\(Waypoint VERSION ([0-9]+\.[0-9]+\.[0-9]+)", cmake)
+          if not match:
+              raise SystemExit("CMake project version was not found")
+          version = match.group(1)
+          with (root / "server" / "Cargo.toml").open("rb") as handle:
+              server_version = tomllib.load(handle)["package"]["version"]
+          if server_version != version:
+              raise SystemExit(
+                  f"Version mismatch: CMake={version}, server/Cargo.toml={server_version}"
+              )
+          tag = f"v{version}"
+          tag_exists = subprocess.run(
+              ["git", "rev-parse", "--verify", f"refs/tags/{tag}"],
+              stdout=subprocess.DEVNULL,
+              stderr=subprocess.DEVNULL,
+              check=False,
+          ).returncode == 0
+          output = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          with output.open("a") as handle:
+              handle.write(f"version={version}\n")
+              handle.write(f"tag={tag}\n")
+              handle.write(f"release_needed={'false' if tag_exists else 'true'}\n")
+          PY
+
+  linux:
+    name: Package Linux x86_64
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake curl libfuse2 libgl1-mesa-dev libxkbcommon-dev libxcb-cursor0 ninja-build patchelf
+          python3 -m pip install --user "aqtinstall==${AQT_VERSION}"
+      - name: Install Qt
+        run: |
+          python3 -m aqt install-qt linux desktop "${QT_VERSION}" linux_gcc_64 \
+            --outputdir "${RUNNER_TEMP}/Qt"
+      - name: Download pinned deployment tools
+        run: |
+          mkdir -p "${RUNNER_TEMP}/linuxdeploy"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage \
+            --output "${RUNNER_TEMP}/linuxdeploy/linuxdeploy"
+          curl --fail --location --proto '=https' --tlsv1.2 \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage \
+            --output "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-plugin-qt"
+          printf '%s  %s\n' \
+            '4648f278ab3ef31f819e67c30d50f462640e5365a77637d7e6f2ad9fd0b4522a' \
+            "${RUNNER_TEMP}/linuxdeploy/linuxdeploy" \
+            '15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724' \
+            "${RUNNER_TEMP}/linuxdeploy/linuxdeploy-plugin-qt" | sha256sum --check
+      - name: Build Linux release
+        run: |
+          cmake --preset release \
+            -DCMAKE_PREFIX_PATH="${RUNNER_TEMP}/Qt/${QT_VERSION}/gcc_64"
+          cmake --build --preset release
+      - name: Package Linux release
+        env:
+          LINUXDEPLOY: ${{ runner.temp }}/linuxdeploy/linuxdeploy
+          LINUXDEPLOY_PLUGIN_QT: ${{ runner.temp }}/linuxdeploy/linuxdeploy-plugin-qt
+          QMAKE: ${{ runner.temp }}/Qt/6.9.3/gcc_64/bin/qmake
+        run: bin/package-linux build/release dist "${{ needs.prepare.outputs.version }}"
+      - name: Upload Linux package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: waypoint-linux-release
+          path: dist/waypoint-linux-x86_64.tar.gz
+          if-no-files-found: error
+
+  android:
+    name: Package signed Android arm64 APK
+    needs: prepare
+    if: needs.prepare.outputs.release_needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cmake ninja-build openjdk-17-jdk-headless
+          python3 -m pip install --user "aqtinstall==${AQT_VERSION}"
+      - name: Install Qt
+        run: |
+          python3 -m aqt install-qt linux desktop "${QT_VERSION}" linux_gcc_64 \
+            --outputdir "${RUNNER_TEMP}/Qt"
+          python3 -m aqt install-qt linux android "${QT_VERSION}" android_arm64_v8a \
+            --outputdir "${RUNNER_TEMP}/Qt"
+      - name: Install Android SDK packages
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" >/dev/null
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          KEYSTORE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          test -n "${KEYSTORE_BASE64}" || { printf 'ANDROID_KEYSTORE_BASE64 is not configured\n' >&2; exit 1; }
+          test -n "${KEYSTORE_ALIAS}" || { printf 'ANDROID_KEYSTORE_ALIAS is not configured\n' >&2; exit 1; }
+          test -n "${KEYSTORE_PASSWORD}" || { printf 'ANDROID_KEYSTORE_PASSWORD is not configured\n' >&2; exit 1; }
+          test -n "${KEYSTORE_KEY_PASSWORD}" || { printf 'ANDROID_KEY_PASSWORD is not configured\n' >&2; exit 1; }
+          printf '%s' "${KEYSTORE_BASE64}" | base64 --decode >"${RUNNER_TEMP}/waypoint-release.jks"
+      - name: Build signed APK
+        env:
+          ANDROID_ABI: arm64-v8a
+          ANDROID_BUILD_TYPE: Release
+          ANDROID_NDK_ROOT: /usr/local/lib/android/sdk/ndk/27.2.12479018
+          ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+          JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+          QT_ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          QT_ANDROID_KEYSTORE_KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          QT_ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/waypoint-release.jks
+          QT_ANDROID_KEYSTORE_STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          QT_ANDROID_ROOT: ${{ runner.temp }}/Qt/6.9.3/android_arm64_v8a
+          QT_ANDROID_SIGN_APK: "ON"
+          QT_HOST_ROOT: ${{ runner.temp }}/Qt/6.9.3/gcc_64
+          WAYPOINT_FIREBASE_API_KEY: ${{ vars.WAYPOINT_FIREBASE_API_KEY }}
+          WAYPOINT_FIREBASE_APPLICATION_ID: ${{ vars.WAYPOINT_FIREBASE_APPLICATION_ID }}
+          WAYPOINT_FIREBASE_PROJECT_ID: ${{ vars.WAYPOINT_FIREBASE_PROJECT_ID }}
+          WAYPOINT_FIREBASE_SENDER_ID: ${{ vars.WAYPOINT_FIREBASE_SENDER_ID }}
+        run: bin/build-android
+      - name: Stage Android release
+        run: |
+          mkdir -p dist
+          mv waypoint-android-arm64-release.apk dist/waypoint-android-arm64.apk
+      - name: Upload Android package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: waypoint-android-release
+          path: dist/waypoint-android-arm64.apk
+          if-no-files-found: error
+
+  publish:
+    name: Tag and publish release
+    needs: [prepare, linux, android]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+      - name: Download release packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: waypoint-*-release
+          path: dist
+          merge-multiple: true
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum waypoint-android-arm64.apk waypoint-linux-x86_64.tar.gz >SHA256SUMS
+      - name: Create tag and GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ needs.prepare.outputs.tag }}" \
+            --target "${{ needs.prepare.outputs.sha }}" \
+            --title "Waypoint ${{ needs.prepare.outputs.version }}" \
+            --generate-notes \
+            dist/SHA256SUMS \
+            dist/waypoint-android-arm64.apk \
+            dist/waypoint-linux-x86_64.tar.gz

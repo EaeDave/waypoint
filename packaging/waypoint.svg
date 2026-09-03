@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 48 48" role="img" aria-label="Waypoint">
+  <circle cx="24" cy="24" r="22" fill="#111318"/>
+  <path d="M24 7C16 7 10 13 10 21c0 10 14 20 14 20s14-10 14-20c0-8-6-14-14-14Z" fill="#7aa2f7"/>
+  <circle cx="24" cy="21" r="6" fill="#08090b"/>
+</svg>
