@@ -1,21 +1,116 @@
 # Waypoint
 
-[![CI](https://github.com/EaeDave/waypoint/actions/workflows/ci.yml/badge.svg)](https://github.com/EaeDave/waypoint/actions/workflows/ci.yml)
+<p align="center">
+  <strong>A local-first calendar, task manager, and habit tracker for Linux and Android.</strong><br>
+  Plan with Brazilian holiday context, build routines, and keep every device in sync through your own server.
+</p>
 
-Waypoint is a local-first task, calendar, and habit tracker for Linux and Android. Data is stored locally in SQLite and can be synchronized through the self-hosted Waypoint API. The Linux application also provides a daemon, command-line client, reminders, and an optional Omarchy bar plugin.
+<p align="center">
+  <a href="https://github.com/EaeDave/waypoint/actions/workflows/ci.yml"><img alt="CI status" src="https://github.com/EaeDave/waypoint/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/EaeDave/waypoint/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/EaeDave/waypoint?display_name=tag&sort=semver"></a>
+  <a href="LICENSE"><img alt="AGPL-3.0-or-later license" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue.svg"></a>
+</p>
 
-## Features
+<p align="center">
+  <img src="docs/images/desktop-wide.png" alt="Waypoint desktop calendar with tasks, holidays, and habit progress" width="100%">
+</p>
 
-- Date-based and recurring tasks
-- Daily habits with fixed, manual, and complete-all check-ins
-- Local SQLite storage with an offline outbox
-- Linux desktop application, daemon, CLI, and notifications
-- Android application, reminders, background synchronization, and home-screen widget
-- Self-hosted synchronization API backed by PostgreSQL
-- Optional Firebase Cloud Messaging wakeups with polling fallback
-- Brazilian national, state, municipal, commemorative, and optional holidays
+Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, holiday data, and pending changes live in SQLite. A self-hosted synchronization API makes the same plan available on Linux and Android without turning an internet connection into a requirement.
 
-## Installation
+<p align="center">
+  <a href="#install-waypoint"><strong>Install Waypoint</strong></a> ·
+  <a href="#deploy-the-synchronization-server"><strong>Deploy sync</strong></a> ·
+  <a href="https://github.com/EaeDave/waypoint/releases/latest"><strong>Latest release</strong></a>
+</p>
+
+## Why Waypoint
+
+| Plan with context | Build routines | Stay close to the work |
+| --- | --- | --- |
+| See dated and recurring tasks directly in a month calendar, alongside the Brazilian holidays that matter where you live. | Track measurable daily goals with flexible check-in modes, selected weekdays, reminders, and visible progress. | Use the full desktop or Android app, an Android home-screen widget, the Omarchy bar, or the Linux CLI—all backed by the same local data. |
+
+### Calendar and tasks
+
+- Month calendar with focused-day details, pending/completed markers, overdue work, and week numbers.
+- Date-based tasks with an optional local time, emoji, and up to five advance reminders.
+- Recurrence by interval and weekday, with end-by-date and end-after-count rules.
+- Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
+- Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
+
+### Brazilian holidays
+
+Waypoint can place Brazilian calendar events next to tasks rather than forcing users to consult a separate holiday calendar.
+
+- National holidays.
+- State holidays selected by federative unit.
+- Municipal holidays selected from IBGE municipality codes.
+- Optional dates and commemorative dates, independently configurable.
+- Local holiday cache for calendar access when offline; preferences synchronize with the Waypoint server.
+
+### Habit tracking
+
+- A daily target, optional unit, emoji, selected weekdays, and multiple reminder times per habit.
+- **Fixed increment** check-ins for repeatable units such as glasses of water or pages read.
+- **Manual amount** check-ins when each entry varies.
+- **Complete all** check-ins for binary routines.
+- Daily progress and undo support, with quick check-ins available from the Android widget and Omarchy panel.
+
+### Local-first synchronization
+
+Every client writes to SQLite first and queues mutations in an offline outbox. The Rust synchronization API stores shared state in PostgreSQL. Android supports background synchronization and optional Firebase Cloud Messaging wakeups; periodic polling remains available when Firebase is not configured.
+
+## One plan, four surfaces
+
+### Linux desktop
+
+The wide overview above combines the month view, selected-day tasks, holiday details, and habit progress. The same workspace responds cleanly to a compact window beside the rest of your work.
+
+<p align="center">
+  <img src="docs/images/desktop-compact.png" alt="Compact Waypoint desktop layout" width="520"><br>
+  <sub>Compact desktop layout</sub>
+</p>
+
+The Linux package also includes `waypointd` for reminders and synchronization, `waypointctl` for terminal workflows, desktop notifications, and a systemd user service.
+
+### Omarchy bar plugin
+
+The optional Omarchy plugin puts the calendar where it is most useful: one click from the bar. Review today's workload and holidays without changing windows, then add or edit tasks, complete or skip occurrences, and check in habits directly from the panel. It reduces context switching while retaining the full calendar model and local-first behavior of the desktop app.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/omarchy-plugin-tasks.png" alt="Waypoint Omarchy panel showing calendar and tasks" width="100%"><br>
+      <sub>Calendar and task workflow from the Omarchy bar</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/omarchy-plugin-holiday.png" alt="Waypoint Omarchy panel showing holiday details" width="100%"><br>
+      <sub>Holiday context without leaving the current workspace</sub>
+    </td>
+  </tr>
+</table>
+
+The Linux installer enables the plugin automatically when it detects Omarchy.
+
+### Android app and home-screen widget
+
+The Android app carries the complete calendar, task, habit, holiday, reminder, and sync experience. The resizable home-screen widget keeps the month, selected-day tasks, and habit progress visible before the app is opened. Navigate months, select dates, complete or reopen tasks, and check in habits from the launcher; each action updates local storage immediately and schedules background synchronization.
+
+That short interaction path matters for routines: fewer app-opening steps make quick capture and daily check-ins easier, while the calendar remains visible beside the rest of the home screen.
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <img src="docs/images/android-app.png" alt="Waypoint Android application" width="320"><br>
+      <sub>Full Android application</sub>
+    </td>
+    <td width="50%" align="center">
+      <img src="docs/images/android-widget.png" alt="Waypoint Android home-screen widget" width="320"><br>
+      <sub>Interactive home-screen widget</sub>
+    </td>
+  </tr>
+</table>
+
+## Install Waypoint
 
 ### Linux x86_64
 
@@ -41,25 +136,25 @@ Download `waypoint-android-arm64.apk` from the [latest GitHub release](https://g
 
 Requirements:
 
-- Android 9 or newer (API 28+)
-- arm64-v8a device
-- HTTPS synchronization endpoint; cleartext HTTP is disabled in the Android application
+- Android 9 or newer (API 28+).
+- An arm64-v8a device.
+- An HTTPS synchronization endpoint; the Android application rejects cleartext HTTP.
 
 The GitHub release is currently the only Android distribution channel.
 
-## Synchronization server
+## Deploy the synchronization server
 
 Waypoint is a single-user service. One shared Bearer token grants full access to tasks, habits, holiday preferences, and registered push devices. Run a separate instance and token for each trust boundary.
 
-### Docker Compose
+### Docker Compose (recommended)
 
 Requirements:
 
-- Docker Engine 24 or newer
-- Docker Compose v2
-- A hostname and TLS reverse proxy for remote clients
+- Docker Engine 24 or newer.
+- Docker Compose v2.
+- A hostname and TLS reverse proxy for remote clients.
 
-Create the environment file and replace both placeholder secrets:
+Create the environment file and generate both secrets:
 
 ```bash
 cp .env.example .env
@@ -99,13 +194,27 @@ docker compose down
 
 `docker compose down` preserves the named PostgreSQL volume. Add `--volumes` only when intentionally deleting all synchronized server data.
 
+### Container platforms
+
+The root `Dockerfile` builds the synchronization API. Connect it to an external PostgreSQL database, expose container port `8787`, and configure:
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `DATABASE_URL` | Yes | PostgreSQL connection URL. |
+| `WAYPOINT_SYNC_TOKEN` | Yes | Shared 32–512 character Bearer token. |
+| `WAYPOINT_BIND` | Yes | Use `0.0.0.0:8787` inside the container. |
+| `RUST_LOG` | No | Rust tracing filter; defaults to `info`. |
+| `WAYPOINT_FIREBASE_SERVICE_ACCOUNT_JSON` | No | Compact Firebase service-account JSON for push wakeups. |
+
+Terminate TLS at the platform proxy and verify `/health` before configuring a client.
+
 ### Run the API directly
 
 Requirements:
 
-- Rust 1.89 or newer
-- PostgreSQL 14 or newer
-- A database and user represented by `DATABASE_URL`
+- Rust 1.89 or newer.
+- PostgreSQL 14 or newer.
+- A database and user represented by `DATABASE_URL`.
 
 Load the environment and start the server:
 
@@ -122,7 +231,7 @@ Database migrations run automatically during startup. The default listener is `1
 
 ### Firebase push wakeups
 
-Firebase Cloud Messaging is optional. Without it, Android continues to synchronize through the polling fallback.
+Firebase Cloud Messaging is optional. Without it, Android continues to synchronize through periodic polling.
 
 For the server, set `WAYPOINT_FIREBASE_SERVICE_ACCOUNT_JSON` to the compact contents of a Firebase service-account JSON file. This value contains a private key and must be stored only in the deployment platform's secret store. Never commit the JSON file or value.
 
@@ -148,12 +257,12 @@ Use HTTPS whenever the endpoint leaves the local machine. The token authorizes t
 
 Requirements:
 
-- CMake 3.28 or newer
-- Ninja
-- C++20 compiler
-- Qt 6.8 or newer with Core, DBus, GUI, Network, QML, Quick, Quick Controls 2, SQL, and Test
-- Qt SQLite driver
-- Rust 1.89 or newer
+- CMake 3.28 or newer.
+- Ninja.
+- A C++20 compiler.
+- Qt 6.8 or newer with Core, DBus, GUI, Network, QML, Quick, Quick Controls 2, SQL, and Test.
+- Qt SQLite driver.
+- Rust 1.89 or newer.
 
 Configure, build, test, and install for the current user:
 
@@ -178,11 +287,11 @@ cmake --build --preset release
 
 Requirements:
 
-- Qt 6.9.3 host and Android kits
-- Android SDK platform 35 and build tools 35.0.0
-- Android NDK 27.2.12479018
-- Java 17
-- CMake and Ninja
+- Qt 6.9.3 host and Android kits.
+- Android SDK platform 35 and build tools 35.0.0.
+- Android NDK 27.2.12479018.
+- Java 17.
+- CMake and Ninja.
 
 Set tool locations when they differ from the defaults in `bin/build-android`, then build:
 
@@ -210,7 +319,9 @@ ANDROID_BUILD_TYPE=Release bin/build-android
 
 Never publish or lose the signing keystore. Android updates must be signed by the same key.
 
-## Development checks
+## Development
+
+Coding agents must read [`AGENTS.md`](AGENTS.md) before changing or deploying Waypoint. It records architecture boundaries, the least-effort delivery path, deployment acceptance checks, release requirements, secrets handling, and the canonical verification commands.
 
 Run the complete local verification suite:
 
@@ -227,9 +338,9 @@ cargo audit --ignore RUSTSEC-2023-0071
 
 Android UI smoke tests are defined under `.maestro/`.
 
-## Continuous integration and releases
+### Continuous integration and releases
 
-`.github/workflows/ci.yml` builds and tests Linux, audits Rust dependencies, and builds a generic arm64 debug APK without Firebase configuration for every pull request and push to `main`.
+`.github/workflows/ci.yml` builds and tests Linux, audits Rust dependencies, builds the server container, and builds a generic arm64 debug APK without Firebase configuration for every pull request and push to `main`.
 
 `.github/workflows/release.yml` reads the semantic version from `CMakeLists.txt`. When `main` contains a version without a corresponding `v<version>` tag, it builds the maintainer's signed, Firebase-enabled Android APK and a bundled Linux package, creates the tag, generates checksums, and publishes a GitHub release. `server/Cargo.toml` must contain the same version.
 
@@ -265,18 +376,18 @@ project(Waypoint VERSION 0.2.0 LANGUAGES CXX)
 version = "0.2.0"
 ```
 
-## Repository layout
+### Repository layout
 
-- `src/` — C++ core, synchronization, desktop, daemon, CLI, and mobile bridge code
-- `qml/` — Linux and Android interfaces
-- `android/` — Android manifest, services, widget, and Gradle additions
-- `server/` — Rust synchronization API and PostgreSQL migrations
-- `plugins/omarchy-waypoint/` — Omarchy bar plugin
-- `packaging/` — desktop entry, icon, and systemd user service
-- `tests/` — C++ behavioral tests
-- `.maestro/` — Android UI smoke tests
+- `src/` — C++ core, synchronization, desktop, daemon, CLI, and mobile bridge code.
+- `qml/` — Linux and Android interfaces.
+- `android/` — Android manifest, services, widget, and Gradle additions.
+- `server/` — Rust synchronization API and PostgreSQL migrations.
+- `plugins/omarchy-waypoint/` — Omarchy bar plugin.
+- `packaging/` — desktop entry, icon, and systemd user service.
+- `tests/` — C++ behavioral tests.
+- `.maestro/` — Android UI smoke tests.
 
-## Security notes
+## Security
 
 - `.env`, Android keystores, Firebase service-account files, databases, and generated APKs must remain untracked.
 - The API container runs as an unprivileged user and binds to localhost through the Compose stack.
