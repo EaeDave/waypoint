@@ -22,6 +22,7 @@ for required_file in \
   "${build_directory}/waypoint" \
   "${build_directory}/waypointd" \
   "${build_directory}/waypointctl" \
+  "${build_directory}/waypoint-updater" \
   "${linuxdeploy}" \
   "${linuxdeploy_plugin_qt}"; do
   if [[ ! -f "${required_file}" ]]; then
@@ -71,6 +72,7 @@ PATH="${tool_directory}:${PATH}" \
   --executable "${app_directory}/usr/bin/waypoint" \
   --executable "${app_directory}/usr/bin/waypointd" \
   --executable "${app_directory}/usr/bin/waypointctl" \
+  --executable "${app_directory}/usr/bin/waypoint-updater" \
   --desktop-file "${app_directory}/usr/share/applications/waypoint.desktop" \
   --icon-file "${app_directory}/usr/share/icons/hicolor/scalable/apps/waypoint.svg" \
   --plugin qt
@@ -78,6 +80,16 @@ PATH="${tool_directory}:${PATH}" \
 mkdir -p "${app_directory}/usr/share/waypoint"
 cp -a "${repository_root}/plugins/omarchy-waypoint" \
   "${app_directory}/usr/share/waypoint/omarchy-waypoint"
+python3 - "${app_directory}/usr/share/waypoint/omarchy-waypoint/manifest.json" "${version}" <<'PY'
+import json
+import pathlib
+import sys
+
+manifest_path = pathlib.Path(sys.argv[1])
+manifest = json.loads(manifest_path.read_text())
+manifest["version"] = sys.argv[2]
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
+PY
 
 printf '%s\n' "${version}" >"${app_directory}/usr/share/waypoint/VERSION"
 tar \

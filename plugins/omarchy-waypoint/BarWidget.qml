@@ -15,6 +15,8 @@ BarWidget {
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
+    property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
+                                  canInstall: false, error: "" })
     property string rangeFrom: ""
     property string rangeTo: ""
     property bool refreshPending: false
@@ -123,6 +125,9 @@ BarWidget {
         runAction(["delete-habit", habitId]);
     }
 
+    function installUpdate() {
+        runAction(["update"]);
+    }
 
     function openSettings() {
         if (!settingsProcess.running) {
@@ -146,6 +151,7 @@ BarWidget {
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
         target.syncStatus = Qt.binding(() => root.syncStatus);
+        target.updateStatus = Qt.binding(() => root.updateStatus);
     }
 
     function open() {
@@ -222,6 +228,9 @@ BarWidget {
                     root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });
                     root.loadError = "";
                     root.syncStatus = response.sync || ({ state: "local-only", configured: false, lastError: "" });
+                    root.updateStatus = response.update || ({ state: "idle", currentVersion: "",
+                                                              latestVersion: "", canInstall: false,
+                                                              error: "" });
                 } catch (error) {
                     root.loadError = String(error);
                 }

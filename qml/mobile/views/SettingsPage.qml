@@ -433,6 +433,87 @@ Item {
             }
 
             Text {
+                text: "APLICATIVO"
+                color: MobileTheme.subdued
+                font.family: MobileTheme.fontFamily
+                font.pixelSize: MobileTheme.captionSize
+                font.bold: true
+                font.letterSpacing: 1
+                Layout.topMargin: 8
+            }
+
+            SectionCard {
+                Layout.fillWidth: true
+                contentSpacing: 8
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+
+                        Text {
+                            text: "Waypoint v" + root.controller.currentVersion
+                            color: MobileTheme.foreground
+                            font.family: MobileTheme.fontFamily
+                            font.pixelSize: MobileTheme.bodySize
+                            font.bold: true
+                        }
+
+                        Text {
+                            visible: root.controller.updateState === "available"
+                                     || root.controller.updateState === "downloading"
+                                     || root.controller.updateState === "waiting-for-android"
+                            text: root.controller.updateState === "available"
+                                  ? "Versão " + root.controller.latestVersion + " disponível"
+                                  : root.controller.updateState === "downloading"
+                                    ? "Baixando · " + Math.round(root.controller.updateProgress * 100) + "%"
+                                    : "Instalação aguardando confirmação"
+                            color: MobileTheme.subdued
+                            font.family: MobileTheme.fontFamily
+                            font.pixelSize: MobileTheme.captionSize
+                        }
+                    }
+
+                    MobileButton {
+                        visible: (root.controller.updateState === "available"
+                                  && root.controller.canInstallUpdate)
+                                 || root.controller.updateState === "waiting-for-android"
+                        text: root.controller.updateState === "waiting-for-android"
+                              ? "ABRIR INSTALADOR" : "ATUALIZAR"
+                        accent: true
+                        Accessible.id: "install-update"
+                        onClicked: {
+                            const started = root.controller.installUpdate();
+                            root.feedbackError = !started;
+                            root.feedback = started ? "" : root.controller.errorMessage;
+                        }
+                    }
+
+                    MobileButton {
+                        visible: root.controller.updateState !== "available"
+                                 && root.controller.updateState !== "downloading"
+                                 && root.controller.updateState !== "waiting-for-android"
+                        text: root.controller.updateState === "checking" ? "VERIFICANDO…" : "VERIFICAR"
+                        enabled: root.controller.updateState !== "checking"
+                        Accessible.id: "check-update"
+                        onClicked: root.controller.checkForUpdate()
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.controller.updateError !== ""
+                    text: root.controller.updateError
+                    color: MobileTheme.urgent
+                    font.family: MobileTheme.fontFamily
+                    font.pixelSize: MobileTheme.captionSize
+                    wrapMode: Text.Wrap
+                }
+            }
+
+            Text {
                 Layout.fillWidth: true
                 visible: root.feedback !== ""
                 text: root.feedback

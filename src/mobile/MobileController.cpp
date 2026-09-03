@@ -3,6 +3,7 @@
 #include "mobile/AndroidNotificationBridge.hpp"
 #include "mobile/AndroidWidgetBridge.hpp"
 #include "mobile/WidgetSnapshot.hpp"
+#include <QCoreApplication>
 #include <QDate>
 #include <QDebug>
 #include <QHash>
@@ -95,8 +96,9 @@ MobileController::MobileController(QObject *parent)
 
 MobileController::MobileController(QString databasePath, QObject *parent)
     : QObject(parent), m_store(std::move(databasePath), this), m_syncEngine(&m_store, this),
-      m_holidaySyncEngine(&m_store, this), m_selectedDate(QDate::currentDate()),
-      m_visibleYear(m_selectedDate.year()), m_visibleMonth(m_selectedDate.month()) {
+      m_holidaySyncEngine(&m_store, this), m_updateChecker(UpdateAsset::AndroidArm64, this),
+      m_updateInstaller(this), m_selectedDate(QDate::currentDate()), m_visibleYear(m_selectedDate.year()),
+      m_visibleMonth(m_selectedDate.month()) {
   m_refreshTimer.setInterval(30000);
   connect(&m_refreshTimer, &QTimer::timeout, this, &MobileController::refresh);
   connect(&m_store, &TaskStore::tasksChanged, this, [this] {
@@ -113,6 +115,9 @@ MobileController::MobileController(QString databasePath, QObject *parent)
           [this] { QTimer::singleShot(0, this, &MobileController::refresh); });
   connect(&m_holidaySyncEngine, &HolidaySyncEngine::municipalitiesChanged, this,
           [this](const QString &stateCode) { loadMunicipalities(stateCode); });
+  connect(&m_updateChecker, &UpdateChecker::statusChanged, this, &MobileController::refreshUpdateProperties);
+  connect(&m_updateInstaller, &AndroidUpdateInstaller::statusChanged, this,
+          &MobileController::refreshUpdateProperties);
 }
 
 bool MobileController::ready() const { return m_ready; }
@@ -132,6 +137,12 @@ bool MobileController::syncConfigured() const { return m_syncConfigured; }
 QString MobileController::syncState() const { return m_syncState; }
 QString MobileController::syncLastError() const { return m_syncLastError; }
 QString MobileController::lastSuccessfulSync() const { return m_lastSuccessfulSync; }
+QString MobileController::currentVersion() const { return QCoreApplication::applicationVersion(); }
+QString MobileController::updateState() const { return m_updateState; }
+QString MobileController::latestVersion() const { return m_latestVersion; }
+QString MobileController::updateError() const { return m_updateError; }
+bool MobileController::canInstallUpdate() const { return m_canInstallUpdate; }
+qreal MobileController::updateProgress() const { return m_updateProgress; }
 
 QVariantList MobileController::selectedDateHolidays() const {
   QVariantList result;
@@ -176,6 +187,7 @@ void MobileController::start() {
   emit readyChanged();
   m_syncEngine.start();
   m_holidaySyncEngine.start();
+  m_updateChecker.start();
   m_refreshTimer.start();
   refresh();
   refreshNotificationSchedule();
@@ -413,6 +425,19 @@ bool MobileController::saveHolidayPreferences(const QString &stateCode, const QS
 
 void MobileController::refreshHolidays() { m_holidaySyncEngine.syncNow(); }
 
+void MobileController::checkForUpdate() { m_updateChecker.checkNow(); }
+
+bool MobileController::installUpdate() {
+  QString error;
+  if (!m_updateInstaller.install(m_updateChecker.release(), &error)) {
+    publishError(error);
+    return false;
+  }
+  publishError({});
+  refreshUpdateProperties();
+  return true;
+}
+
 void MobileController::loadMunicipalities(const QString &stateCode) {
   const QString normalizedState = stateCode.trimmed().toUpper();
   QString error;
@@ -453,6 +478,30 @@ bool MobileController::finishMutation(const bool succeeded, const QString &error
   publishError({});
   refresh();
   return true;
+}
+
+void MobileController::refreshUpdateProperties() {
+  const QJsonObject status = m_updateChecker.status();
+  QString state = status.value(QStringLiteral("state")).toString();
+  QString error = status.value(QStringLiteral("error")).toString();
+  qreal progress = 0.0;
+  if (m_updateInstaller.state() != QStringLiteral("idle")) {
+    state = m_updateInstaller.state();
+    error = m_updateInstaller.errorMessage();
+    progress = m_updateInstaller.progress();
+  }
+  const QString latestVersion = status.value(QStringLiteral("latestVersion")).toString();
+  const bool canInstall = status.value(QStringLiteral("canInstall")).toBool();
+  if (m_updateState == state && m_latestVersion == latestVersion && m_updateError == error &&
+      m_canInstallUpdate == canInstall && qFuzzyCompare(m_updateProgress, progress)) {
+    return;
+  }
+  m_updateState = state;
+  m_latestVersion = latestVersion;
+  m_updateError = error;
+  m_canInstallUpdate = canInstall;
+  m_updateProgress = progress;
+  emit updateStatusChanged();
 }
 
 void MobileController::refreshSyncProperties() {

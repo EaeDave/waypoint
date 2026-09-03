@@ -1,3 +1,4 @@
+#include "WaypointVersion.hpp"
 #include "app/WaypointController.hpp"
 
 #include <QCommandLineParser>
@@ -17,6 +18,7 @@ int main(int argc, char *argv[]) {
   QCoreApplication::setOrganizationName(QStringLiteral("Waypoint"));
   QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));
   QGuiApplication::setApplicationDisplayName(QStringLiteral("Waypoint"));
+  QCoreApplication::setApplicationVersion(QString::fromLatin1(waypoint::version));
 
   waypoint::WaypointController controller;
   QQmlApplicationEngine engine;

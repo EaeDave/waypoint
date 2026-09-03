@@ -1,0 +1,7 @@
+#pragma once
+
+namespace waypoint {
+
+inline constexpr auto version = "@PROJECT_VERSION@";
+
+} // namespace waypoint

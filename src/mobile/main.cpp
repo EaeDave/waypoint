@@ -1,3 +1,4 @@
+#include "WaypointVersion.hpp"
 #include "mobile/MobileController.hpp"
 
 #include <QGuiApplication>
@@ -10,6 +11,7 @@ int main(int argc, char *argv[]) {
   QCoreApplication::setOrganizationName(QStringLiteral("eaedave"));
   QCoreApplication::setOrganizationDomain(QStringLiteral("eaedave.org"));
   QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));
+  QCoreApplication::setApplicationVersion(QString::fromLatin1(waypoint::version));
 
   const QString launchMode = argc > 1 ? QString::fromUtf8(argv[1]) : QString{};
   if (launchMode == QStringLiteral("-widget-action-service") ||

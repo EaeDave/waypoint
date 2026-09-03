@@ -1,3 +1,5 @@
+#include "WaypointVersion.hpp"
+
 #include "ipc/WaypointIpcClient.hpp"
 
 #include <QCommandLineParser>
@@ -48,15 +50,15 @@ std::optional<QList<int>> parseReminderMinutesBefore(const QString &value, QStri
 }
 
 std::optional<waypoint::HabitRecord> habitFromOptions(const QCommandLineParser &parser,
-                                                       QString *errorMessage) {
+                                                      QString *errorMessage) {
   waypoint::HabitRecord habit;
   habit.title = parser.value(QStringLiteral("title")).trimmed();
   bool validGoal = false;
   habit.targetAmount = parser.value(QStringLiteral("goal")).toLongLong(&validGoal);
   habit.unit = parser.value(QStringLiteral("unit")).trimmed();
   const QString mode = parser.value(QStringLiteral("check-in"));
-  if (!QStringList{QStringLiteral("fixed"), QStringLiteral("manual"), QStringLiteral("complete")}
-           .contains(mode)) {
+  if (!QStringList{QStringLiteral("fixed"), QStringLiteral("manual"), QStringLiteral("complete")}.contains(
+          mode)) {
     *errorMessage = QStringLiteral("--check-in must be fixed, manual, or complete");
     return std::nullopt;
   }
@@ -110,7 +112,7 @@ std::optional<waypoint::HabitRecord> habitFromOptions(const QCommandLineParser &
 int main(int argc, char *argv[]) {
   QCoreApplication application(argc, argv);
   QCoreApplication::setApplicationName(QStringLiteral("waypointctl"));
-  QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+  QCoreApplication::setApplicationVersion(QString::fromLatin1(waypoint::version));
 
   QCommandLineParser parser;
   parser.setApplicationDescription(QStringLiteral("Local command line client for Waypoint"));
@@ -121,8 +123,8 @@ int main(int argc, char *argv[]) {
       QStringLiteral("ping, snapshot, habits, add-habit, edit-habit, record-habit, undo-habit, "
                      "delete-habit, add, complete, reopen, skip, edit, reschedule, delete, sync-status, "
                      "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
-                     "holiday-preferences, configure-holidays, municipalities, holidays, or "
-                     "refresh-holidays"));
+                     "holiday-preferences, configure-holidays, municipalities, holidays, "
+                     "refresh-holidays, update-status, check-update, or update"));
   parser.addPositionalArgument(QStringLiteral("arguments"), QStringLiteral("Command arguments"),
                                QStringLiteral("[arguments...]"));
   parser.addOption({{QStringLiteral("t"), QStringLiteral("title")},
@@ -133,8 +135,8 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("date")});
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
-  parser.addOption({QStringLiteral("emoji"), QStringLiteral("Optional task or habit emoji"),
-                    QStringLiteral("emoji")});
+  parser.addOption(
+      {QStringLiteral("emoji"), QStringLiteral("Optional task or habit emoji"), QStringLiteral("emoji")});
   parser.addOption({QStringLiteral("reminders"),
                     QStringLiteral("Comma-separated minutes before the task, up to 5; use 'none' to disable"),
                     QStringLiteral("minutes")});
@@ -150,15 +152,15 @@ int main(int argc, char *argv[]) {
                     QStringLiteral("1")});
   parser.addOption({QStringLiteral("unit"), QStringLiteral("Habit goal unit"), QStringLiteral("unit")});
   parser.addOption({QStringLiteral("check-in"),
-                    QStringLiteral("Habit check-in mode: fixed, manual, or complete"),
-                    QStringLiteral("mode"), QStringLiteral("complete")});
+                    QStringLiteral("Habit check-in mode: fixed, manual, or complete"), QStringLiteral("mode"),
+                    QStringLiteral("complete")});
   parser.addOption({QStringLiteral("increment"), QStringLiteral("Fixed habit check-in increment"),
                     QStringLiteral("amount"), QStringLiteral("1")});
   parser.addOption({QStringLiteral("reminder-times"),
                     QStringLiteral("Comma-separated habit reminder times, up to 10; use 'none' to disable"),
                     QStringLiteral("times")});
-  parser.addOption({QStringLiteral("amount"), QStringLiteral("Manual habit check-in amount"),
-                    QStringLiteral("amount")});
+  parser.addOption(
+      {QStringLiteral("amount"), QStringLiteral("Manual habit check-in amount"), QStringLiteral("amount")});
   parser.addOption({QStringLiteral("end-mode"),
                     QStringLiteral("Recurrence ending: never, onDate, or afterCount"), QStringLiteral("mode"),
                     QStringLiteral("never")});
@@ -248,6 +250,10 @@ int main(int argc, char *argv[]) {
     if (!error.isEmpty()) {
       return printError(error);
     }
+    const QJsonObject updateStatus = client.updateStatus(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
     printJson({{QStringLiteral("ok"), true},
                {QStringLiteral("today"), todaySummary},
                {QStringLiteral("occurrences"), occurrences},
@@ -255,7 +261,8 @@ int main(int argc, char *argv[]) {
                {QStringLiteral("holidays"), holidayData.value(QStringLiteral("holidays"))},
                {QStringLiteral("holidayCoverage"), holidayData.value(QStringLiteral("coverage"))},
                {QStringLiteral("holidayPreferences"), holidayPreferences},
-               {QStringLiteral("holidaySync"), holidayStatus}});
+               {QStringLiteral("holidaySync"), holidayStatus},
+               {QStringLiteral("update"), updateStatus}});
     return 0;
   }
   if (command == QStringLiteral("habits")) {
@@ -496,6 +503,28 @@ int main(int argc, char *argv[]) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("update-status")) {
+    const QJsonObject status = client.updateStatus(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson(status);
+    return 0;
+  }
+  if (command == QStringLiteral("check-update")) {
+    if (!client.checkForUpdate(&error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("update")) {
+    if (!client.installUpdate(false, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}, {QStringLiteral("status"), QStringLiteral("installing")}});
     return 0;
   }
   if (positional.size() < 2) {

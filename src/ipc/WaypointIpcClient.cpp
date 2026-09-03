@@ -129,8 +129,7 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
   return occurrences;
 }
 
-QList<HabitProgress> WaypointIpcClient::listHabitProgress(const QDate &date,
-                                                          QString *errorMessage) const {
+QList<HabitProgress> WaypointIpcClient::listHabitProgress(const QDate &date, QString *errorMessage) const {
   const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("habits")},
                                         {QStringLiteral("date"), date.toString(Qt::ISODate)}},
                                        errorMessage);
@@ -174,21 +173,19 @@ bool WaypointIpcClient::recordHabit(const QString &habitId, const QDate &date,
 }
 
 bool WaypointIpcClient::undoLastHabitEntry(const QString &habitId, const QDate &date,
-                                          QString *errorMessage) const {
-  return responseSucceeded(
-      request({{QStringLiteral("command"), QStringLiteral("undo-habit")},
-               {QStringLiteral("habitId"), habitId},
-               {QStringLiteral("date"), date.toString(Qt::ISODate)}},
-              errorMessage),
-      errorMessage);
+                                           QString *errorMessage) const {
+  return responseSucceeded(request({{QStringLiteral("command"), QStringLiteral("undo-habit")},
+                                    {QStringLiteral("habitId"), habitId},
+                                    {QStringLiteral("date"), date.toString(Qt::ISODate)}},
+                                   errorMessage),
+                           errorMessage);
 }
 
 bool WaypointIpcClient::deleteHabit(const QString &habitId, QString *errorMessage) const {
-  return responseSucceeded(
-      request({{QStringLiteral("command"), QStringLiteral("delete-habit")},
-               {QStringLiteral("habitId"), habitId}},
-              errorMessage),
-      errorMessage);
+  return responseSucceeded(request({{QStringLiteral("command"), QStringLiteral("delete-habit")},
+                                    {QStringLiteral("habitId"), habitId}},
+                                   errorMessage),
+                           errorMessage);
 }
 
 bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
@@ -377,6 +374,24 @@ QJsonObject WaypointIpcClient::holidayStatus(QString *errorMessage) const {
 bool WaypointIpcClient::refreshHolidays(QString *errorMessage) const {
   return responseSucceeded(
       request({{QStringLiteral("command"), QStringLiteral("refresh-holidays")}}, errorMessage), errorMessage);
+}
+
+QJsonObject WaypointIpcClient::updateStatus(QString *errorMessage) const {
+  const QJsonObject response =
+      request({{QStringLiteral("command"), QStringLiteral("update-status")}}, errorMessage);
+  return responseSucceeded(response, errorMessage) ? response : QJsonObject{};
+}
+
+bool WaypointIpcClient::checkForUpdate(QString *errorMessage) const {
+  return responseSucceeded(
+      request({{QStringLiteral("command"), QStringLiteral("check-update")}}, errorMessage), errorMessage);
+}
+
+bool WaypointIpcClient::installUpdate(const bool relaunchDesktop, QString *errorMessage) const {
+  return responseSucceeded(request({{QStringLiteral("command"), QStringLiteral("install-update")},
+                                    {QStringLiteral("relaunchDesktop"), relaunchDesktop}},
+                                   errorMessage),
+                           errorMessage);
 }
 
 } // namespace waypoint

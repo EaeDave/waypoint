@@ -35,6 +35,12 @@ public final class WaypointActivity extends QtActivity {
   }
 
   @Override
+  protected void onResume() {
+    super.onResume();
+    WaypointUpdate.resumePendingInstall(this);
+  }
+
+  @Override
   public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
     super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     if (requestCode == NOTIFICATION_PERMISSION_REQUEST) {

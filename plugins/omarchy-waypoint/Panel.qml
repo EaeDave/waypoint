@@ -22,6 +22,8 @@ Panel {
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
+    property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
+                                  canInstall: false, error: "" })
     property date today: new Date()
     property date selectedDate: new Date()
     property int viewYear: selectedDate.getFullYear()
@@ -1281,6 +1283,27 @@ Panel {
                             color: Qt.darker(root.foreground, 1.5)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
+                        }
+
+                        Text {
+                            visible: String(root.updateStatus.currentVersion || "") !== ""
+                            text: "v" + root.updateStatus.currentVersion
+                            color: Qt.darker(root.foreground, 1.7)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+
+                        Button {
+                            visible: root.updateStatus.state === "available"
+                                     && root.updateStatus.canInstall === true
+                            text: "Update " + root.updateStatus.latestVersion
+                            foreground: root.foreground
+                            accent: Color.accent
+                            selected: true
+                            horizontalPadding: Style.space(7)
+                            verticalPadding: Style.space(3)
+                            onClicked: if (root.hostWidget)
+                                root.hostWidget.installUpdate()
                         }
 
                         Item {

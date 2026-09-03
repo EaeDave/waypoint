@@ -38,6 +38,11 @@ class WaypointController final : public QObject {
   Q_PROPERTY(QVariantList selectedDateHolidays READ selectedDateHolidays NOTIFY selectedDateHolidaysChanged)
   Q_PROPERTY(QString holidaySyncState READ holidaySyncState NOTIFY holidayStatusChanged)
   Q_PROPERTY(QString holidaySyncLastError READ holidaySyncLastError NOTIFY holidayStatusChanged)
+  Q_PROPERTY(QString currentVersion READ currentVersion CONSTANT)
+  Q_PROPERTY(QString updateState READ updateState NOTIFY updateStatusChanged)
+  Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY updateStatusChanged)
+  Q_PROPERTY(QString updateError READ updateError NOTIFY updateStatusChanged)
+  Q_PROPERTY(bool canInstallUpdate READ canInstallUpdate NOTIFY updateStatusChanged)
 
 public:
   explicit WaypointController(QObject *parent = nullptr);
@@ -66,6 +71,11 @@ public:
   [[nodiscard]] QVariantList selectedDateHolidays() const;
   [[nodiscard]] QString holidaySyncState() const;
   [[nodiscard]] QString holidaySyncLastError() const;
+  [[nodiscard]] QString currentVersion() const;
+  [[nodiscard]] QString updateState() const;
+  [[nodiscard]] QString latestVersion() const;
+  [[nodiscard]] QString updateError() const;
+  [[nodiscard]] bool canInstallUpdate() const;
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void refresh();
@@ -101,6 +111,8 @@ public:
                                           bool includeCommemorative, bool includeOptional);
   Q_INVOKABLE void loadMunicipalities(const QString &stateCode);
   Q_INVOKABLE bool refreshHolidays();
+  Q_INVOKABLE bool checkForUpdate();
+  Q_INVOKABLE bool installUpdate();
 
 signals:
   void selectedDateKeyChanged();
@@ -113,6 +125,7 @@ signals:
   void municipalitiesChanged();
   void selectedDateHolidaysChanged();
   void holidayStatusChanged();
+  void updateStatusChanged();
 
 private:
   void updateConnection(bool online, const QString &errorMessage = {});
@@ -121,6 +134,7 @@ private:
   void startDaemonOnce();
   bool refreshSyncDetails(QString *errorMessage);
   bool refreshHolidayDetails(QString *errorMessage);
+  bool refreshUpdateDetails(QString *errorMessage);
   void updateSelectedDateHolidays();
 
   WaypointIpcClient m_client;
@@ -146,6 +160,10 @@ private:
   QString m_holidayCityCode;
   QString m_holidaySyncState = QStringLiteral("local-only");
   QString m_holidaySyncLastError;
+  QString m_updateState = QStringLiteral("idle");
+  QString m_latestVersion;
+  QString m_updateError;
+  bool m_canInstallUpdate = false;
   bool m_includeNationalHolidays = true;
   bool m_includeStateHolidays = true;
   bool m_includeMunicipalHolidays = true;

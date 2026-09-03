@@ -453,6 +453,71 @@ Item {
                 font.pixelSize: WaypointTheme.bodySmallSize
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+
+                Text {
+                    text: "Waypoint v" + root.controller.currentVersion
+                    color: WaypointTheme.disabledText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
+                }
+
+                Text {
+                    visible: root.controller.updateState === "checking"
+                    text: "Verificando atualização…"
+                    color: WaypointTheme.subduedText
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.captionSize
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                AppButton {
+                    visible: root.controller.updateState === "available"
+                             && root.controller.canInstallUpdate
+                    text: "Atualizar para " + root.controller.latestVersion
+                    selected: true
+                    onClicked: {
+                        const started = root.controller.installUpdate();
+                        root.feedbackError = !started;
+                        root.feedbackMessage = started
+                            ? "Instalando atualização…"
+                            : root.controller.errorMessage;
+                    }
+                }
+
+                AppButton {
+                    visible: root.controller.updateState !== "available"
+                             || !root.controller.canInstallUpdate
+                    text: root.controller.updateState === "available"
+                          ? "Atualização " + root.controller.latestVersion + " disponível"
+                          : "Verificar atualização"
+                    enabled: root.controller.updateState !== "available"
+                             && root.controller.updateState !== "checking"
+                             && root.controller.updateState !== "downloading"
+                             && root.controller.updateState !== "installing"
+                    onClicked: {
+                        const started = root.controller.checkForUpdate();
+                        root.feedbackError = !started;
+                        root.feedbackMessage = started ? "" : root.controller.errorMessage;
+                    }
+                }
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.controller.updateError !== ""
+                text: root.controller.updateError
+                color: WaypointTheme.urgent
+                wrapMode: Text.Wrap
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
+            }
+
             Text {
                 Layout.fillWidth: true
                 text: "A connection string do PostgreSQL permanece somente no servidor. Este dispositivo armazena apenas o endpoint e o token necessários para falar com a API."

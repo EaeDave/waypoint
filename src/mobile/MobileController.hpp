@@ -1,8 +1,10 @@
 #pragma once
 
 #include "core/TaskStore.hpp"
+#include "mobile/AndroidUpdateInstaller.hpp"
 #include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
+#include "update/UpdateChecker.hpp"
 
 #include <QByteArray>
 #include <QDate>
@@ -34,6 +36,12 @@ class MobileController final : public QObject {
   Q_PROPERTY(QString syncState READ syncState NOTIFY syncStatusChanged)
   Q_PROPERTY(QString syncLastError READ syncLastError NOTIFY syncStatusChanged)
   Q_PROPERTY(QString lastSuccessfulSync READ lastSuccessfulSync NOTIFY syncStatusChanged)
+  Q_PROPERTY(QString currentVersion READ currentVersion CONSTANT)
+  Q_PROPERTY(QString updateState READ updateState NOTIFY updateStatusChanged)
+  Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY updateStatusChanged)
+  Q_PROPERTY(QString updateError READ updateError NOTIFY updateStatusChanged)
+  Q_PROPERTY(bool canInstallUpdate READ canInstallUpdate NOTIFY updateStatusChanged)
+  Q_PROPERTY(qreal updateProgress READ updateProgress NOTIFY updateStatusChanged)
 
 public:
   explicit MobileController(QObject *parent = nullptr);
@@ -60,6 +68,12 @@ public:
   [[nodiscard]] QString syncState() const;
   [[nodiscard]] QString syncLastError() const;
   [[nodiscard]] QString lastSuccessfulSync() const;
+  [[nodiscard]] QString currentVersion() const;
+  [[nodiscard]] QString updateState() const;
+  [[nodiscard]] QString latestVersion() const;
+  [[nodiscard]] QString updateError() const;
+  [[nodiscard]] bool canInstallUpdate() const;
+  [[nodiscard]] qreal updateProgress() const;
 
   Q_INVOKABLE void start();
   Q_INVOKABLE void refresh();
@@ -90,6 +104,8 @@ public:
                                           bool includeCommemorative, bool includeOptional);
   Q_INVOKABLE void refreshHolidays();
   Q_INVOKABLE void loadMunicipalities(const QString &stateCode);
+  Q_INVOKABLE void checkForUpdate();
+  Q_INVOKABLE bool installUpdate();
 
 signals:
   void readyChanged();
@@ -101,18 +117,22 @@ signals:
   void municipalitiesChanged();
   void syncConfigurationChanged();
   void syncStatusChanged();
+  void updateStatusChanged();
 
 private:
   void scheduleRefresh();
   void publishError(const QString &message);
   bool finishMutation(bool succeeded, const QString &errorMessage);
   void refreshSyncProperties();
+  void refreshUpdateProperties();
   void refreshNotificationSchedule();
   void refreshWidgetSnapshot(const QDate &today);
 
   TaskStore m_store;
   SyncEngine m_syncEngine;
   HolidaySyncEngine m_holidaySyncEngine;
+  UpdateChecker m_updateChecker;
+  AndroidUpdateInstaller m_updateInstaller;
   QTimer m_refreshTimer;
   QDate m_selectedDate;
   int m_visibleYear = 0;
@@ -132,6 +152,11 @@ private:
   QString m_syncState = QStringLiteral("local-only");
   QString m_syncLastError;
   QString m_lastSuccessfulSync;
+  QString m_updateState = QStringLiteral("idle");
+  QString m_latestVersion;
+  QString m_updateError;
+  bool m_canInstallUpdate = false;
+  qreal m_updateProgress = 0.0;
   QDate m_widgetSnapshotDate;
   QByteArray m_widgetSnapshot;
   bool m_widgetSnapshotDirty = true;

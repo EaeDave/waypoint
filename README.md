@@ -122,6 +122,8 @@ curl -fsSL https://raw.githubusercontent.com/EaeDave/waypoint/main/install.sh | 
 
 The installer verifies the release checksum, installs the application under `~/.local/lib`, creates commands in `~/.local/bin`, installs the desktop entry, and enables the `waypointd` user service. If Omarchy is installed, it also enables the Waypoint bar plugin.
 
+`waypointd` checks the latest stable GitHub release every six hours. The desktop settings page and Omarchy panel show the installed version and offer an update action when a newer release exists. Updates from this installer are downloaded with their published SHA-256 checksum, staged under `~/.local/lib`, activated atomically, and rolled back if the updated daemon does not become ready. Source builds and system-package installations are never overwritten.
+
 Ensure `~/.local/bin` is in `PATH`, then launch:
 
 ```bash
@@ -133,6 +135,8 @@ The release package currently targets glibc-based Linux distributions on x86_64.
 ### Android
 
 Download `waypoint-android-arm64.apk` from the [latest GitHub release](https://github.com/EaeDave/waypoint/releases/latest). Android may ask for permission to install applications from the browser or file manager used to open the APK.
+
+After the first installation, open **Settings → Application** in Waypoint to check for and install releases. Waypoint downloads the APK, verifies it against the release `SHA256SUMS`, and opens Android's package installer. Android may require the per-app **Install unknown apps** permission and always controls the final installation confirmation.
 
 Requirements:
 

@@ -139,6 +139,16 @@ QString WaypointController::holidaySyncState() const { return m_holidaySyncState
 
 QString WaypointController::holidaySyncLastError() const { return m_holidaySyncLastError; }
 
+QString WaypointController::currentVersion() const { return QCoreApplication::applicationVersion(); }
+
+QString WaypointController::updateState() const { return m_updateState; }
+
+QString WaypointController::latestVersion() const { return m_latestVersion; }
+
+QString WaypointController::updateError() const { return m_updateError; }
+
+bool WaypointController::canInstallUpdate() const { return m_canInstallUpdate; }
+
 void WaypointController::start() {
   refresh();
   m_refreshTimer.start();
@@ -180,11 +190,10 @@ void WaypointController::refresh() {
   for (const TaskOccurrence &occurrence : rangeOccurrences) {
     rangeValues.append(occurrence.toJson());
   }
-  const QByteArray signature =
-      QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
-                                {QStringLiteral("habits"), habitValues},
-                                {QStringLiteral("range"), rangeValues}})
-          .toJson(QJsonDocument::Compact);
+  const QByteArray signature = QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
+                                                         {QStringLiteral("habits"), habitValues},
+                                                         {QStringLiteral("range"), rangeValues}})
+                                   .toJson(QJsonDocument::Compact);
   if (signature != m_snapshotSignature) {
     m_snapshotSignature = signature;
     publishOccurrences(todayOccurrences, rangeOccurrences);
@@ -199,6 +208,10 @@ void WaypointController::refresh() {
     return;
   }
   if (!refreshHolidayDetails(&error)) {
+    updateConnection(false, error);
+    return;
+  }
+  if (!refreshUpdateDetails(&error)) {
     updateConnection(false, error);
     return;
   }
@@ -331,11 +344,10 @@ bool WaypointController::deleteTask(const QString &taskId) {
   return true;
 }
 
-bool WaypointController::saveHabit(const QString &habitId, const QString &title,
-                                   const qint64 targetAmount, const QString &unit,
-                                   const QString &checkInMode, const qint64 incrementAmount,
-                                   const QVariantList &weekdays, const QVariantList &reminderTimes,
-                                   const QString &emoji) {
+bool WaypointController::saveHabit(const QString &habitId, const QString &title, const qint64 targetAmount,
+                                   const QString &unit, const QString &checkInMode,
+                                   const qint64 incrementAmount, const QVariantList &weekdays,
+                                   const QVariantList &reminderTimes, const QString &emoji) {
   HabitRecord habit;
   habit.id = habitId;
   habit.title = title;
@@ -470,6 +482,25 @@ bool WaypointController::refreshHolidays() {
   return true;
 }
 
+bool WaypointController::checkForUpdate() {
+  QString error;
+  if (!m_client.checkForUpdate(&error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  return refreshUpdateDetails(&error);
+}
+
+bool WaypointController::installUpdate() {
+  QString error;
+  if (!m_client.installUpdate(true, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  QTimer::singleShot(100, QCoreApplication::instance(), &QCoreApplication::quit);
+  return true;
+}
+
 void WaypointController::updateConnection(bool online, const QString &errorMessage) {
   if (m_online != online) {
     m_online = online;
@@ -518,6 +549,26 @@ bool WaypointController::refreshSyncDetails(QString *errorMessage) {
   }
   return true;
 }
+bool WaypointController::refreshUpdateDetails(QString *errorMessage) {
+  const QJsonObject status = m_client.updateStatus(errorMessage);
+  if (status.isEmpty()) {
+    return false;
+  }
+  const QString state = status.value(QStringLiteral("state")).toString();
+  const QString latestVersion = status.value(QStringLiteral("latestVersion")).toString();
+  const QString updateError = status.value(QStringLiteral("error")).toString();
+  const bool canInstall = status.value(QStringLiteral("canInstall")).toBool();
+  if (m_updateState != state || m_latestVersion != latestVersion || m_updateError != updateError ||
+      m_canInstallUpdate != canInstall) {
+    m_updateState = state;
+    m_latestVersion = latestVersion;
+    m_updateError = updateError;
+    m_canInstallUpdate = canInstall;
+    emit updateStatusChanged();
+  }
+  return true;
+}
+
 bool WaypointController::refreshHolidayDetails(QString *errorMessage) {
   const QDate today = QDate::currentDate();
   const QJsonObject holidayData =

@@ -7,6 +7,15 @@ set_tests_properties(waypoint_core_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+qt_add_executable(waypoint_update_tests
+    UpdateCheckerTest.cpp
+)
+target_link_libraries(waypoint_update_tests PRIVATE waypoint_update Qt6::Core Qt6::Network Qt6::Test)
+add_test(NAME waypoint_update_tests COMMAND waypoint_update_tests -o -,txt)
+set_tests_properties(waypoint_update_tests PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 qt_add_executable(waypoint_habit_tests
     HabitStoreTest.cpp
 )

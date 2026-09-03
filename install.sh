@@ -58,7 +58,7 @@ mv "${staging_directory}" "${install_root}"
 staging_directory=""
 ln -sfn "waypoint-${version}" "${install_base}/lib/waypoint-current"
 
-for executable in waypoint waypointd waypointctl; do
+for executable in waypoint waypointd waypointctl waypoint-updater; do
   ln -sfn "${install_base}/lib/waypoint-current/usr/bin/${executable}" \
     "${install_base}/bin/${executable}"
 done

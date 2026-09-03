@@ -4,6 +4,7 @@
 #include "ipc/WaypointProtocol.hpp"
 #include "sync/HolidaySyncEngine.hpp"
 #include "sync/SyncEngine.hpp"
+#include "update/UpdateChecker.hpp"
 
 #include <QJsonArray>
 #include <QLocalSocket>
@@ -22,17 +23,17 @@ void playCompletionSound(const QString &description) {
   if (soundPlayer.isEmpty()) {
     return;
   }
-  QProcess::startDetached(
-      soundPlayer,
-      {QStringLiteral("-i"), QString::fromLatin1(completionSoundName), QStringLiteral("-d"), description});
+  QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(completionSoundName),
+                                        QStringLiteral("-d"), description});
 }
 
 } // namespace
 
 WaypointIpcServer::WaypointIpcServer(TaskStore *taskStore, SyncEngine *syncEngine,
-                                     HolidaySyncEngine *holidaySyncEngine, QObject *parent)
+                                     HolidaySyncEngine *holidaySyncEngine, UpdateChecker *updateChecker,
+                                     QObject *parent)
     : QObject(parent), m_taskStore(taskStore), m_syncEngine(syncEngine),
-      m_holidaySyncEngine(holidaySyncEngine) {
+      m_holidaySyncEngine(holidaySyncEngine), m_updateChecker(updateChecker) {
   connect(&m_server, &QLocalServer::newConnection, this, &WaypointIpcServer::acceptConnections);
 }
 
@@ -184,9 +185,9 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   if (command == QStringLiteral("edit-habit")) {
     const HabitRecord input = HabitRecord::fromJson(request);
     const QString habitId = request.value(QStringLiteral("habitId")).toString();
-    if (!m_taskStore->editHabit(habitId, input.title, input.targetAmount, input.unit,
-                                input.checkInMode, input.incrementAmount, input.weekdays,
-                                input.reminderTimes, input.emoji, &error)) {
+    if (!m_taskStore->editHabit(habitId, input.title, input.targetAmount, input.unit, input.checkInMode,
+                                input.incrementAmount, input.weekdays, input.reminderTimes, input.emoji,
+                                &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};
@@ -198,8 +199,7 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     HabitEntry entry;
     const QString habitId = request.value(QStringLiteral("habitId")).toString();
-    const QDate date =
-        QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
+    const QDate date = QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
     if (!m_taskStore->recordHabit(habitId, date, amount, &entry, &error)) {
       return protocol::errorResponse(error);
     }
@@ -208,8 +208,7 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   }
   if (command == QStringLiteral("undo-habit")) {
     const QString habitId = request.value(QStringLiteral("habitId")).toString();
-    const QDate date =
-        QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
+    const QDate date = QDate::fromString(request.value(QStringLiteral("date")).toString(), Qt::ISODate);
     if (!m_taskStore->undoLastHabitEntry(habitId, date, &error)) {
       return protocol::errorResponse(error);
     }
@@ -393,6 +392,22 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
   }
   if (command == QStringLiteral("refresh-holidays")) {
     m_holidaySyncEngine->syncNow();
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("update-status")) {
+    QJsonObject response = m_updateChecker->status();
+    response.insert(QStringLiteral("ok"), true);
+    return response;
+  }
+  if (command == QStringLiteral("check-update")) {
+    m_updateChecker->checkNow();
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("install-update")) {
+    if (!m_updateChecker->installLinuxUpdate(request.value(QStringLiteral("relaunchDesktop")).toBool(),
+                                             &error)) {
+      return protocol::errorResponse(error);
+    }
     return {{QStringLiteral("ok"), true}};
   }
   return protocol::errorResponse(QStringLiteral("Unknown Waypoint IPC command: '%1'").arg(command));

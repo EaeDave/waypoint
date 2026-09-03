@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(Waypoint VERSION 0.1.0 LANGUAGES CXX)
+configure_file(
+    src/core/WaypointVersion.hpp.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
+    @ONLY
+)
+add_library(waypoint_version INTERFACE)
+target_include_directories(waypoint_version INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/generated)
+
 include(GNUInstallDirs)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -27,8 +35,16 @@ add_library(waypoint_core STATIC
     src/core/TaskStore.hpp
 )
 target_include_directories(waypoint_core PUBLIC src)
-target_link_libraries(waypoint_core PUBLIC Qt6::Core Qt6::Network Qt6::Sql)
+target_link_libraries(waypoint_core PUBLIC waypoint_version Qt6::Core Qt6::Network Qt6::Sql)
 target_compile_options(waypoint_core PRIVATE -Wall -Wextra -Wpedantic)
+add_library(waypoint_update STATIC
+    src/update/UpdateChecker.cpp
+    src/update/UpdateChecker.hpp
+)
+target_include_directories(waypoint_update PUBLIC src)
+target_link_libraries(waypoint_update PUBLIC waypoint_version Qt6::Core Qt6::Network)
+target_compile_options(waypoint_update PRIVATE -Wall -Wextra -Wpedantic)
+
 
 add_library(waypoint_sync STATIC
     src/sync/SyncEngine.cpp
@@ -44,6 +60,10 @@ target_compile_options(waypoint_sync PRIVATE -Wall -Wextra -Wpedantic)
 
 add_library(waypoint_mobile_core STATIC
     src/mobile/AndroidWidgetBridge.cpp
+    src/mobile/AndroidUpdateBridge.cpp
+    src/mobile/AndroidUpdateBridge.hpp
+    src/mobile/AndroidUpdateInstaller.cpp
+    src/mobile/AndroidUpdateInstaller.hpp
     src/mobile/AndroidWidgetBridge.hpp
     src/mobile/AndroidNotificationBridge.cpp
     src/mobile/BackgroundSync.cpp
@@ -59,7 +79,7 @@ add_library(waypoint_mobile_core STATIC
     src/mobile/WidgetTaskAction.hpp
 )
 target_include_directories(waypoint_mobile_core PUBLIC src)
-target_link_libraries(waypoint_mobile_core PUBLIC waypoint_core waypoint_sync Qt6::Core Qt6::Network)
+target_link_libraries(waypoint_mobile_core PUBLIC waypoint_core waypoint_sync waypoint_update waypoint_version Qt6::Core Qt6::Network)
 target_compile_options(waypoint_mobile_core PRIVATE -Wall -Wextra -Wpedantic)
 
 if(ANDROID)
@@ -102,6 +122,7 @@ if(ANDROID)
     target_include_directories(waypoint_android PRIVATE src)
     target_link_libraries(waypoint_android PRIVATE
         waypoint_mobile_core
+        waypoint_version
         Qt6::Core
         Qt6::CorePrivate
         Qt6::Gui
@@ -141,14 +162,17 @@ else()
         src/ipc/WaypointProtocol.hpp
     )
     target_include_directories(waypoint_ipc PUBLIC src)
-    target_link_libraries(waypoint_ipc PUBLIC waypoint_core waypoint_sync Qt6::Core Qt6::Network)
+    target_link_libraries(waypoint_ipc PUBLIC waypoint_core waypoint_sync waypoint_update Qt6::Core Qt6::Network)
     target_compile_options(waypoint_ipc PRIVATE -Wall -Wextra -Wpedantic)
 
     add_executable(waypointd src/daemon/main.cpp)
-    target_link_libraries(waypointd PRIVATE waypoint_reminders waypoint_sync waypoint_ipc waypoint_core Qt6::Core)
+    target_link_libraries(waypointd PRIVATE waypoint_reminders waypoint_sync waypoint_ipc waypoint_update waypoint_core waypoint_version Qt6::Core)
+    add_executable(waypoint-updater src/update/LinuxUpdaterMain.cpp)
+    target_link_libraries(waypoint-updater PRIVATE waypoint_update waypoint_version Qt6::Core)
+
 
     add_executable(waypointctl src/cli/main.cpp)
-    target_link_libraries(waypointctl PRIVATE waypoint_ipc Qt6::Core Qt6::Network)
+    target_link_libraries(waypointctl PRIVATE waypoint_ipc waypoint_version Qt6::Core Qt6::Network)
 
     add_library(waypoint_app_models STATIC
         src/app/CalendarModel.cpp
@@ -197,7 +221,7 @@ else()
             qml/data/EmojiCatalog.js
     )
     target_include_directories(waypoint PRIVATE src)
-    target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
+    target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc waypoint_update waypoint_version Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
     target_compile_options(waypoint PRIVATE -Wall -Wextra -Wpedantic)
 
     include(CTest)
@@ -205,7 +229,7 @@ else()
         add_subdirectory(tests)
     endif()
 
-    install(TARGETS waypoint waypointd waypointctl
+    install(TARGETS waypoint waypointd waypointctl waypoint-updater
         BUNDLE DESTINATION .
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     )
