@@ -287,4 +287,6 @@ version = "0.2.0"
 
 ## License
 
-No open-source license has been published for this repository yet.
+Waypoint is free software licensed under the [GNU Affero General Public License, version 3 or later](LICENSE). You may use, study, modify, and redistribute it under the terms of that license. Modified versions offered over a network must provide their corresponding source code to their users.
+
+Copyright © 2026 EaeDave.

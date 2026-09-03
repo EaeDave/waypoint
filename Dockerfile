@@ -26,13 +26,15 @@ RUN --mount=type=cache,id=waypoint-cargo-registry,target=/usr/local/cargo/regist
 
 FROM debian:bookworm-slim AS runtime
 LABEL org.opencontainers.image.source="https://github.com/EaeDave/waypoint" \
-      org.opencontainers.image.description="Waypoint self-hosted synchronization API"
+      org.opencontainers.image.description="Waypoint self-hosted synchronization API" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --system --uid 10001 --home-dir /nonexistent --shell /usr/sbin/nologin waypoint
 
 COPY --from=builder /waypoint-api /usr/local/bin/waypoint-api
+COPY LICENSE /usr/share/licenses/waypoint/LICENSE
 
 ENV WAYPOINT_BIND=0.0.0.0:8787 \
     RUST_LOG=info

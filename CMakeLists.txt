@@ -213,6 +213,8 @@ else()
         DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
     install(FILES packaging/waypoint.svg
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
+    install(FILES LICENSE
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/waypoint)
     install(FILES packaging/systemd/waypointd.service
         DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
 endif()
