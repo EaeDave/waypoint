@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.1.0 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.0 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
