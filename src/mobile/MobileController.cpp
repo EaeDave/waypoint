@@ -339,6 +339,12 @@ bool MobileController::setTaskCompleted(const QString &taskId, const QString &oc
   return finishMutation(succeeded, error);
 }
 
+bool MobileController::skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey) {
+  const QDate date = QDate::fromString(occurrenceDateKey, Qt::ISODate);
+  QString error;
+  return finishMutation(m_store.skipOccurrence(taskId, date, &error), error);
+}
+
 bool MobileController::deleteTask(const QString &taskId) {
   QString error;
   return finishMutation(m_store.deleteTask(taskId, &error), error);

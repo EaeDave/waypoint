@@ -256,15 +256,29 @@ Item {
                                 id: completionButton
                                 Layout.preferredWidth: 36
                                 Layout.preferredHeight: 36
-                                text: taskRow.modelData.completed ? "✓" : ""
+                                text: taskRow.modelData.completed ? "✓"
+                                    : taskRow.modelData.skipped ? "×" : ""
                                 Accessible.id: "task-completion-" + taskRow.modelData.taskId
-                                Accessible.name: taskRow.modelData.completed ? "Reabrir tarefa " + taskRow.modelData.title : "Concluir tarefa " + taskRow.modelData.title
-                                onClicked: root.controller.setTaskCompleted(taskRow.modelData.taskId, taskRow.modelData.occurrenceDate, taskRow.modelData.recurring, !taskRow.modelData.completed)
+                                Accessible.name: taskRow.modelData.completed
+                                    ? "Reabrir tarefa " + taskRow.modelData.title
+                                    : taskRow.modelData.skipped
+                                      ? "Reabrir ocorrência " + taskRow.modelData.title
+                                      : "Concluir tarefa " + taskRow.modelData.title
+                                onClicked: root.controller.setTaskCompleted(
+                                               taskRow.modelData.taskId,
+                                               taskRow.modelData.occurrenceDate,
+                                               taskRow.modelData.recurring,
+                                               taskRow.modelData.skipped ? false
+                                                                           : !taskRow.modelData.completed)
                                 background: Rectangle {
                                     radius: MobileTheme.radius
-                                    color: taskRow.modelData.completed ? MobileTheme.success : "transparent"
+                                    color: taskRow.modelData.completed ? MobileTheme.success
+                                         : taskRow.modelData.skipped ? MobileTheme.urgent : "transparent"
                                     border.width: 1
-                                    border.color: taskRow.modelData.completed ? MobileTheme.success : taskRow.modelData.occurrenceDate < root.controller.todayKey ? MobileTheme.urgent : MobileTheme.border
+                                    border.color: taskRow.modelData.completed ? MobileTheme.success
+                                                : taskRow.modelData.skipped
+                                                  || taskRow.modelData.occurrenceDate < root.controller.todayKey
+                                                  ? MobileTheme.urgent : MobileTheme.border
                                 }
                                 contentItem: Text {
                                     text: completionButton.text
@@ -289,7 +303,9 @@ Item {
                                     Layout.fillWidth: true
                                     text: taskRow.modelData.title
                                     Accessible.name: text
-                                    color: taskRow.modelData.completed ? MobileTheme.disabled : MobileTheme.foreground
+                                    color: taskRow.modelData.completed ? MobileTheme.disabled
+                                         : taskRow.modelData.skipped ? MobileTheme.urgent
+                                                                      : MobileTheme.foreground
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.bodySize
                                     font.strikeout: taskRow.modelData.completed
@@ -297,8 +313,17 @@ Item {
                                 }
 
                                 Text {
-                                    text: taskRow.modelData.scheduledTime + (taskRow.modelData.recurrenceLabel ? "  ·  " + taskRow.modelData.recurrenceLabel : "") + (taskRow.modelData.occurrenceDate < root.controller.todayKey && !taskRow.modelData.completed ? "  ·  ATRASADA" : "")
-                                    color: taskRow.modelData.occurrenceDate < root.controller.todayKey && !taskRow.modelData.completed ? MobileTheme.urgent : MobileTheme.subdued
+                                    text: taskRow.modelData.scheduledTime
+                                          + (taskRow.modelData.recurrenceLabel
+                                             ? "  ·  " + taskRow.modelData.recurrenceLabel : "")
+                                          + (taskRow.modelData.skipped
+                                             ? "  ·  NÃO FEITA"
+                                             : taskRow.modelData.occurrenceDate < root.controller.todayKey
+                                               && !taskRow.modelData.completed ? "  ·  ATRASADA" : "")
+                                    color: taskRow.modelData.skipped
+                                           || (taskRow.modelData.occurrenceDate < root.controller.todayKey
+                                               && !taskRow.modelData.completed)
+                                         ? MobileTheme.urgent : MobileTheme.subdued
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.captionSize
                                 }

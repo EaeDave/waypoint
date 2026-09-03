@@ -87,6 +87,7 @@ public:
                             const QString &emoji);
   Q_INVOKABLE bool setTaskCompleted(const QString &taskId, const QString &occurrenceDateKey, bool recurring,
                                     bool completed);
+  Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
 
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,

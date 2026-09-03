@@ -81,6 +81,14 @@ void MobileControllerTest::showOnlyFirstPendingRecurrenceOnCalendar() {
                                       today.toString(Qt::ISODate), true, true));
   QCOMPARE(controller.selectedTasks().size(), 1);
   QVERIFY(controller.selectedTasks().first().toMap().value(QStringLiteral("completed")).toBool());
+  QVERIFY(controller.setTaskCompleted(todayTask.value(QStringLiteral("taskId")).toString(),
+                                      today.toString(Qt::ISODate), true, false));
+  QVERIFY(controller.skipTaskOccurrence(todayTask.value(QStringLiteral("taskId")).toString(),
+                                         today.toString(Qt::ISODate)));
+  QCOMPARE(controller.selectedTasks().size(), 1);
+  const QVariantMap skippedToday = controller.selectedTasks().first().toMap();
+  QVERIFY(skippedToday.value(QStringLiteral("skipped")).toBool());
+  QVERIFY(!skippedToday.value(QStringLiteral("completed")).toBool());
 
   controller.setSelectedDateKey(today.addDays(1).toString(Qt::ISODate));
   QCOMPARE(controller.selectedTasks().size(), 1);
@@ -132,6 +140,13 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
                             QStringLiteral("📤"), &completed, &error),
            qPrintable(error));
   QVERIFY2(store.setTaskCompleted(completed.id, true, &error), qPrintable(error));
+  waypoint::RecurrenceRule daily;
+  daily.frequency = waypoint::RecurrenceFrequency::Daily;
+  waypoint::TaskRecord skipped;
+  QVERIFY2(store.createTask(QStringLiteral("Alongar"), today, QTime(7, 30), daily, {},
+                            QStringLiteral("🧘"), &skipped, &error),
+           qPrintable(error));
+  QVERIFY2(store.skipOccurrence(skipped.id, today, &error), qPrintable(error));
   const QJsonArray holidays{
       QJsonObject{{QStringLiteral("date"), QStringLiteral("2026-09-07")},
                   {QStringLiteral("name"), QStringLiteral("Independência do Brasil")},
@@ -150,7 +165,7 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
 
   const QJsonObject snapshot = waypoint::buildWidgetSnapshot(store, today, 1, 1, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 2);
+  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 3);
   QCOMPARE(snapshot.value(QStringLiteral("today")).toString(), QStringLiteral("2026-09-02"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeStart")).toString(), QStringLiteral("2026-08-01"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeEnd")).toString(), QStringLiteral("2026-10-31"));
@@ -167,9 +182,10 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
            QStringLiteral("national"));
   const QJsonArray todayTasks =
       dates.value(QStringLiteral("2026-09-02")).toObject().value(QStringLiteral("tasks")).toArray();
-  QCOMPARE(todayTasks.size(), 2);
+  QCOMPARE(todayTasks.size(), 3);
   bool foundOverdue = false;
   bool foundCompleted = false;
+  bool foundSkipped = false;
   for (const QJsonValue &value : todayTasks) {
     const QJsonObject task = value.toObject();
     if (task.value(QStringLiteral("taskId")).toString() == overdue.id) {
@@ -179,9 +195,14 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
       foundCompleted =
           task.value(QStringLiteral("completed")).toBool() && !task.value(QStringLiteral("overdue")).toBool();
     }
+    if (task.value(QStringLiteral("taskId")).toString() == skipped.id) {
+      foundSkipped =
+          task.value(QStringLiteral("skipped")).toBool() && !task.value(QStringLiteral("overdue")).toBool();
+    }
   }
   QVERIFY(foundOverdue);
   QVERIFY(foundCompleted);
+  QVERIFY(foundSkipped);
   const QJsonArray habits = snapshot.value(QStringLiteral("habits")).toArray();
   QCOMPARE(habits.size(), 1);
   QCOMPARE(habits.first().toObject().value(QStringLiteral("id")).toString(), habit.id);
@@ -412,7 +433,7 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
   };
   waypoint::BackgroundSyncResult result;
   QVERIFY2(waypoint::applyBackgroundSync(store, response, &result, &error), qPrintable(error));
-  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 2);
+  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 3);
   QVERIFY(result.notificationSchedule.isEmpty());
 }
 

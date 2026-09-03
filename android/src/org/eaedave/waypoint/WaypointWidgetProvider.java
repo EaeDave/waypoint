@@ -163,11 +163,16 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     for (int index = 0; index < DAY_IDS.length; ++index) {
       LocalDate date = firstCell.plusDays(index);
       JSONObject dateData = dates.optJSONObject(date.toString());
-      boolean hasTasks = dateData != null && dateData.optJSONArray("tasks") != null &&
-                         dateData.optJSONArray("tasks").length() > 0;
+      JSONArray dateTasks = dateData == null ? null : dateData.optJSONArray("tasks");
+      boolean hasTasks = dateTasks != null && dateTasks.length() > 0;
+      boolean hasSkippedTasks = false;
+      for (int taskIndex = 0; dateTasks != null && taskIndex < dateTasks.length(); ++taskIndex) {
+        JSONObject task = dateTasks.optJSONObject(taskIndex);
+        hasSkippedTasks = hasSkippedTasks || task != null && task.optBoolean("skipped", false);
+      }
       boolean hasHolidays = dateData != null && dateData.optJSONArray("holidays") != null &&
                             dateData.optJSONArray("holidays").length() > 0;
-      String markers = (hasTasks ? "•" : "") + (hasHolidays ? "◆" : "");
+      String markers = (hasSkippedTasks ? "×" : hasTasks ? "•" : "") + (hasHolidays ? "◆" : "");
       String label = Integer.toString(date.getDayOfMonth());
       if (!markers.isEmpty()) {
         label += "\n" + markers;
@@ -263,6 +268,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
         continue;
       }
       boolean completed = task.optBoolean("completed", false);
+      boolean skipped = task.optBoolean("skipped", false);
       boolean overdue = task.optBoolean("overdue", false);
       String emoji = task.optString("emoji", "").trim();
       String title = task.optString("title", "Tarefa");
@@ -276,20 +282,26 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
         titleText = struck;
       }
       String time = task.optString("scheduledTime", "");
-      if (overdue) {
+      if (skipped) {
+        time = time.isEmpty() ? "NÃO FEITA" : time + " · NÃO FEITA";
+      } else if (overdue) {
         time = time.isEmpty() ? "ATRASADA" : time + " · ATRASADA";
       }
 
       views.setViewVisibility(TASK_ROW_IDS[index], View.VISIBLE);
-      views.setImageViewResource(TASK_STATUS_IDS[index], completed ? R.drawable.waypoint_widget_task_completed
-                                                                   : R.drawable.waypoint_widget_task_pending);
+      int statusResource = completed ? R.drawable.waypoint_widget_task_completed
+                                     : skipped ? R.drawable.waypoint_widget_task_skipped
+                                               : R.drawable.waypoint_widget_task_pending;
+      views.setImageViewResource(TASK_STATUS_IDS[index], statusResource);
       views.setTextViewText(TASK_TITLE_IDS[index], titleText);
-      views.setTextColor(TASK_TITLE_IDS[index], completed ? COLOR_DISABLED : COLOR_FOREGROUND);
+      views.setTextColor(TASK_TITLE_IDS[index],
+                         completed ? COLOR_DISABLED : skipped ? COLOR_URGENT : COLOR_FOREGROUND);
       views.setTextViewText(TASK_TIME_IDS[index], time);
-      views.setTextColor(TASK_TIME_IDS[index], overdue ? COLOR_URGENT : COLOR_SUBDUED);
+      views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT : COLOR_SUBDUED);
       views.setOnClickPendingIntent(TASK_ROW_IDS[index], openApp);
-      views.setOnClickPendingIntent(TASK_STATUS_IDS[index],
-                                    taskCompletionIntent(context, appWidgetId, task, index, !completed));
+      views.setOnClickPendingIntent(
+          TASK_STATUS_IDS[index],
+          taskCompletionIntent(context, appWidgetId, task, index, !completed && !skipped));
     }
   }
 

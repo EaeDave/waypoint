@@ -15,7 +15,8 @@ void setError(QString *errorMessage, const QString &message) {
 
 QJsonObject occurrenceValue(const TaskOccurrence &occurrence, const QDate &today) {
   QJsonObject value = occurrence.toJson();
-  value.insert(QStringLiteral("overdue"), occurrence.occurrenceDate < today && !occurrence.completed);
+  value.insert(QStringLiteral("overdue"),
+               occurrence.occurrenceDate < today && !occurrence.completed && !occurrence.skipped);
   return value;
 }
 
@@ -114,7 +115,7 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 2},
+      {QStringLiteral("schemaVersion"), 3},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},

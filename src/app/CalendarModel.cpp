@@ -50,6 +50,8 @@ QVariant CalendarModel::data(const QModelIndex &index, int role) const {
     return cell.completedCount;
   case OverdueCountRole:
     return cell.overdueCount;
+  case SkippedCountRole:
+    return cell.skippedCount;
   case WeekNumberRole:
     return cell.date.weekNumber();
   case HolidayCountRole:
@@ -73,6 +75,7 @@ QHash<int, QByteArray> CalendarModel::roleNames() const {
       {PendingCountRole, "pendingCount"},
       {CompletedCountRole, "completedCount"},
       {OverdueCountRole, "overdueCount"},
+      {SkippedCountRole, "skippedCount"},
       {HolidayCountRole, "holidayCount"},
       {HolidayKindRole, "holidayKind"},
       {HolidayNamesRole, "holidayNames"},
@@ -147,7 +150,9 @@ void CalendarModel::rebuildCells() {
       if (!occurrence.calendarMarker) {
         continue;
       }
-      if (occurrence.completed) {
+      if (occurrence.skipped) {
+        ++cell.skippedCount;
+      } else if (occurrence.completed) {
         ++cell.completedCount;
       } else {
         ++cell.pendingCount;

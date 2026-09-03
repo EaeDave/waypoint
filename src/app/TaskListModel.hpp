@@ -13,6 +13,7 @@ class TaskListModel final : public QAbstractListModel {
   Q_PROPERTY(QDate focusDate READ focusDate WRITE setFocusDate NOTIFY focusDateChanged)
   Q_PROPERTY(int pendingCount READ pendingCount NOTIFY summaryChanged)
   Q_PROPERTY(int overdueCount READ overdueCount NOTIFY summaryChanged)
+  Q_PROPERTY(int skippedCount READ skippedCount NOTIFY summaryChanged)
 
 public:
   enum Role {
@@ -23,6 +24,7 @@ public:
     ReminderMinutesBeforeRole,
     EmojiRole,
     CompletedRole,
+    SkippedRole,
     OverdueRole,
     RecurringRole,
     RecurrenceLabelRole,
@@ -40,6 +42,7 @@ public:
   void setFocusDate(const QDate &date);
   [[nodiscard]] int pendingCount() const;
   [[nodiscard]] int overdueCount() const;
+  [[nodiscard]] int skippedCount() const;
   void setSourceOccurrences(const QList<TaskOccurrence> &occurrences);
 
 signals:

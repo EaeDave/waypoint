@@ -25,6 +25,7 @@ public:
     PendingCountRole,
     CompletedCountRole,
     OverdueCountRole,
+    SkippedCountRole,
     WeekNumberRole,
     HolidayCountRole,
     HolidayKindRole,
@@ -59,6 +60,7 @@ private:
     int pendingCount = 0;
     int completedCount = 0;
     int overdueCount = 0;
+    int skippedCount = 0;
     int holidayCount = 0;
     QString holidayKind;
     QStringList holidayNames;

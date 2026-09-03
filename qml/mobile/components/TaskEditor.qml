@@ -370,6 +370,30 @@ Popup {
 
                 MobileButton {
                     Layout.fillWidth: true
+                    visible: !!root.editingTask.taskId && root.editingTask.recurring
+                             && !root.editingTask.completed && !root.editingTask.skipped
+                    text: "MARCAR COMO NÃO FEITA"
+                    onClicked: {
+                        if (root.controller.skipTaskOccurrence(root.editingTask.taskId,
+                                                               root.editingTask.occurrenceDate))
+                            root.close();
+                    }
+                }
+
+                MobileButton {
+                    Layout.fillWidth: true
+                    visible: !!root.editingTask.taskId && root.editingTask.skipped
+                    text: "REABRIR OCORRÊNCIA"
+                    onClicked: {
+                        if (root.controller.setTaskCompleted(root.editingTask.taskId,
+                                                             root.editingTask.occurrenceDate,
+                                                             true, false))
+                            root.close();
+                    }
+                }
+
+                MobileButton {
+                    Layout.fillWidth: true
                     visible: !!root.editingTask.taskId
                     text: "EXCLUIR TAREFA"
                     destructive: true

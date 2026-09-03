@@ -14,6 +14,7 @@ Rectangle {
     required property int pendingCount
     required property int completedCount
     required property int overdueCount
+    required property int skippedCount
     required property int holidayCount
     required property string holidayKind
     required property var holidayNames
@@ -68,6 +69,15 @@ Rectangle {
         anchors.bottomMargin: 6
         spacing: 3
 
+        Text {
+            visible: root.skippedCount > 0
+            text: root.skippedCount === 1 ? "×" : "×" + root.skippedCount
+            color: WaypointTheme.urgent
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.captionSize
+            font.bold: true
+        }
+
         Repeater {
             model: Math.min(root.pendingCount, 3)
 
@@ -81,7 +91,7 @@ Rectangle {
         }
 
         Rectangle {
-            visible: root.pendingCount === 0 && root.completedCount > 0
+            visible: root.pendingCount === 0 && root.skippedCount === 0 && root.completedCount > 0
             width: 4
             height: 4
             radius: 2
@@ -91,11 +101,17 @@ Rectangle {
         }
     }
 
-    ToolTip.visible: pointer.containsMouse && (root.pendingCount + root.completedCount + root.holidayCount) > 0
+    ToolTip.visible: pointer.containsMouse
+                         && (root.pendingCount + root.completedCount + root.skippedCount
+                             + root.holidayCount) > 0
     ToolTip.text: {
-        const taskSummary = root.pendingCount + root.completedCount > 0
-            ? root.pendingCount + " pendente" + (root.pendingCount === 1 ? "" : "s") + (root.completedCount > 0 ? " · " + root.completedCount + " concluída" + (root.completedCount === 1 ? "" : "s") : "")
-            : "";
+        const pending = root.pendingCount > 0
+            ? root.pendingCount + " pendente" + (root.pendingCount === 1 ? "" : "s") : "";
+        const completed = root.completedCount > 0
+            ? root.completedCount + " concluída" + (root.completedCount === 1 ? "" : "s") : "";
+        const skipped = root.skippedCount > 0
+            ? root.skippedCount + " não feita" + (root.skippedCount === 1 ? "" : "s") : "";
+        const taskSummary = [pending, completed, skipped].filter(part => part !== "").join(" · ");
         const holidaySummary = root.holidayCount > 0 ? root.holidayNames.join(" · ") : "";
         return taskSummary !== "" && holidaySummary !== "" ? taskSummary + "\n" + holidaySummary
                                                           : taskSummary + holidaySummary;

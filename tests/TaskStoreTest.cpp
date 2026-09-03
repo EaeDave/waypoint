@@ -384,23 +384,28 @@ void TaskStoreTest::applyRemoteOccurrenceChangesIdempotently() {
   QCOMPARE(store.listActiveTasks(&error).first().emoji, QStringLiteral("🧠"));
 
   QVERIFY2(store.applyRemoteChanges({occurrenceChange(QDate(2026, 1, 2), QStringLiteral("skipped"), 4),
-                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2)},
+                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2),
+                                     occurrenceChange(QDate(2026, 1, 4), QStringLiteral("skipped"), 1)},
                                     QStringLiteral("4"), {}, &error),
            qPrintable(error));
   const auto states = store.listOccurrenceStates(&error);
-  QCOMPARE(states.size(), 2);
+  QCOMPARE(states.size(), 3);
   QCOMPARE(states.at(0).occurrenceDate, QDate(2026, 1, 2));
   QCOMPARE(states.at(0).status, waypoint::OccurrenceStatus::Completed);
   QCOMPARE(states.at(0).version, 5);
   QCOMPARE(states.at(1).occurrenceDate, QDate(2026, 1, 3));
   QCOMPARE(states.at(1).status, waypoint::OccurrenceStatus::Completed);
   QCOMPARE(states.at(1).version, 2);
+  QCOMPARE(states.at(2).occurrenceDate, QDate(2026, 1, 4));
+  QCOMPARE(states.at(2).status, waypoint::OccurrenceStatus::Skipped);
+  QCOMPARE(states.at(2).version, 1);
 
   QVERIFY2(store.applyRemoteChanges({occurrenceChange(QDate(2026, 1, 2), QStringLiteral("completed"), 5),
-                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2)},
+                                     occurrenceChange(QDate(2026, 1, 3), QStringLiteral("completed"), 2),
+                                     occurrenceChange(QDate(2026, 1, 4), QStringLiteral("skipped"), 1)},
                                     QStringLiteral("6"), {}, &error),
            qPrintable(error));
-  QCOMPARE(store.listOccurrenceStates(&error).size(), 2);
+  QCOMPARE(store.listOccurrenceStates(&error).size(), 3);
 
   QSignalSpy tasksChanged(&store, &waypoint::TaskStore::tasksChanged);
   QVERIFY2(store.applyRemoteChanges({}, QStringLiteral("6"), {}, &error), qPrintable(error));
@@ -423,16 +428,20 @@ void TaskStoreTest::applyRecurrenceDeletionScopes() {
       store.deleteOccurrence(task.id, QDate(2026, 1, 2), waypoint::RecurrenceEditScope::Occurrence, &error),
       qPrintable(error));
   auto occurrences = store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 4), &error);
-  QCOMPARE(occurrences.size(), 3);
+  QCOMPARE(occurrences.size(), 4);
   QCOMPARE(occurrences.at(0).occurrenceDate, QDate(2026, 1, 1));
-  QCOMPARE(occurrences.at(1).occurrenceDate, QDate(2026, 1, 3));
+  QCOMPARE(occurrences.at(1).occurrenceDate, QDate(2026, 1, 2));
+  QVERIFY(occurrences.at(1).skipped);
+  QCOMPARE(occurrences.at(2).occurrenceDate, QDate(2026, 1, 3));
 
   QVERIFY2(
       store.deleteOccurrence(task.id, QDate(2026, 1, 3), waypoint::RecurrenceEditScope::Following, &error),
       qPrintable(error));
   occurrences = store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 5), &error);
-  QCOMPARE(occurrences.size(), 1);
-  QCOMPARE(occurrences.first().occurrenceDate, QDate(2026, 1, 1));
+  QCOMPARE(occurrences.size(), 2);
+  QCOMPARE(occurrences.at(0).occurrenceDate, QDate(2026, 1, 1));
+  QCOMPARE(occurrences.at(1).occurrenceDate, QDate(2026, 1, 2));
+  QVERIFY(occurrences.at(1).skipped);
   QCOMPARE(store.listActiveTasks(&error).first().recurrence.untilDate, QDate(2026, 1, 2));
 }
 

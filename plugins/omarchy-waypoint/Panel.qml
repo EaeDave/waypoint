@@ -32,6 +32,7 @@ Panel {
     property string editingTaskId: ""
     property string editingOccurrenceDate: ""
     property bool editingCompleted: false
+    property bool editingSkipped: false
     property bool timePickerVisible: false
     property bool reminderPickerVisible: false
     property var timePickerTarget: null
@@ -361,6 +362,7 @@ Panel {
         editingTaskId = String(task.taskId || "");
         editingOccurrenceDate = String(task.occurrenceDate || "");
         editingCompleted = task.completed === true;
+        editingSkipped = task.skipped === true;
         taskTitleInput.text = String(task.title || "");
         taskTimeInput.text = String(task.scheduledTime || "");
         editingEmoji = String(task.emoji || "");
@@ -423,6 +425,12 @@ Panel {
         if (!hostWidget)
             return;
         hostWidget.skipOccurrence(editingTaskId, editingOccurrenceDate);
+        closeTaskEditor();
+    }
+    function reopenEditedOccurrence() {
+        if (!hostWidget)
+            return;
+        hostWidget.setOccurrenceCompleted(editingTaskId, editingOccurrenceDate, false);
         closeTaskEditor();
     }
 
@@ -787,6 +795,16 @@ Panel {
                                                 anchors.bottomMargin: Style.space(3)
                                                 spacing: Style.space(2)
 
+                                                Text {
+                                                    visible: modelData.skipped > 0
+                                                    text: modelData.skipped === 1
+                                                        ? "×" : "×" + modelData.skipped
+                                                    color: Color.urgent
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    font.bold: true
+                                                }
+
                                                 Repeater {
                                                     model: Math.min(modelData.pending, 3)
 
@@ -971,7 +989,7 @@ Panel {
                                 id: taskRow
                                 required property var modelData
                                 readonly property bool overdue:
-                                    !modelData.completed
+                                    !modelData.completed && !modelData.skipped
                                     && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
                                 width: parent.width
                                 height: Style.space(46)
@@ -986,8 +1004,10 @@ Panel {
 
                                     Text {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.completed ? "󰄲" : "󰄱"
-                                        color: modelData.completed ? Color.accent : root.foreground
+                                        text: modelData.completed ? "󰄲"
+                                            : modelData.skipped ? "×" : "󰄱"
+                                        color: modelData.completed ? Color.accent
+                                             : modelData.skipped ? Color.urgent : root.foreground
                                         font.family: root.fontFamily
                                         font.pixelSize: Style.font.body
                                     }
@@ -1012,7 +1032,8 @@ Panel {
                                         Text {
                                             width: parent.width
                                             text: modelData.title
-                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8) : root.foreground
+                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8)
+                                                 : modelData.skipped ? Color.urgent : root.foreground
                                             elide: Text.ElideRight
                                             font.family: root.fontFamily
                                             font.pixelSize: Style.font.body
@@ -1029,6 +1050,12 @@ Panel {
                                                     ? " · 󰂚 " + reminderCount : "";
                                                 const details = (recurrence === ""
                                                     ? time : time + " · " + recurrence) + reminder;
+                                                if (modelData.skipped) {
+                                                    const date = Qt.formatDate(
+                                                        Model.parseLocalDate(modelData.occurrenceDate),
+                                                        "dd MMM").toUpperCase();
+                                                    return "NÃO FEITA · " + date + " · " + details;
+                                                }
                                                 if (!taskRow.overdue)
                                                     return details;
                                                 const date = Qt.formatDate(
@@ -1036,7 +1063,8 @@ Panel {
                                                     "dd MMM").toUpperCase();
                                                 return "ATRASADA · " + date + " · " + details;
                                             }
-                                            color: taskRow.overdue ? Color.urgent : Color.accent
+                                            color: modelData.skipped || taskRow.overdue
+                                                ? Color.urgent : Color.accent
                                             elide: Text.ElideRight
                                             font.family: root.fontFamily
                                             font.pixelSize: Style.font.caption
@@ -1085,7 +1113,7 @@ Panel {
                                     onClicked: if (root.hostWidget)
                                         root.hostWidget.setOccurrenceCompleted(
                                             modelData.taskId, modelData.occurrenceDate,
-                                            !modelData.completed)
+                                            modelData.skipped ? false : !modelData.completed)
                                 }
                             }
                         }
@@ -1994,12 +2022,21 @@ Panel {
                                 onClicked: root.deleteEditedTask()
                             }
                             Button {
-                                visible: root.editingRecurringTask && !root.editingCompleted
+                                visible: root.editingRecurringTask
+                                         && !root.editingCompleted && !root.editingSkipped
                                 text: "Marcar não feita"
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 bordered: true
                                 onClicked: root.skipEditedOccurrence()
+                            }
+                            Button {
+                                visible: root.editingSkipped
+                                text: "Reabrir ocorrência"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.reopenEditedOccurrence()
                             }
                             Item {
                                 Layout.fillWidth: true

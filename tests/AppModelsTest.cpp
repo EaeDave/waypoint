@@ -12,6 +12,7 @@ private slots:
   void aggregateHolidayMarkersByCalendarDate();
   void includeOverdueTasksOnlyInTodayView();
   void showOnlyCurrentRecurringOccurrenceInDateLists();
+  void exposeSkippedRecurringOccurrence();
   void sortTasksByFloatingLocalTime();
   void exposeEmojiRoleWithoutBreakingLegacyTasks();
 };
@@ -173,6 +174,37 @@ void AppModelsTest::showOnlyCurrentRecurringOccurrenceInDateLists() {
   QCOMPARE(model.rowCount(), 1);
   QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::TaskIdRole).toString(),
            QStringLiteral("completed-today"));
+}
+
+void AppModelsTest::exposeSkippedRecurringOccurrence() {
+  const QDate skippedDate = QDate::currentDate().addDays(-1);
+  waypoint::TaskOccurrence skipped =
+      occurrence(QStringLiteral("skipped-recurring"), skippedDate, false, true);
+  skipped.skipped = true;
+  skipped.calendarMarker = true;
+
+  waypoint::TaskListModel tasks;
+  tasks.setSourceOccurrences({skipped});
+  tasks.setFocusDate(skippedDate);
+  QCOMPARE(tasks.rowCount(), 1);
+  QCOMPARE(tasks.pendingCount(), 0);
+  QCOMPARE(tasks.overdueCount(), 0);
+  QCOMPARE(tasks.skippedCount(), 1);
+  QVERIFY(tasks.data(tasks.index(0, 0), waypoint::TaskListModel::SkippedRole).toBool());
+  QCOMPARE(tasks.roleNames().value(waypoint::TaskListModel::SkippedRole), QByteArrayLiteral("skipped"));
+
+  waypoint::CalendarModel calendar;
+  calendar.setSourceOccurrences({skipped});
+  for (int row = 0; row < calendar.rowCount(); ++row) {
+    const QModelIndex index = calendar.index(row, 0);
+    if (calendar.data(index, waypoint::CalendarModel::DateRole).toString() ==
+        skippedDate.toString(Qt::ISODate)) {
+      QCOMPARE(calendar.data(index, waypoint::CalendarModel::PendingCountRole).toInt(), 0);
+      QCOMPARE(calendar.data(index, waypoint::CalendarModel::SkippedCountRole).toInt(), 1);
+      return;
+    }
+  }
+  QFAIL("skipped date is absent from the visible calendar grid");
 }
 
 void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {

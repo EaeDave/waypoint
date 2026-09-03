@@ -13,6 +13,7 @@ Rectangle {
     required property string scheduledTimeKey
     required property string emoji
     required property bool completed
+    required property bool skipped
     required property bool overdue
     required property bool recurring
     required property string recurrenceLabel
@@ -26,7 +27,7 @@ Rectangle {
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: root.overdue || root.recurring ? 62 : 50
+    implicitHeight: root.skipped || root.overdue || root.recurring ? 62 : 50
     radius: WaypointTheme.radius
     color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
 
@@ -40,16 +41,18 @@ Rectangle {
             Layout.preferredWidth: 18
             Layout.preferredHeight: 18
             radius: WaypointTheme.radius
-            color: root.completed ? WaypointTheme.accent : WaypointTheme.controlFill
+            color: root.completed ? WaypointTheme.accent
+                 : root.skipped ? WaypointTheme.urgent
+                 : WaypointTheme.controlFill
             border.width: 1
             border.color: root.completed ? WaypointTheme.accent
-                        : root.overdue ? WaypointTheme.urgent
+                        : root.skipped || root.overdue ? WaypointTheme.urgent
                         : WaypointTheme.controlBorder
 
             Text {
                 anchors.centerIn: parent
-                visible: root.completed
-                text: "✓"
+                visible: root.completed || root.skipped
+                text: root.completed ? "✓" : "×"
                 color: WaypointTheme.background
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.bodySmallSize
@@ -59,9 +62,9 @@ Rectangle {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.controller.setOccurrenceCompleted(root.taskId,
-                                                                   root.scheduledDateKey,
-                                                                   !root.completed)
+                onClicked: root.controller.setOccurrenceCompleted(
+                               root.taskId, root.scheduledDateKey,
+                               root.skipped ? false : !root.completed)
             }
         }
 
@@ -71,7 +74,8 @@ Rectangle {
             Layout.alignment: Qt.AlignVCenter
             text: root.emoji
             horizontalAlignment: Text.AlignHCenter
-            color: root.completed ? WaypointTheme.disabledText : WaypointTheme.foreground
+            color: root.completed ? WaypointTheme.disabledText
+                 : root.skipped ? WaypointTheme.urgent : WaypointTheme.foreground
             font.family: "Noto Color Emoji"
             font.pixelSize: 20
         }
@@ -83,7 +87,8 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: root.title
-                color: root.completed ? WaypointTheme.disabledText : WaypointTheme.foreground
+                color: root.completed ? WaypointTheme.disabledText
+                     : root.skipped ? WaypointTheme.urgent : WaypointTheme.foreground
                 elide: Text.ElideRight
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.bodySize
@@ -91,15 +96,20 @@ Rectangle {
             }
 
             Text {
-                visible: root.overdue || root.recurring
+                visible: root.skipped || root.overdue || root.recurring
                 text: {
                     const recurrence = root.recurring ? root.recurrenceLabel : "";
+                    const date = Qt.formatDate(root.scheduledDateValue, "dd MMM");
+                    if (root.skipped) {
+                        const missed = "NÃO FEITA · " + date;
+                        return recurrence === "" ? missed : missed + " · " + recurrence;
+                    }
                     if (!root.overdue)
                         return recurrence;
-                    const overdue = "ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM");
+                    const overdue = "ATRASADA · " + date;
                     return recurrence === "" ? overdue : overdue + " · " + recurrence;
                 }
-                color: root.overdue ? WaypointTheme.urgent : WaypointTheme.accent
+                color: root.skipped || root.overdue ? WaypointTheme.urgent : WaypointTheme.accent
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
                 font.bold: true
@@ -112,7 +122,8 @@ Rectangle {
                 (root.reminderMinutesBefore || []).length
             text: root.scheduledTimeKey
                   + (reminderCount > 0 ? " · 󰂚 " + reminderCount : "")
-            color: root.completed ? WaypointTheme.disabledText : WaypointTheme.subduedText
+            color: root.completed ? WaypointTheme.disabledText
+                 : root.skipped ? WaypointTheme.urgent : WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.bodySmallSize
         }
@@ -126,7 +137,7 @@ Rectangle {
             text: "⋯"
             onClicked: root.openActionsMenuFromButton()
             ToolTip.visible: hovered
-            ToolTip.text: "Editar, marcar ou excluir tarefa"
+            ToolTip.text: "Editar, marcar status ou excluir tarefa"
 
             Menu {
                 id: actionsMenu
@@ -160,10 +171,17 @@ Rectangle {
                                                                   "series")
                 }
                 AppMenuItem {
-                    visible: root.recurring && !root.completed
+                    visible: root.recurring && !root.completed && !root.skipped
                     text: "Marcar como não feita"
                     onTriggered: root.controller.skipOccurrence(root.taskId,
                                                                 root.scheduledDateKey)
+                }
+                AppMenuItem {
+                    visible: root.skipped
+                    text: "Reabrir ocorrência"
+                    onTriggered: root.controller.setOccurrenceCompleted(root.taskId,
+                                                                        root.scheduledDateKey,
+                                                                        false)
                 }
                 AppMenuItem {
                     visible: root.recurring

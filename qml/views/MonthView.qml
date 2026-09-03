@@ -209,7 +209,13 @@ Item {
 
                     Text {
                         Layout.topMargin: 6
-                        text: root.controller.selectedDateTasks.pendingCount + " pendente" + (root.controller.selectedDateTasks.pendingCount === 1 ? "" : "s")
+                        text: {
+                            const pending = root.controller.selectedDateTasks.pendingCount;
+                            const skipped = root.controller.selectedDateTasks.skippedCount;
+                            const pendingLabel = pending + " pendente" + (pending === 1 ? "" : "s");
+                            return skipped === 0 ? pendingLabel
+                                 : pendingLabel + " · " + skipped + " não feita" + (skipped === 1 ? "" : "s");
+                        }
                         color: WaypointTheme.subduedText
                         font.family: WaypointTheme.fontFamily
                         font.pixelSize: WaypointTheme.captionSize

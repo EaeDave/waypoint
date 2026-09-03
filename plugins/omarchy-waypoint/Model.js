@@ -38,12 +38,15 @@ function monthCells(year, month, occurrences, holidays) {
         let pending = 0
         let completed = 0
         let overdue = 0
+        let skipped = 0
         for (const occurrence of occurrences || []) {
             if (occurrence.occurrenceDate !== key)
                 continue
-            if (occurrence.calendarMarker === false)
+            if (occurrence.calendarMarker === false && occurrence.skipped !== true)
                 continue
-            if (occurrence.completed) {
+            if (occurrence.skipped) {
+                ++skipped
+            } else if (occurrence.completed) {
                 ++completed
             } else {
                 ++pending
@@ -67,6 +70,7 @@ function monthCells(year, month, occurrences, holidays) {
             pending: pending,
             completed: completed,
             overdue: overdue,
+            skipped: skipped,
             holidays: holidayEvents,
             holidayCount: holidayEvents.length,
             holidayKind: holidayKind
@@ -107,7 +111,8 @@ function occurrencesForDate(occurrences, date) {
     const key = dateKey(date)
     return (occurrences || []).filter(occurrence =>
         occurrence.occurrenceDate === key
-        && (occurrence.recurring !== true || occurrence.calendarMarker !== false))
+        && (occurrence.recurring !== true || occurrence.calendarMarker !== false
+            || occurrence.skipped === true))
 }
 function holidaysForDate(holidays, date) {
     const key = dateKey(date)

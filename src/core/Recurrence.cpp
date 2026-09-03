@@ -154,6 +154,13 @@ QDate firstUnresolvedDueDate(const TaskRecord &task,
   return {};
 }
 
+int occurrenceStatusRank(const TaskOccurrence &occurrence) {
+  if (occurrence.completed) {
+    return 2;
+  }
+  return occurrence.skipped ? 1 : 0;
+}
+
 TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const TaskOccurrenceState *state) {
   TaskOccurrence occurrence;
   occurrence.taskId = task.id;
@@ -163,6 +170,7 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.reminderMinutesBefore = task.reminderMinutesBefore;
   occurrence.emoji = task.emoji;
   occurrence.completed = state != nullptr && state->status == OccurrenceStatus::Completed;
+  occurrence.skipped = state != nullptr && state->status == OccurrenceStatus::Skipped;
   occurrence.recurring = task.recurrence.isRecurring();
   occurrence.calendarMarker = !occurrence.recurring;
   occurrence.recurrenceLabel = task.recurrence.label();
@@ -308,6 +316,7 @@ QJsonObject TaskOccurrence::toJson() const {
       {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       {QStringLiteral("emoji"), emoji},
       {QStringLiteral("completed"), completed},
+      {QStringLiteral("skipped"), skipped},
       {QStringLiteral("recurring"), recurring},
       {QStringLiteral("calendarMarker"), calendarMarker},
       {QStringLiteral("recurrenceLabel"), recurrenceLabel},
@@ -398,9 +407,6 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
 
     for (const QDate &date : recurrenceDates(task.scheduledDate, task.recurrence, from, to)) {
       const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, date));
-      if (state != stateByOccurrence.cend() && state->status == OccurrenceStatus::Skipped) {
-        continue;
-      }
       occurrences.append(
           occurrenceFor(task, date, state == stateByOccurrence.cend() ? nullptr : &state.value()));
     }
@@ -411,8 +417,10 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
               if (left.occurrenceDate != right.occurrenceDate) {
                 return left.occurrenceDate < right.occurrenceDate;
               }
-              if (left.completed != right.completed) {
-                return !left.completed;
+              const int leftStatus = occurrenceStatusRank(left);
+              const int rightStatus = occurrenceStatusRank(right);
+              if (leftStatus != rightStatus) {
+                return leftStatus < rightStatus;
               }
               if (left.scheduledTime != right.scheduledTime) {
                 return left.scheduledTime < right.scheduledTime;
@@ -448,7 +456,7 @@ QList<TaskOccurrence> assignCalendarMarkers(QList<TaskOccurrence> occurrences, c
       if (occurrence.taskId != task.id) {
         continue;
       }
-      occurrence.calendarMarker = occurrence.occurrenceDate == pendingMarkerDate;
+      occurrence.calendarMarker = occurrence.skipped || occurrence.occurrenceDate == pendingMarkerDate;
     }
   }
   return occurrences;
@@ -482,15 +490,19 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
     }
 
     const auto todayState = stateByOccurrence.constFind(occurrenceKey(task.id, today));
-    if (todayState != stateByOccurrence.cend() && todayState->status == OccurrenceStatus::Completed) {
+    if (todayState != stateByOccurrence.cend() &&
+        (todayState->status == OccurrenceStatus::Completed ||
+         todayState->status == OccurrenceStatus::Skipped)) {
       occurrences.append(occurrenceFor(task, today, &todayState.value()));
     }
   }
 
   std::sort(occurrences.begin(), occurrences.end(),
             [](const TaskOccurrence &left, const TaskOccurrence &right) {
-              if (left.completed != right.completed) {
-                return !left.completed;
+              const int leftStatus = occurrenceStatusRank(left);
+              const int rightStatus = occurrenceStatusRank(right);
+              if (leftStatus != rightStatus) {
+                return leftStatus < rightStatus;
               }
               if (left.scheduledTime != right.scheduledTime) {
                 return left.scheduledTime < right.scheduledTime;
@@ -506,6 +518,9 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
 OccurrenceSummary summarizeOccurrences(const QList<TaskOccurrence> &occurrences, const QDate &today) {
   OccurrenceSummary summary;
   for (const TaskOccurrence &occurrence : occurrences) {
+    if (occurrence.skipped) {
+      continue;
+    }
     if (occurrence.completed) {
       continue;
     }

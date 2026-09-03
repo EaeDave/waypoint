@@ -31,6 +31,7 @@ TaskOccurrence occurrenceFromJson(const QJsonObject &json) {
       taskReminderMinutesBeforeFromJson(json.value(QStringLiteral("reminderMinutesBefore")));
   occurrence.emoji = json.value(QStringLiteral("emoji")).toString();
   occurrence.completed = json.value(QStringLiteral("completed")).toBool();
+  occurrence.skipped = json.value(QStringLiteral("skipped")).toBool();
   occurrence.recurring = json.value(QStringLiteral("recurring")).toBool();
   occurrence.calendarMarker = json.value(QStringLiteral("calendarMarker")).toBool(true);
   occurrence.recurrenceLabel = json.value(QStringLiteral("recurrenceLabel")).toString();
