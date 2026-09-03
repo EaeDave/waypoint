@@ -63,6 +63,8 @@ printf '[Paths]\nPrefix=%s\nPlugins=%s\n' \
 
 APPIMAGE_EXTRACT_AND_RUN=1 \
 NO_STRIP=1 \
+EXTRA_QT_MODULES="waylandcompositor" \
+EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so" \
 QML_SOURCES_PATHS="${repository_root}/qml" \
 LD_LIBRARY_PATH="${qt_libraries}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" \
 QMAKE="${filtered_qmake}" \
@@ -76,6 +78,11 @@ PATH="${tool_directory}:${PATH}" \
   --desktop-file "${app_directory}/usr/share/applications/waypoint.desktop" \
   --icon-file "${app_directory}/usr/share/icons/hicolor/scalable/apps/waypoint.svg" \
   --plugin qt
+
+if ! compgen -G "${app_directory}/usr/plugins/platforms/libqwayland*.so" >/dev/null; then
+  printf 'Linux package is missing the Qt Wayland platform plugin.\n' >&2
+  exit 1
+fi
 
 mkdir -p "${app_directory}/usr/share/waypoint"
 cp -a "${repository_root}/plugins/omarchy-waypoint" \
