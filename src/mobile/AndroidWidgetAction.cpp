@@ -1,5 +1,6 @@
 #include "core/TaskStore.hpp"
 #include "mobile/BackgroundSync.hpp"
+#include "mobile/WidgetSnapshot.hpp"
 #include "mobile/WidgetTaskAction.hpp"
 
 #include <QJsonDocument>
@@ -82,6 +83,24 @@ extern "C" JNIEXPORT jstring JNICALL Java_org_eaedave_waypoint_WaypointWidgetAct
                                         QDate::fromString(fromJavaString(environment, date), Qt::ISODate),
                                         amount, QDateTime::currentDateTime(), &result, &error);
   return widgetActionResponse(environment, applied, result, error);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_eaedave_waypoint_WaypointBackgroundSyncService_refreshWidgetSnapshot(JNIEnv *environment, jclass,
+                                                                              jstring databasePath) {
+  QString error;
+  waypoint::TaskStore store(fromJavaString(environment, databasePath));
+  const bool opened = store.open(&error);
+  const QJsonObject snapshot =
+      opened ? waypoint::buildWidgetSnapshot(store, QDate::currentDate(), 6, 12, &error) : QJsonObject{};
+  const bool refreshed = opened && error.isEmpty();
+  QJsonObject response{{QStringLiteral("ok"), refreshed}};
+  if (refreshed) {
+    response.insert(QStringLiteral("snapshot"), snapshot);
+  } else {
+    response.insert(QStringLiteral("error"), error);
+  }
+  return toJavaString(environment, QString::fromUtf8(QJsonDocument(response).toJson(QJsonDocument::Compact)));
 }
 
 extern "C" JNIEXPORT jstring JNICALL

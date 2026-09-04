@@ -81,6 +81,9 @@ export PATH="$java_home/bin:$android_sdk_root/platform-tools:/usr/bin:$PATH"
     -DQT_ANDROID_SIGN_APK="$sign_apk" \
     -DBUILD_TESTING=OFF
 cmake --build "$build_directory" --target apk
+"$build_directory/android-build/gradlew" \
+    --project-dir "$build_directory/android-build" \
+    "test${android_build_type}UnitTest"
 shopt -s nullglob
 if [[ "$sign_apk" == "ON" ]]; then
     apk_candidates=("$build_directory/android-build/build/outputs/apk/$build_variant/"*signed*.apk)

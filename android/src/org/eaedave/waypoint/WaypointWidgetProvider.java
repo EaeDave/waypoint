@@ -33,6 +33,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static final String EXTRA_DATE = "date";
   private static final String STATE_PREFERENCES = "waypoint_widget_state";
   private static final String SELECTED_DATE_PREFIX = "selectedDate:";
+  private static final String SELECTED_ON_PREFIX = "selectedOn:";
   private static final Locale PORTUGUESE = Locale.forLanguageTag("pt-BR");
   private static final DateTimeFormatter DATE_LABEL =
       DateTimeFormatter.ofPattern("EEE, d 'de' MMM", PORTUGUESE);
@@ -64,8 +65,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                               R.id.widget_habit_row_2, R.id.widget_habit_row_3};
   private static final int[] HABIT_TITLE_IDS = {R.id.widget_habit_title_0, R.id.widget_habit_title_1,
                                                 R.id.widget_habit_title_2, R.id.widget_habit_title_3};
-  private static final int[] HABIT_PROGRESS_IDS = {R.id.widget_habit_progress_0,
-                                                   R.id.widget_habit_progress_1,
+  private static final int[] HABIT_PROGRESS_IDS = {R.id.widget_habit_progress_0, R.id.widget_habit_progress_1,
                                                    R.id.widget_habit_progress_2,
                                                    R.id.widget_habit_progress_3};
   private static final int[] HABIT_ACTION_IDS = {R.id.widget_habit_action_0, R.id.widget_habit_action_1,
@@ -74,6 +74,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   @Override
   public void onEnabled(Context context) {
     WaypointBackgroundSyncScheduler.requestImmediate(context);
+    WaypointBackgroundSyncScheduler.requestLocalWidgetRefresh(context);
   }
 
   @Override
@@ -81,12 +82,14 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     for (int appWidgetId : appWidgetIds) {
       updateWidget(context, appWidgetManager, appWidgetId);
     }
+    requestRefreshIfSnapshotStale(context);
   }
 
   @Override
   public void onAppWidgetOptionsChanged(Context context, AppWidgetManager appWidgetManager, int appWidgetId,
                                         Bundle newOptions) {
     updateWidget(context, appWidgetManager, appWidgetId);
+    requestRefreshIfSnapshotStale(context);
   }
 
   @Override
@@ -94,6 +97,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     SharedPreferences.Editor editor = state(context).edit();
     for (int appWidgetId : appWidgetIds) {
       editor.remove(SELECTED_DATE_PREFIX + appWidgetId);
+      editor.remove(SELECTED_ON_PREFIX + appWidgetId);
     }
     editor.apply();
   }
@@ -129,6 +133,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     for (int appWidgetId : appWidgetIds) {
       updateWidget(context, manager, appWidgetId);
     }
+    requestRefreshIfSnapshotStale(context);
   }
 
   private static void updateWidget(Context context, AppWidgetManager manager, int appWidgetId) {
@@ -139,14 +144,16 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     if (dates == null) {
       dates = new JSONObject();
     }
-    JSONArray habits = snapshot.optJSONArray("habits");
+    boolean snapshotCurrent = today.toString().equals(snapshot.optString("today", ""));
+    JSONArray habits = snapshotCurrent ? snapshot.optJSONArray("habits") : null;
     String taskVisibility = snapshot.optString("taskVisibility", "all");
     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.waypoint_widget);
     int[] detailLimits =
         detailLimits(context, manager, appWidgetId, selectedDate.equals(today) && habits != null);
 
     renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
-    renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility, detailLimits[0]);
+    renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility, snapshotCurrent,
+                detailLimits[0]);
     renderHabits(context, views, appWidgetId, habits, detailLimits[1]);
 
     PendingIntent openApp = openAppIntent(context, appWidgetId);
@@ -241,15 +248,15 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return new int[] {0, 0};
   }
 
-  private static void renderTasks(Context context, RemoteViews views, int appWidgetId,
-                                  LocalDate selectedDate, JSONObject dates, String taskVisibility,
+  private static void renderTasks(Context context, RemoteViews views, int appWidgetId, LocalDate selectedDate,
+                                  JSONObject dates, String taskVisibility, boolean snapshotCurrent,
                                   int taskLimit) {
     String dateLabel = selectedDate.format(DATE_LABEL);
     views.setTextViewText(R.id.widget_selected_date,
                           dateLabel.substring(0, 1).toUpperCase(PORTUGUESE) + dateLabel.substring(1));
 
     boolean showDetails = taskLimit > 0;
-    JSONObject dateData = dates.optJSONObject(selectedDate.toString());
+    JSONObject dateData = snapshotCurrent ? dates.optJSONObject(selectedDate.toString()) : null;
     int holidayCount = renderHolidays(views, dateData, showDetails);
     taskLimit = Math.max(0, taskLimit - Math.min(holidayCount, 3));
     views.setViewVisibility(R.id.widget_tasks_header, showDetails ? View.VISIBLE : View.GONE);
@@ -257,10 +264,10 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     views.setViewVisibility(R.id.widget_task_visibility, showDetails ? View.VISIBLE : View.GONE);
     views.setTextViewText(R.id.widget_task_visibility, pendingOnly ? "PEND." : "TODAS");
     views.setTextColor(R.id.widget_task_visibility, pendingOnly ? COLOR_ACCENT : COLOR_SUBDUED);
-    views.setContentDescription(
-        R.id.widget_task_visibility,
-        pendingOnly ? "Exibindo somente tarefas pendentes. Toque para mostrar todas."
-                    : "Exibindo todas as tarefas. Toque para mostrar somente pendentes.");
+    views.setContentDescription(R.id.widget_task_visibility,
+                                pendingOnly
+                                    ? "Exibindo somente tarefas pendentes. Toque para mostrar todas."
+                                    : "Exibindo todas as tarefas. Toque para mostrar somente pendentes.");
     views.setOnClickPendingIntent(
         R.id.widget_task_visibility,
         taskVisibilityIntent(context, appWidgetId, pendingOnly ? "all" : "pending"));
@@ -268,9 +275,10 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     JSONArray tasks = dateData == null ? null : dateData.optJSONArray("tasks");
     int taskCount = tasks == null ? 0 : tasks.length();
     boolean hasSnapshot = hasSnapshot(context);
-    views.setTextViewText(R.id.widget_empty_tasks, hasSnapshot
-                                                       ? "Nada marcado para este dia."
-                                                       : "Abra o Waypoint para carregar suas tarefas.");
+    String emptyText = !hasSnapshot      ? "Abra o Waypoint para carregar suas tarefas."
+                       : snapshotCurrent ? "Nada marcado para este dia."
+                                         : "Atualizando…";
+    views.setTextViewText(R.id.widget_empty_tasks, emptyText);
     views.setViewVisibility(R.id.widget_empty_tasks,
                             showDetails && taskCount == 0 && holidayCount == 0 ? View.VISIBLE : View.GONE);
 
@@ -308,12 +316,13 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
 
       views.setViewVisibility(TASK_ROW_IDS[index], View.VISIBLE);
       int statusResource = completed ? R.drawable.waypoint_widget_task_completed
-                                     : skipped ? R.drawable.waypoint_widget_task_skipped
-                                               : R.drawable.waypoint_widget_task_pending;
+                           : skipped ? R.drawable.waypoint_widget_task_skipped
+                                     : R.drawable.waypoint_widget_task_pending;
       views.setImageViewResource(TASK_STATUS_IDS[index], statusResource);
       views.setTextViewText(TASK_TITLE_IDS[index], titleText);
-      views.setTextColor(TASK_TITLE_IDS[index],
-                         completed ? COLOR_DISABLED : skipped ? COLOR_URGENT : COLOR_FOREGROUND);
+      views.setTextColor(TASK_TITLE_IDS[index], completed ? COLOR_DISABLED
+                                                : skipped ? COLOR_URGENT
+                                                          : COLOR_FOREGROUND);
       views.setTextViewText(TASK_TIME_IDS[index], time);
       views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT : COLOR_SUBDUED);
       views.setOnClickPendingIntent(TASK_ROW_IDS[index], openApp);
@@ -323,8 +332,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     }
   }
 
-  private static void renderHabits(Context context, RemoteViews views, int appWidgetId,
-                                   JSONArray habits, int habitLimit) {
+  private static void renderHabits(Context context, RemoteViews views, int appWidgetId, JSONArray habits,
+                                   int habitLimit) {
     boolean showHabits = habitLimit > 0;
     views.setViewVisibility(R.id.widget_habits_divider, showHabits ? View.VISIBLE : View.GONE);
     views.setViewVisibility(R.id.widget_habits_header, showHabits ? View.VISIBLE : View.GONE);
@@ -457,16 +466,26 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
         .contains(WaypointWidgetBridge.SNAPSHOT_KEY);
   }
 
+  private static void requestRefreshIfSnapshotStale(Context context) {
+    if (!LocalDate.now().toString().equals(snapshot(context).optString("today", ""))) {
+      WaypointBackgroundSyncScheduler.requestLocalWidgetRefresh(context);
+    }
+  }
+
   private static LocalDate selectedDate(Context context, int appWidgetId, LocalDate fallback) {
-    String value = state(context).getString(SELECTED_DATE_PREFIX + appWidgetId, "");
-    if (value == null || value.isEmpty()) {
-      return fallback;
+    SharedPreferences preferences = state(context);
+    String selectedDateValue = preferences.getString(SELECTED_DATE_PREFIX + appWidgetId, "");
+    String selectedOnValue = preferences.getString(SELECTED_ON_PREFIX + appWidgetId, "");
+    LocalDate selectedDate =
+        WaypointWidgetDateState.currentSelectionOrNull(selectedDateValue, selectedOnValue, fallback);
+    if (selectedDate != null) {
+      return selectedDate;
     }
-    try {
-      return LocalDate.parse(value);
-    } catch (RuntimeException ignored) {
-      return fallback;
-    }
+    preferences.edit()
+        .remove(SELECTED_DATE_PREFIX + appWidgetId)
+        .remove(SELECTED_ON_PREFIX + appWidgetId)
+        .apply();
+    return fallback;
   }
 
   private static void selectDate(Context context, int appWidgetId, String dateValue) {
@@ -478,8 +497,13 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     } catch (RuntimeException ignored) {
       return;
     }
-    state(context).edit().putString(SELECTED_DATE_PREFIX + appWidgetId, dateValue).apply();
+    state(context)
+        .edit()
+        .putString(SELECTED_DATE_PREFIX + appWidgetId, dateValue)
+        .putString(SELECTED_ON_PREFIX + appWidgetId, LocalDate.now().toString())
+        .apply();
     updateWidget(context, AppWidgetManager.getInstance(context), appWidgetId);
+    requestRefreshIfSnapshotStale(context);
   }
 
   private static void moveMonth(Context context, int appWidgetId, int delta) {
@@ -488,8 +512,13 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     }
     LocalDate current = selectedDate(context, appWidgetId, LocalDate.now());
     LocalDate moved = current.plusMonths(delta);
-    state(context).edit().putString(SELECTED_DATE_PREFIX + appWidgetId, moved.toString()).apply();
+    state(context)
+        .edit()
+        .putString(SELECTED_DATE_PREFIX + appWidgetId, moved.toString())
+        .putString(SELECTED_ON_PREFIX + appWidgetId, LocalDate.now().toString())
+        .apply();
     updateWidget(context, AppWidgetManager.getInstance(context), appWidgetId);
+    requestRefreshIfSnapshotStale(context);
   }
 
   private static PendingIntent moveMonthIntent(Context context, int appWidgetId, int delta) {
@@ -536,40 +565,37 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                                   PendingIntent.FLAG_IMMUTABLE);
   }
 
-  private static PendingIntent taskVisibilityIntent(Context context, int appWidgetId,
-                                                    String taskVisibility) {
-    Intent intent =
-        new Intent(context, WaypointWidgetActionService.class)
-            .setData(new Uri.Builder()
-                         .scheme("waypoint")
-                         .authority("widget")
-                         .appendPath(Integer.toString(appWidgetId))
-                         .appendPath("task-visibility")
-                         .appendPath(taskVisibility)
-                         .build())
-            .putExtra(WaypointWidgetActionService.EXTRA_TASK_VISIBILITY, taskVisibility);
-    return PendingIntent.getForegroundService(
-        context, appWidgetId * 100 + 59, intent,
-        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+  private static PendingIntent taskVisibilityIntent(Context context, int appWidgetId, String taskVisibility) {
+    Intent intent = new Intent(context, WaypointWidgetActionService.class)
+                        .setData(new Uri.Builder()
+                                     .scheme("waypoint")
+                                     .authority("widget")
+                                     .appendPath(Integer.toString(appWidgetId))
+                                     .appendPath("task-visibility")
+                                     .appendPath(taskVisibility)
+                                     .build())
+                        .putExtra(WaypointWidgetActionService.EXTRA_TASK_VISIBILITY, taskVisibility);
+    return PendingIntent.getForegroundService(context, appWidgetId * 100 + 59, intent,
+                                              PendingIntent.FLAG_UPDATE_CURRENT |
+                                                  PendingIntent.FLAG_IMMUTABLE);
   }
 
   private static PendingIntent habitCheckInIntent(Context context, int appWidgetId, JSONObject habit,
                                                   int requestOffset, long amount) {
     String habitId = habit.optString("id", "");
     String date = habit.optString("date", "");
-    Intent intent =
-        new Intent(context, WaypointWidgetActionService.class)
-            .setData(new Uri.Builder()
-                         .scheme("waypoint")
-                         .authority("widget")
-                         .appendPath(Integer.toString(appWidgetId))
-                         .appendPath("habit")
-                         .appendPath(habitId)
-                         .appendPath(date)
-                         .build())
-            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_ID, habitId)
-            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_DATE, date)
-            .putExtra(WaypointWidgetActionService.EXTRA_HABIT_AMOUNT, amount);
+    Intent intent = new Intent(context, WaypointWidgetActionService.class)
+                        .setData(new Uri.Builder()
+                                     .scheme("waypoint")
+                                     .authority("widget")
+                                     .appendPath(Integer.toString(appWidgetId))
+                                     .appendPath("habit")
+                                     .appendPath(habitId)
+                                     .appendPath(date)
+                                     .build())
+                        .putExtra(WaypointWidgetActionService.EXTRA_HABIT_ID, habitId)
+                        .putExtra(WaypointWidgetActionService.EXTRA_HABIT_DATE, date)
+                        .putExtra(WaypointWidgetActionService.EXTRA_HABIT_AMOUNT, amount);
     return PendingIntent.getForegroundService(context, appWidgetId * 100 + 70 + requestOffset, intent,
                                               PendingIntent.FLAG_UPDATE_CURRENT |
                                                   PendingIntent.FLAG_IMMUTABLE);

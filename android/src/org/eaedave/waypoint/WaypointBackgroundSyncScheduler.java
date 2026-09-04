@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import androidx.work.BackoffPolicy;
 import androidx.work.Constraints;
+import androidx.work.Data;
 import androidx.work.ExistingPeriodicWorkPolicy;
 import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
@@ -18,6 +19,7 @@ public final class WaypointBackgroundSyncScheduler {
   private static final String ENABLED = "enabled";
   private static final String PERIODIC_WORK = "waypoint-periodic-sync";
   private static final String IMMEDIATE_WORK = "waypoint-immediate-sync";
+  private static final String LOCAL_WIDGET_REFRESH_WORK = "waypoint-local-widget-refresh";
   private static final long REPEAT_INTERVAL_MINUTES = 15;
   private static final long RETRY_DELAY_MINUTES = 1;
 
@@ -34,13 +36,12 @@ public final class WaypointBackgroundSyncScheduler {
     }
 
     PeriodicWorkRequest periodicRequest =
-        new PeriodicWorkRequest.Builder(WaypointBackgroundSyncWorker.class, REPEAT_INTERVAL_MINUTES,
-                                        TimeUnit.MINUTES)
+        new PeriodicWorkRequest
+            .Builder(WaypointBackgroundSyncWorker.class, REPEAT_INTERVAL_MINUTES, TimeUnit.MINUTES)
             .setConstraints(networkConstraints())
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, RETRY_DELAY_MINUTES, TimeUnit.MINUTES)
             .build();
-    workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE,
-                                          periodicRequest);
+    workManager.enqueueUniquePeriodicWork(PERIODIC_WORK, ExistingPeriodicWorkPolicy.UPDATE, periodicRequest);
   }
 
   public static void restore(Context context) {
@@ -62,6 +63,19 @@ public final class WaypointBackgroundSyncScheduler {
             .build();
     WorkManager.getInstance(applicationContext)
         .enqueueUniqueWork(IMMEDIATE_WORK, ExistingWorkPolicy.KEEP, request);
+  }
+
+  public static void requestLocalWidgetRefresh(Context context) {
+    Data input = new Data.Builder()
+                     .putString(WaypointBackgroundSyncWorker.OPERATION_KEY,
+                                WaypointBackgroundSyncWorker.OPERATION_LOCAL_WIDGET_REFRESH)
+                     .build();
+    OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(WaypointBackgroundSyncWorker.class)
+                                     .setInputData(input)
+                                     .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                                     .build();
+    WorkManager.getInstance(context.getApplicationContext())
+        .enqueueUniqueWork(LOCAL_WIDGET_REFRESH_WORK, ExistingWorkPolicy.KEEP, request);
   }
 
   private static Constraints networkConstraints() {

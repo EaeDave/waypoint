@@ -21,16 +21,20 @@ import java.util.concurrent.atomic.AtomicInteger;
 public final class WaypointBackgroundSyncWorker extends Worker {
   private static final String TAG = "WaypointSyncWorker";
   private static final long SYNC_TIMEOUT_SECONDS = 75;
+  static final String OPERATION_KEY = "operation";
+  static final String OPERATION_LOCAL_WIDGET_REFRESH = "local-widget-refresh";
 
-  public WaypointBackgroundSyncWorker(@NonNull Context context,
-                                      @NonNull WorkerParameters parameters) {
+  public WaypointBackgroundSyncWorker(@NonNull Context context, @NonNull WorkerParameters parameters) {
     super(context, parameters);
   }
 
   @NonNull
   @Override
   public Result doWork() {
-    SyncConnection connection = new SyncConnection();
+    int messageWhat = OPERATION_LOCAL_WIDGET_REFRESH.equals(getInputData().getString(OPERATION_KEY))
+                          ? WaypointBackgroundSyncService.MESSAGE_REFRESH_WIDGET
+                          : WaypointBackgroundSyncService.MESSAGE_SYNCHRONIZE;
+    SyncConnection connection = new SyncConnection(messageWhat);
     Intent intent = new Intent(getApplicationContext(), WaypointBackgroundSyncService.class);
     final boolean bound;
     try {
@@ -46,7 +50,7 @@ public final class WaypointBackgroundSyncWorker extends Worker {
 
     try {
       if (!connection.await(SYNC_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
-        Log.w(TAG, "Background synchronization timed out");
+        Log.w(TAG, "Background work timed out");
         return Result.retry();
       }
       return connection.result() == WaypointBackgroundSyncService.RESULT_SUCCESS ? Result.success()
@@ -64,19 +68,22 @@ public final class WaypointBackgroundSyncWorker extends Worker {
 
   private static final class SyncConnection implements ServiceConnection {
     private static final int PENDING = -1;
+    private final int messageWhat;
     private final CountDownLatch completed = new CountDownLatch(1);
     private final AtomicInteger result = new AtomicInteger(PENDING);
     private final Messenger responseMessenger =
         new Messenger(new Handler(Looper.getMainLooper(), this::handleResponse));
 
+    SyncConnection(int messageWhat) { this.messageWhat = messageWhat; }
+
     @Override
     public void onServiceConnected(ComponentName name, IBinder service) {
-      Message request = Message.obtain(null, WaypointBackgroundSyncService.MESSAGE_SYNCHRONIZE);
+      Message request = Message.obtain(null, messageWhat);
       request.replyTo = responseMessenger;
       try {
         new Messenger(service).send(request);
       } catch (RemoteException error) {
-        Log.w(TAG, "Unable to request background synchronization", error);
+        Log.w(TAG, "Unable to request background work", error);
         finish(WaypointBackgroundSyncService.RESULT_RETRY);
       }
     }
@@ -100,12 +107,10 @@ public final class WaypointBackgroundSyncWorker extends Worker {
       return completed.await(timeout, unit);
     }
 
-    int result() {
-      return result.get();
-    }
+    int result() { return result.get(); }
 
     private boolean handleResponse(Message message) {
-      if (message.what != WaypointBackgroundSyncService.MESSAGE_SYNCHRONIZE) {
+      if (message.what != messageWhat) {
         return false;
       }
       finish(message.arg1);

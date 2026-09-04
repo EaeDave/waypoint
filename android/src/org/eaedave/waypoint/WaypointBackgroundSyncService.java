@@ -26,6 +26,7 @@ import org.qtproject.qt.android.bindings.QtService;
 
 public final class WaypointBackgroundSyncService extends QtService {
   static final int MESSAGE_SYNCHRONIZE = 1;
+  static final int MESSAGE_REFRESH_WIDGET = 2;
   static final int RESULT_SUCCESS = 0;
   static final int RESULT_RETRY = 1;
 
@@ -41,22 +42,26 @@ public final class WaypointBackgroundSyncService extends QtService {
   }
 
   private boolean handleRequest(Message message) {
-    if (message.what != MESSAGE_SYNCHRONIZE) {
+    if (message.what != MESSAGE_SYNCHRONIZE && message.what != MESSAGE_REFRESH_WIDGET) {
       return false;
     }
+    int operation = message.what;
     Messenger replyTo = message.replyTo;
-    EXECUTOR.execute(() -> reply(replyTo, synchronizeOnce()));
+    EXECUTOR.execute(
+        ()
+            -> reply(replyTo, operation,
+                     operation == MESSAGE_REFRESH_WIDGET ? refreshWidgetSnapshotOnce() : synchronizeOnce()));
     return true;
   }
 
-  private static void reply(Messenger recipient, int result) {
+  private static void reply(Messenger recipient, int operation, int result) {
     if (recipient == null) {
       return;
     }
     try {
-      recipient.send(Message.obtain(null, MESSAGE_SYNCHRONIZE, result, 0));
+      recipient.send(Message.obtain(null, operation, result, 0));
     } catch (RemoteException error) {
-      Log.w(TAG, "Background synchronization result receiver disappeared", error);
+      Log.w(TAG, "Background work result receiver disappeared", error);
     }
   }
 
@@ -84,6 +89,22 @@ public final class WaypointBackgroundSyncService extends QtService {
       return RESULT_SUCCESS;
     } catch (IOException | JSONException error) {
       Log.w(TAG, "Background synchronization failed", error);
+      return RESULT_RETRY;
+    }
+  }
+
+  private int refreshWidgetSnapshotOnce() {
+    try {
+      String databasePath = getFilesDir().getAbsolutePath() + "/waypoint.sqlite3";
+      JSONObject refreshed = new JSONObject(refreshWidgetSnapshot(databasePath));
+      if (!refreshed.optBoolean("ok", false)) {
+        Log.w(TAG, refreshed.optString("error", "Unable to refresh the widget snapshot"));
+        return RESULT_RETRY;
+      }
+      WaypointWidgetBridge.publishSnapshot(this, refreshed.getJSONObject("snapshot").toString());
+      return RESULT_SUCCESS;
+    } catch (JSONException error) {
+      Log.w(TAG, "Unable to decode the refreshed widget snapshot", error);
       return RESULT_RETRY;
     }
   }
@@ -132,8 +153,8 @@ public final class WaypointBackgroundSyncService extends QtService {
     }
 
     int status = connection.getResponseCode();
-    InputStream responseStream = status >= 200 && status < 300 ? connection.getInputStream()
-                                                               : connection.getErrorStream();
+    InputStream responseStream =
+        status >= 200 && status < 300 ? connection.getInputStream() : connection.getErrorStream();
     String response;
     try {
       response = read(responseStream);
@@ -151,8 +172,7 @@ public final class WaypointBackgroundSyncService extends QtService {
       return "";
     }
     StringBuilder result = new StringBuilder();
-    try (BufferedReader reader =
-             new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
       String line;
       while ((line = reader.readLine()) != null) {
         result.append(line);
@@ -162,5 +182,6 @@ public final class WaypointBackgroundSyncService extends QtService {
   }
 
   private static native String prepareBackgroundSync(String databasePath);
+  private static native String refreshWidgetSnapshot(String databasePath);
   private static native String applyBackgroundSync(String databasePath, String responsePayload);
 }
