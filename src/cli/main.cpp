@@ -121,9 +121,9 @@ int main(int argc, char *argv[]) {
   parser.addPositionalArgument(
       QStringLiteral("command"),
       QStringLiteral("ping, snapshot, habits, add-habit, edit-habit, record-habit, undo-habit, "
-                     "delete-habit, add, complete, reopen, skip, edit, reschedule, delete, sync-status, "
-                     "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
-                     "holiday-preferences, configure-holidays, municipalities, holidays, "
+                     "delete-habit, add, complete, reopen, skip, edit, reschedule, delete, "
+                     "task-visibility, sync-status, sync-config, configure-sync, disable-sync, sync-now, "
+                     "holiday-status, holiday-preferences, configure-holidays, municipalities, holidays, "
                      "refresh-holidays, update-status, check-update, or update"));
   parser.addPositionalArgument(QStringLiteral("arguments"), QStringLiteral("Command arguments"),
                                QStringLiteral("[arguments...]"));
@@ -250,6 +250,10 @@ int main(int argc, char *argv[]) {
     if (!error.isEmpty()) {
       return printError(error);
     }
+    const QString taskVisibility = client.taskVisibility(&error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
     const QJsonObject updateStatus = client.updateStatus(&error);
     if (!error.isEmpty()) {
       return printError(error);
@@ -257,6 +261,7 @@ int main(int argc, char *argv[]) {
     printJson({{QStringLiteral("ok"), true},
                {QStringLiteral("today"), todaySummary},
                {QStringLiteral("occurrences"), occurrences},
+               {QStringLiteral("taskVisibility"), taskVisibility},
                {QStringLiteral("sync"), sync},
                {QStringLiteral("holidays"), holidayData.value(QStringLiteral("holidays"))},
                {QStringLiteral("holidayCoverage"), holidayData.value(QStringLiteral("coverage"))},
@@ -387,6 +392,22 @@ int main(int argc, char *argv[]) {
       return printError(error);
     }
     printJson(status);
+    return 0;
+  }
+  if (command == QStringLiteral("task-visibility")) {
+    if (positional.size() == 1) {
+      const QString taskVisibility = client.taskVisibility(&error);
+      if (!error.isEmpty()) {
+        return printError(error);
+      }
+      printJson({{QStringLiteral("ok"), true}, {QStringLiteral("taskVisibility"), taskVisibility}});
+      return 0;
+    }
+    const QString taskVisibility = positional.at(1);
+    if (!client.saveTaskVisibility(taskVisibility, &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}, {QStringLiteral("taskVisibility"), taskVisibility}});
     return 0;
   }
   if (command == QStringLiteral("sync-config")) {

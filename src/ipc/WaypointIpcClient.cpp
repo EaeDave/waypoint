@@ -298,6 +298,21 @@ bool WaypointIpcClient::deleteTask(const QString &taskId, QString *errorMessage)
   return responseSucceeded(response, errorMessage);
 }
 
+QString WaypointIpcClient::taskVisibility(QString *errorMessage) const {
+  const QJsonObject response =
+      request({{QStringLiteral("command"), QStringLiteral("task-visibility")}}, errorMessage);
+  return responseSucceeded(response, errorMessage)
+             ? response.value(QStringLiteral("taskVisibility")).toString()
+             : QString{};
+}
+
+bool WaypointIpcClient::saveTaskVisibility(const QString &taskVisibility, QString *errorMessage) const {
+  return responseSucceeded(request({{QStringLiteral("command"), QStringLiteral("set-task-visibility")},
+                                    {QStringLiteral("taskVisibility"), taskVisibility}},
+                                   errorMessage),
+                           errorMessage);
+}
+
 QJsonObject WaypointIpcClient::syncConfiguration(QString *errorMessage) const {
   const QJsonObject response =
       request({{QStringLiteral("command"), QStringLiteral("get-sync-config")}}, errorMessage);

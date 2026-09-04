@@ -72,6 +72,18 @@ QVariantList occurrenceValues(const QList<TaskOccurrence> &occurrences,
   return result;
 }
 
+QList<TaskOccurrence> visibleOccurrences(const QList<TaskOccurrence> &occurrences,
+                                         const TaskVisibilityMode mode) {
+  QList<TaskOccurrence> visible;
+  visible.reserve(occurrences.size());
+  for (const TaskOccurrence &occurrence : occurrences) {
+    if (isTaskVisible(occurrence, mode)) {
+      visible.append(occurrence);
+    }
+  }
+  return visible;
+}
+
 QVariantList habitValues(const QList<HabitProgress> &progress) {
   QVariantList result;
   result.reserve(progress.size());
@@ -106,6 +118,10 @@ MobileController::MobileController(QString databasePath, QObject *parent)
     m_widgetSnapshotDirty = true;
     scheduleRefresh();
   });
+  connect(&m_store, &TaskStore::taskVisibilityChanged, this, [this] {
+    m_widgetSnapshotDirty = true;
+    scheduleRefresh();
+  });
   connect(&m_store, &TaskStore::habitsChanged, this, &MobileController::scheduleRefresh);
   connect(&m_store, &TaskStore::holidaysChanged, this, [this] {
     m_widgetSnapshotDirty = true;
@@ -131,6 +147,7 @@ QVariantList MobileController::todayTasks() const { return m_todayTasks; }
 QVariantList MobileController::selectedTasks() const { return m_selectedTasks; }
 QVariantList MobileController::todayHabits() const { return m_todayHabits; }
 QVariantList MobileController::monthOccurrences() const { return m_monthOccurrences; }
+QString MobileController::taskVisibility() const { return taskVisibilityModeName(m_taskVisibility); }
 QVariantList MobileController::monthHolidays() const { return m_monthHolidays; }
 QVariantList MobileController::allHabits() const { return m_allHabits; }
 QString MobileController::syncEndpoint() const { return m_syncEndpoint; }
@@ -205,7 +222,13 @@ void MobileController::refresh() {
   const QDate monthEnd = monthStart.addMonths(1).addDays(-1);
   QString error;
 
-  const QList<TaskOccurrence> todayOccurrences = m_store.listActionableOccurrences(today, &error);
+  const TaskVisibilityMode visibility = m_store.taskVisibilityMode(&error);
+  if (!error.isEmpty()) {
+    publishError(error);
+    return;
+  }
+  const QList<TaskOccurrence> todayOccurrences =
+      visibleOccurrences(m_store.listActionableOccurrences(today, &error), visibility);
   if (!error.isEmpty()) {
     publishError(error);
     return;
@@ -215,7 +238,8 @@ void MobileController::refresh() {
     publishError(error);
     return;
   }
-  const QList<TaskOccurrence> month = m_store.listOccurrences(monthStart, monthEnd, &error);
+  const QList<TaskOccurrence> month =
+      visibleOccurrences(m_store.listOccurrences(monthStart, monthEnd, &error), visibility);
   if (!error.isEmpty()) {
     publishError(error);
     return;
@@ -264,6 +288,10 @@ void MobileController::refresh() {
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
   m_allHabits = habitRecordValues(activeHabits);
   m_monthHolidays = holidays.toVariantList();
+  if (m_taskVisibility != visibility) {
+    m_taskVisibility = visibility;
+    emit taskVisibilityChanged();
+  }
   const QVariantMap preferenceValues = holidayPreferences.toVariantMap();
   if (preferenceValues != m_holidayPreferences) {
     m_holidayPreferences = preferenceValues;
@@ -351,6 +379,16 @@ bool MobileController::skipTaskOccurrence(const QString &taskId, const QString &
 bool MobileController::deleteTask(const QString &taskId) {
   QString error;
   return finishMutation(m_store.deleteTask(taskId, &error), error);
+}
+
+bool MobileController::setTaskVisibility(const QString &taskVisibility) {
+  const auto mode = taskVisibilityModeFromName(taskVisibility);
+  if (!mode.has_value()) {
+    publishError(QStringLiteral("A visibilidade deve ser 'all' ou 'pending'"));
+    return false;
+  }
+  QString error;
+  return finishMutation(m_store.setTaskVisibilityMode(*mode, &error), error);
 }
 
 bool MobileController::saveHabit(const QString &habitId, const QString &title, const qint64 targetAmount,

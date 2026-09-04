@@ -327,6 +327,10 @@ Item {
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.captionSize
             }
+
+            TaskVisibilityChip {
+                controller: root.controller
+            }
         }
 
         ScrollView {
@@ -471,7 +475,9 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: root.controller.selectedTasks.length === 0 && root.controller.selectedDateHolidays.length === 0
-                    text: "Nada marcado para este dia."
+                    text: root.controller.taskVisibility === "pending"
+                        ? "Nenhuma tarefa pendente neste dia."
+                        : "Nada marcado para este dia."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySize

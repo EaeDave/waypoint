@@ -26,6 +26,7 @@ class MobileController final : public QObject {
   Q_PROPERTY(QVariantList selectedTasks READ selectedTasks NOTIFY dataChanged)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthOccurrences READ monthOccurrences NOTIFY dataChanged)
+  Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(QVariantList allHabits READ allHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthHolidays READ monthHolidays NOTIFY dataChanged)
   Q_PROPERTY(QVariantMap holidayPreferences READ holidayPreferences NOTIFY holidayPreferencesChanged)
@@ -58,6 +59,7 @@ public:
   [[nodiscard]] QVariantList selectedTasks() const;
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList monthOccurrences() const;
+  [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QVariantList monthHolidays() const;
   [[nodiscard]] QVariantList allHabits() const;
   [[nodiscard]] QVariantList selectedDateHolidays() const;
@@ -89,6 +91,7 @@ public:
                                     bool completed);
   Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
+  Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
 
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
                              const QString &unit, const QString &checkInMode, qint64 incrementAmount,
@@ -114,6 +117,7 @@ signals:
   void selectedDateChanged();
   void visibleMonthChanged();
   void dataChanged();
+  void taskVisibilityChanged();
   void holidayPreferencesChanged();
   void municipalitiesChanged();
   void syncConfigurationChanged();
@@ -144,6 +148,7 @@ private:
   QVariantList m_monthOccurrences;
   QVariantList m_allHabits;
   QVariantList m_monthHolidays;
+  TaskVisibilityMode m_taskVisibility = TaskVisibilityMode::All;
   bool m_ready = false;
   QVariantMap m_holidayPreferences;
   QVariantList m_municipalities;

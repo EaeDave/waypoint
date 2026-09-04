@@ -140,12 +140,13 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       dates = new JSONObject();
     }
     JSONArray habits = snapshot.optJSONArray("habits");
+    String taskVisibility = snapshot.optString("taskVisibility", "all");
     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.waypoint_widget);
     int[] detailLimits =
         detailLimits(context, manager, appWidgetId, selectedDate.equals(today) && habits != null);
 
     renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
-    renderTasks(context, views, appWidgetId, selectedDate, dates, detailLimits[0]);
+    renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility, detailLimits[0]);
     renderHabits(context, views, appWidgetId, habits, detailLimits[1]);
 
     PendingIntent openApp = openAppIntent(context, appWidgetId);
@@ -241,7 +242,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   }
 
   private static void renderTasks(Context context, RemoteViews views, int appWidgetId,
-                                  LocalDate selectedDate, JSONObject dates, int taskLimit) {
+                                  LocalDate selectedDate, JSONObject dates, String taskVisibility,
+                                  int taskLimit) {
     String dateLabel = selectedDate.format(DATE_LABEL);
     views.setTextViewText(R.id.widget_selected_date,
                           dateLabel.substring(0, 1).toUpperCase(PORTUGUESE) + dateLabel.substring(1));
@@ -251,6 +253,17 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     int holidayCount = renderHolidays(views, dateData, showDetails);
     taskLimit = Math.max(0, taskLimit - Math.min(holidayCount, 3));
     views.setViewVisibility(R.id.widget_tasks_header, showDetails ? View.VISIBLE : View.GONE);
+    boolean pendingOnly = "pending".equals(taskVisibility);
+    views.setViewVisibility(R.id.widget_task_visibility, showDetails ? View.VISIBLE : View.GONE);
+    views.setTextViewText(R.id.widget_task_visibility, pendingOnly ? "PEND." : "TODAS");
+    views.setTextColor(R.id.widget_task_visibility, pendingOnly ? COLOR_ACCENT : COLOR_SUBDUED);
+    views.setContentDescription(
+        R.id.widget_task_visibility,
+        pendingOnly ? "Exibindo somente tarefas pendentes. Toque para mostrar todas."
+                    : "Exibindo todas as tarefas. Toque para mostrar somente pendentes.");
+    views.setOnClickPendingIntent(
+        R.id.widget_task_visibility,
+        taskVisibilityIntent(context, appWidgetId, pendingOnly ? "all" : "pending"));
 
     JSONArray tasks = dateData == null ? null : dateData.optJSONArray("tasks");
     int taskCount = tasks == null ? 0 : tasks.length();
@@ -521,6 +534,23 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return PendingIntent.getForegroundService(context, appWidgetId * 100 + 60 + requestOffset, intent,
                                               PendingIntent.FLAG_UPDATE_CURRENT |
                                                   PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  private static PendingIntent taskVisibilityIntent(Context context, int appWidgetId,
+                                                    String taskVisibility) {
+    Intent intent =
+        new Intent(context, WaypointWidgetActionService.class)
+            .setData(new Uri.Builder()
+                         .scheme("waypoint")
+                         .authority("widget")
+                         .appendPath(Integer.toString(appWidgetId))
+                         .appendPath("task-visibility")
+                         .appendPath(taskVisibility)
+                         .build())
+            .putExtra(WaypointWidgetActionService.EXTRA_TASK_VISIBILITY, taskVisibility);
+    return PendingIntent.getForegroundService(
+        context, appWidgetId * 100 + 59, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
   }
 
   private static PendingIntent habitCheckInIntent(Context context, int appWidgetId, JSONObject habit,

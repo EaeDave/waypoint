@@ -21,6 +21,7 @@ Panel {
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
+    property string taskVisibility: "all"
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
                                   canInstall: false, error: "" })
@@ -879,6 +880,39 @@ Panel {
                                 text: "›"
                                 onClicked: root.moveMonth(1)
                             }
+                        }
+                    }
+
+                    RowLayout {
+                        width: parent.width
+
+                        Text {
+                            text: "TAREFAS"
+                            color: Qt.darker(root.foreground, 1.4)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            text: root.taskVisibility === "pending" ? "PENDENTES" : "TODAS"
+                            tooltipText: root.taskVisibility === "pending"
+                                ? "Exibindo somente pendentes; clique para mostrar todas"
+                                : "Exibindo todas; clique para mostrar somente pendentes"
+                            foreground: root.foreground
+                            accent: Color.accent
+                            bordered: true
+                            selected: root.taskVisibility === "pending"
+                            horizontalPadding: Style.space(7)
+                            verticalPadding: Style.space(3)
+                            onClicked: if (root.hostWidget)
+                                root.hostWidget.setTaskVisibility(
+                                    root.taskVisibility === "pending" ? "all" : "pending")
                         }
                     }
 

@@ -21,10 +21,11 @@ QJsonObject occurrenceValue(const TaskOccurrence &occurrence, const QDate &today
 }
 
 QJsonArray occurrenceValues(const QList<TaskOccurrence> &occurrences, const QDate &today,
-                            const bool calendarOnly) {
+                            const bool calendarOnly, const TaskVisibilityMode visibility) {
   QJsonArray values;
   for (const TaskOccurrence &occurrence : occurrences) {
-    if (calendarOnly && occurrence.recurring && !occurrence.calendarMarker) {
+    if (!isTaskVisible(occurrence, visibility) ||
+        (calendarOnly && occurrence.recurring && !occurrence.calendarMarker)) {
       continue;
     }
     values.append(occurrenceValue(occurrence, today));
@@ -101,24 +102,31 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
     setError(errorMessage, error);
     return {};
   }
+  const TaskVisibilityMode visibility = store.taskVisibilityMode(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
 
   QJsonObject dates;
   for (const TaskOccurrence &occurrence : occurrences) {
-    if (!occurrence.recurring || occurrence.calendarMarker) {
+    if (isTaskVisible(occurrence, visibility) && (!occurrence.recurring || occurrence.calendarMarker)) {
       appendTask(&dates, occurrence, today);
     }
   }
-  setTasksForDate(&dates, today.toString(Qt::ISODate), occurrenceValues(todayOccurrences, today, false));
+  setTasksForDate(&dates, today.toString(Qt::ISODate),
+                  occurrenceValues(todayOccurrences, today, false, visibility));
   for (const QJsonValue &holiday : holidays) {
     appendHoliday(&dates, holiday.toObject());
   }
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 3},
+      {QStringLiteral("schemaVersion"), 4},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},
+      {QStringLiteral("taskVisibility"), taskVisibilityModeName(visibility)},
       {QStringLiteral("dates"), dates},
       {QStringLiteral("habits"), habitValues(habitProgress)},
   };

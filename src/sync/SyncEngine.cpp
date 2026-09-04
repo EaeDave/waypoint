@@ -30,6 +30,7 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent) : QObject(parent),
   connect(&m_eventReconnectTimer, &QTimer::timeout, this, &SyncEngine::openEventStream);
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
+  connect(m_taskStore, &TaskStore::taskVisibilityChanged, this, &SyncEngine::scheduleSoon);
 }
 
 bool SyncEngine::enabled() const {
@@ -297,8 +298,6 @@ void SyncEngine::scheduleEventReconnect() {
   m_eventReconnectTimer.start(m_eventReconnectSeconds * 1000);
   m_eventReconnectSeconds = std::min(m_eventReconnectSeconds * 2, 60);
 }
-
-
 
 QUrl SyncEngine::normalizeEndpoint(const QString &endpointInput, QString *errorMessage) const {
   QUrl endpoint = QUrl::fromUserInput(endpointInput);

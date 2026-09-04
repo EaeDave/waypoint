@@ -18,6 +18,7 @@ class WaypointController final : public QObject {
   Q_PROPERTY(TaskListModel *selectedDateTasks READ selectedDateTasks CONSTANT)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY habitsChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
+  Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(
       QString selectedDateKey READ selectedDateKey WRITE setSelectedDateKey NOTIFY selectedDateKeyChanged)
   Q_PROPERTY(bool online READ online NOTIFY connectionChanged)
@@ -51,6 +52,7 @@ public:
   [[nodiscard]] TaskListModel *selectedDateTasks();
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] CalendarModel *calendar();
+  [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QString selectedDateKey() const;
   void setSelectedDateKey(const QString &dateKey);
   [[nodiscard]] bool online() const;
@@ -96,6 +98,7 @@ public:
                             const QString &endMode, const QString &untilDateKey, int occurrenceCount,
                             const QVariantList &reminderMinutesBefore, const QString &emoji);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
+  Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
                              const QString &unit, const QString &checkInMode, qint64 incrementAmount,
                              const QVariantList &weekdays, const QVariantList &reminderTimes,
@@ -117,6 +120,7 @@ public:
 signals:
   void selectedDateKeyChanged();
   void habitsChanged();
+  void taskVisibilityChanged();
   void connectionChanged();
   void errorMessageChanged();
   void syncConfigurationChanged();
@@ -152,6 +156,7 @@ private:
   bool m_online = false;
   bool m_daemonStartAttempted = false;
   QString m_errorMessage;
+  QString m_taskVisibility = QStringLiteral("all");
   QString m_syncEndpoint;
   QString m_syncState = QStringLiteral("local-only");
   QString m_syncLastError;

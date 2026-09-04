@@ -682,6 +682,20 @@
             android:textSize="11sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/widget_task_visibility"
+            android:layout_width="64dp"
+            android:layout_height="32dp"
+            android:background="@drawable/waypoint_widget_task_visibility"
+            android:contentDescription="Alternar visibilidade das tarefas"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:maxLines="1"
+            android:text="TODAS"
+            android:textColor="#B3FFFFFF"
+            android:textSize="9sp"
+            android:textStyle="bold" />
+
         <ImageButton
             android:id="@+id/widget_add_task"
             android:layout_width="36dp"

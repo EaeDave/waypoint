@@ -3,6 +3,7 @@
 #include "core/HabitRecord.hpp"
 #include "core/SyncConfiguration.hpp"
 #include "core/TaskRecord.hpp"
+#include "core/TaskVisibility.hpp"
 
 #include <QJsonArray>
 #include <QList>
@@ -51,6 +52,12 @@ public:
   [[nodiscard]] bool saveHolidayPreferences(const QJsonObject &preferences, QString *errorMessage = nullptr);
   [[nodiscard]] bool applySyncedHolidayPreferences(const QJsonObject &preferences,
                                                    QString *errorMessage = nullptr);
+  [[nodiscard]] TaskVisibilityMode taskVisibilityMode(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool setTaskVisibilityMode(TaskVisibilityMode mode, QString *errorMessage = nullptr);
+  [[nodiscard]] QJsonObject pendingUserPreferencesMutation(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool applySyncedUserPreferences(const QJsonObject &preferences,
+                                                const QString &acceptedMutationId,
+                                                QString *errorMessage = nullptr);
   [[nodiscard]] QJsonArray listHolidays(const QDate &from, const QDate &to,
                                         QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonArray holidayCoverage(QString *errorMessage = nullptr) const;
@@ -103,6 +110,7 @@ signals:
   void habitsChanged();
   void holidaysChanged();
   void holidayPreferencesChanged();
+  void taskVisibilityChanged();
 
 private:
   [[nodiscard]] bool migrate(QString *errorMessage);

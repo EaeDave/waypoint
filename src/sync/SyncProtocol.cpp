@@ -26,8 +26,7 @@ QString syncDeviceId() {
   if (identity.isEmpty()) {
     identity = QSysInfo::machineHostName().toUtf8();
   }
-  return QString::fromLatin1(
-      QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(24));
+  return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(24));
 }
 
 QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString *errorMessage) {
@@ -38,16 +37,21 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString 
   QString error;
   const QJsonArray mutations = store.pendingMutations(&error);
   const QString cursor = store.syncCursor(&error);
+  const QJsonObject preferenceMutation = store.pendingUserPreferencesMutation(&error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
     return {};
   }
-  setError(errorMessage, {});
-  return {
+  QJsonObject request{
       {QStringLiteral("deviceId"), deviceId},
       {QStringLiteral("cursor"), cursor.toLongLong()},
       {QStringLiteral("mutations"), mutations},
   };
+  if (!preferenceMutation.isEmpty()) {
+    request.insert(QStringLiteral("preferenceMutation"), preferenceMutation);
+  }
+  setError(errorMessage, {});
+  return request;
 }
 
 bool applySyncResponse(TaskStore &store, const QJsonObject &response, QString *errorMessage) {
@@ -59,6 +63,13 @@ bool applySyncResponse(TaskStore &store, const QJsonObject &response, QString *e
   if (!store.applyRemoteChanges(response.value(QStringLiteral("changes")).toArray(),
                                 QString::number(response.value(QStringLiteral("nextCursor")).toInteger()),
                                 acceptedMutationIds, &error)) {
+    setError(errorMessage, error);
+    return false;
+  }
+  const QJsonObject preferences = response.value(QStringLiteral("preferences")).toObject();
+  if (!preferences.isEmpty() &&
+      !store.applySyncedUserPreferences(
+          preferences, response.value(QStringLiteral("acceptedPreferenceMutationId")).toString(), &error)) {
     setError(errorMessage, error);
     return false;
   }

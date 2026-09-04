@@ -1,6 +1,7 @@
 #include "sync/SyncEngine.hpp"
 #include "core/TaskStore.hpp"
 #include "sync/HolidaySyncEngine.hpp"
+#include "sync/SyncProtocol.hpp"
 
 #include <QHostAddress>
 #include <QTcpServer>
@@ -15,6 +16,7 @@ private slots:
   void normalizeAndPersistServerUrl();
   void rejectUnsafeServerUrl();
   void preserveExistingTokenWhenRequested();
+  void synchronizeTaskVisibilityCompatibly();
   void syncsImmediatelyWhenEventArrives();
   void preserveHolidayPreferencesWithoutServer();
   void downloadNewerHolidayPreferences();
@@ -90,8 +92,7 @@ void SyncEngineTest::syncsImmediatelyWhenEventArrives() {
 
   QTcpSocket *eventSocket = nullptr;
   int syncRequests = 0;
-  const QByteArray syncBody =
-      QByteArrayLiteral(R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[]})");
+  const QByteArray syncBody = QByteArrayLiteral(R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[]})");
   const QByteArray syncResponse =
       QByteArrayLiteral(
           "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ") +
@@ -121,8 +122,7 @@ void SyncEngineTest::syncsImmediatelyWhenEventArrives() {
   QVERIFY(eventSocket != nullptr);
   QCOMPARE(syncRequests, 1);
 
-  const QByteArray event =
-      QByteArrayLiteral("event: sync-needed\ndata: {\"sequence\":1}\n\n");
+  const QByteArray event = QByteArrayLiteral("event: sync-needed\ndata: {\"sequence\":1}\n\n");
   QCOMPARE(eventSocket->write(event), event.size());
   QVERIFY(eventSocket->flush());
 
@@ -195,6 +195,42 @@ void SyncEngineTest::downloadNewerHolidayPreferences() {
   const QJsonObject applied = store.holidayPreferences(&error);
   QCOMPARE(applied.value(QStringLiteral("cityCode")).toString(), QStringLiteral("3302403"));
   QCOMPARE(applied.value(QStringLiteral("revision")).toInteger(), 7);
+}
+
+void SyncEngineTest::synchronizeTaskVisibilityCompatibly() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::Pending, &error), qPrintable(error));
+
+  const QJsonObject request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  const QJsonObject mutation = request.value(QStringLiteral("preferenceMutation")).toObject();
+  QCOMPARE(mutation.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("pending"));
+
+  const QJsonObject legacyResponse{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+      {QStringLiteral("changes"), QJsonArray{}},
+  };
+  QVERIFY2(waypoint::applySyncResponse(store, legacyResponse, &error), qPrintable(error));
+  QVERIFY(!store.pendingUserPreferencesMutation(&error).isEmpty());
+
+  const QJsonObject synchronizedResponse{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+      {QStringLiteral("acceptedPreferenceMutationId"),
+       mutation.value(QStringLiteral("mutationId")).toString()},
+      {QStringLiteral("changes"), QJsonArray{}},
+      {QStringLiteral("preferences"),
+       QJsonObject{{QStringLiteral("taskVisibility"), QStringLiteral("pending")},
+                   {QStringLiteral("revision"), 3},
+                   {QStringLiteral("updatedAt"), QStringLiteral("2026-09-01T12:00:00.000Z")}}},
+  };
+  QVERIFY2(waypoint::applySyncResponse(store, synchronizedResponse, &error), qPrintable(error));
+  QVERIFY(store.pendingUserPreferencesMutation(&error).isEmpty());
+  QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::Pending);
 }
 
 QTEST_MAIN(SyncEngineTest)

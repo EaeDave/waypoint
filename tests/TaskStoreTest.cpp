@@ -21,6 +21,7 @@ private slots:
   void persistSyncConfiguration();
   void cacheHolidaySnapshotAtomically();
   void persistHolidayPreferencesAndMunicipalities();
+  void persistAndSynchronizeTaskVisibility();
   void persistRecurrenceAndOccurrenceState();
   void migrateLegacyTaskRowsAndOutbox();
   void applyRemoteOccurrenceChangesIdempotently();
@@ -559,6 +560,48 @@ void TaskStoreTest::persistHolidayPreferencesAndMunicipalities() {
   const QJsonArray stored = store.listMunicipalities(QStringLiteral("SP"), &error);
   QCOMPARE(stored.size(), 2);
   QCOMPARE(stored.first().toObject().value(QStringLiteral("name")).toString(), QStringLiteral("Campinas"));
+}
+
+void TaskStoreTest::persistAndSynchronizeTaskVisibility() {
+  QTemporaryDir directory;
+  const QString path = directory.filePath(QStringLiteral("tasks.sqlite3"));
+  QString error;
+
+  waypoint::TaskStore store(path);
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::All);
+  QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::Pending, &error), qPrintable(error));
+  QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::Pending);
+
+  const QJsonObject mutation = store.pendingUserPreferencesMutation(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QVERIFY(!mutation.value(QStringLiteral("mutationId")).toString().isEmpty());
+  QCOMPARE(mutation.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("pending"));
+
+  const QJsonObject remoteAll{
+      {QStringLiteral("taskVisibility"), QStringLiteral("all")},
+      {QStringLiteral("revision"), 7},
+      {QStringLiteral("updatedAt"), QStringLiteral("2026-09-01T12:00:00.000Z")},
+  };
+  QVERIFY2(store.applySyncedUserPreferences(remoteAll, {}, &error), qPrintable(error));
+  QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::Pending);
+
+  QVERIFY2(store.applySyncedUserPreferences(remoteAll,
+                                            mutation.value(QStringLiteral("mutationId")).toString(), &error),
+           qPrintable(error));
+  QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::All);
+  QVERIFY(store.pendingUserPreferencesMutation(&error).isEmpty());
+
+  waypoint::TaskOccurrence pending;
+  waypoint::TaskOccurrence completed;
+  completed.completed = true;
+  waypoint::TaskOccurrence skipped;
+  skipped.skipped = true;
+  QVERIFY(waypoint::isTaskVisible(pending, waypoint::TaskVisibilityMode::Pending));
+  QVERIFY(!waypoint::isTaskVisible(completed, waypoint::TaskVisibilityMode::Pending));
+  QVERIFY(!waypoint::isTaskVisible(skipped, waypoint::TaskVisibilityMode::Pending));
+  QVERIFY(waypoint::isTaskVisible(completed, waypoint::TaskVisibilityMode::All));
+  QVERIFY(waypoint::isTaskVisible(skipped, waypoint::TaskVisibilityMode::All));
 }
 
 QTEST_MAIN(TaskStoreTest)

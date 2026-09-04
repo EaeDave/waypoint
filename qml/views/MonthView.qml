@@ -197,14 +197,22 @@ Item {
                     anchors.fill: parent
                     spacing: 0
 
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: Qt.locale().toString(root.selectedDateValue, "dddd, d MMMM")
-                        color: WaypointTheme.foreground
-                        font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.headingSize
-                        font.bold: true
-                        elide: Text.ElideRight
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: Qt.locale().toString(root.selectedDateValue, "dddd, d MMMM")
+                            color: WaypointTheme.foreground
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.headingSize
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        TaskVisibilityChip {
+                            controller: root.controller
+                        }
                     }
 
                     Text {
@@ -300,7 +308,9 @@ Item {
                         Text {
                             anchors.centerIn: parent
                             visible: selectedTasks.count === 0
-                            text: "Clique acima para planejar este dia."
+                            text: root.controller.taskVisibility === "pending"
+                                ? "Nenhuma tarefa pendente neste dia."
+                                : "Clique acima para planejar este dia."
                             color: WaypointTheme.disabledText
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: WaypointTheme.bodySize

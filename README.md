@@ -35,6 +35,7 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Date-based tasks with an optional local time, emoji, and up to five advance reminders.
 - Recurrence by interval and weekday, with end-by-date and end-after-count rules.
 - Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
+- Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
 
 ### Brazilian holidays
@@ -93,7 +94,7 @@ The Linux installer enables the plugin automatically when it detects Omarchy.
 
 ### Android app and home-screen widget
 
-The Android app carries the complete calendar, task, habit, holiday, reminder, and sync experience. The resizable home-screen widget keeps the month, selected-day tasks, and habit progress visible before the app is opened. Navigate months, select dates, complete or reopen tasks, and check in habits from the launcher; each action updates local storage immediately and schedules background synchronization.
+The Android app carries the complete calendar, task, habit, holiday, reminder, and sync experience. The resizable home-screen widget keeps the month, selected-day tasks, and habit progress visible before the app is opened. Navigate months, select dates, switch between all and pending tasks, complete or reopen tasks, and check in habits from the launcher; each action updates local storage immediately and schedules background synchronization.
 
 That short interaction path matters for routines: fewer app-opening steps make quick capture and daily check-ins easier, while the calendar remains visible beside the rest of the home screen.
 

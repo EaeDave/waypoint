@@ -14,6 +14,7 @@ BarWidget {
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
+    property string taskVisibility: "all"
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
                                   canInstall: false, error: "" })
@@ -70,6 +71,9 @@ BarWidget {
     }
     function skipOccurrence(taskId, occurrenceDate) {
         runAction(["skip", taskId, "--date", occurrenceDate]);
+    }
+    function setTaskVisibility(taskVisibility) {
+        runAction(["task-visibility", taskVisibility]);
     }
     function editTask(taskId, title, scheduledTime, recurrence,
                       reminderMinutesBefore, emoji) {
@@ -150,6 +154,7 @@ BarWidget {
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
+        target.taskVisibility = Qt.binding(() => root.taskVisibility);
         target.syncStatus = Qt.binding(() => root.syncStatus);
         target.updateStatus = Qt.binding(() => root.updateStatus);
     }
@@ -224,6 +229,7 @@ BarWidget {
                     root.today = response.today || ({ pendingCount: 0, overdueCount: 0,
                                                        occurrences: [], habits: [] });
                     root.occurrences = response.occurrences || [];
+                    root.taskVisibility = response.taskVisibility || "all";
                     root.holidays = response.holidays || [];
                     root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });
                     root.loadError = "";

@@ -223,6 +223,10 @@ Item {
                         font.family: MobileTheme.fontFamily
                         font.pixelSize: MobileTheme.captionSize
                     }
+
+                    TaskVisibilityChip {
+                        controller: root.controller
+                    }
                 }
 
                 Repeater {
@@ -342,7 +346,8 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: root.controller.todayTasks.length === 0
-                    text: "Nenhuma tarefa pendente."
+                    text: root.controller.taskVisibility === "pending"
+                        ? "Nenhuma tarefa pendente." : "Nenhuma tarefa para hoje."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySize

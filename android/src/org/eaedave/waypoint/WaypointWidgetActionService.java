@@ -18,6 +18,7 @@ public final class WaypointWidgetActionService extends QtService {
   static final String EXTRA_OCCURRENCE_DATE = "occurrenceDate";
   static final String EXTRA_RECURRING = "recurring";
   static final String EXTRA_TASK_ID = "taskId";
+  static final String EXTRA_TASK_VISIBILITY = "taskVisibility";
 
   private static final String CHANNEL_ID = "waypoint-widget-actions";
   private static final int NOTIFICATION_ID = -4818;
@@ -31,16 +32,23 @@ public final class WaypointWidgetActionService extends QtService {
         return START_NOT_STICKY;
       }
       boolean habitAction = intent.hasExtra(EXTRA_HABIT_ID);
+      boolean visibilityAction = intent.hasExtra(EXTRA_TASK_VISIBILITY);
       String databasePath = getFilesDir().getAbsolutePath() + "/waypoint.sqlite3";
-      String responsePayload =
-          habitAction
-              ? applyHabitCheckIn(databasePath, intent.getStringExtra(EXTRA_HABIT_ID),
-                                  intent.getStringExtra(EXTRA_HABIT_DATE),
-                                  intent.getLongExtra(EXTRA_HABIT_AMOUNT, 0))
-              : applyTaskCompletion(databasePath, intent.getStringExtra(EXTRA_TASK_ID),
-                                    intent.getStringExtra(EXTRA_OCCURRENCE_DATE),
-                                    intent.getBooleanExtra(EXTRA_RECURRING, false),
-                                    intent.getBooleanExtra(EXTRA_COMPLETED, false));
+      String responsePayload;
+      if (visibilityAction) {
+        responsePayload =
+            applyTaskVisibility(databasePath, intent.getStringExtra(EXTRA_TASK_VISIBILITY));
+      } else if (habitAction) {
+        responsePayload = applyHabitCheckIn(databasePath, intent.getStringExtra(EXTRA_HABIT_ID),
+                                            intent.getStringExtra(EXTRA_HABIT_DATE),
+                                            intent.getLongExtra(EXTRA_HABIT_AMOUNT, 0));
+      } else {
+        responsePayload = applyTaskCompletion(
+            databasePath, intent.getStringExtra(EXTRA_TASK_ID),
+            intent.getStringExtra(EXTRA_OCCURRENCE_DATE),
+            intent.getBooleanExtra(EXTRA_RECURRING, false),
+            intent.getBooleanExtra(EXTRA_COMPLETED, false));
+      }
       JSONObject response = new JSONObject(responsePayload);
       if (!response.optBoolean("ok", false)) {
         return START_NOT_STICKY;
@@ -48,7 +56,8 @@ public final class WaypointWidgetActionService extends QtService {
       WaypointWidgetBridge.publishSnapshot(this, response.getJSONObject("snapshot").toString());
       WaypointNotifications.replaceSchedule(this, response.getJSONArray("schedule").toString());
       WaypointBackgroundSyncScheduler.requestImmediate(this);
-      if (habitAction || intent.getBooleanExtra(EXTRA_COMPLETED, false)) {
+      if (!visibilityAction &&
+          (habitAction || intent.getBooleanExtra(EXTRA_COMPLETED, false))) {
         WaypointNotifications.playCompletionSound(this);
       }
       return START_NOT_STICKY;
@@ -82,6 +91,7 @@ public final class WaypointWidgetActionService extends QtService {
 
   private static native String applyTaskCompletion(String databasePath, String taskId, String occurrenceDate,
                                                    boolean recurring, boolean completed);
+  private static native String applyTaskVisibility(String databasePath, String taskVisibility);
   private static native String applyHabitCheckIn(String databasePath, String habitId, String date,
                                                  long amount);
 }

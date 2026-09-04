@@ -288,6 +288,14 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "updated_at TEXT NOT NULL)"),
       QStringLiteral("INSERT OR IGNORE INTO holiday_preferences(singleton, updated_at) "
                      "VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
+      QStringLiteral("CREATE TABLE IF NOT EXISTS user_preferences ("
+                     "singleton INTEGER PRIMARY KEY CHECK(singleton = 1), "
+                     "task_visibility TEXT NOT NULL DEFAULT 'all' "
+                     "CHECK(task_visibility IN ('all', 'pending')), "
+                     "revision INTEGER NOT NULL DEFAULT 0, pending_mutation_id TEXT, "
+                     "dirty INTEGER NOT NULL DEFAULT 0 CHECK(dirty IN (0, 1)), updated_at TEXT NOT NULL)"),
+      QStringLiteral("INSERT OR IGNORE INTO user_preferences(singleton, updated_at) "
+                     "VALUES(1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS brazil_municipalities ("
                      "state_code TEXT NOT NULL, city_code TEXT PRIMARY KEY, name TEXT NOT NULL)"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS brazil_municipalities_state_name_idx "
@@ -1617,6 +1625,112 @@ bool TaskStore::applySyncedHolidayPreferences(const QJsonObject &preferences, QS
     return false;
   }
   emit holidayPreferencesChanged();
+  return true;
+}
+
+TaskVisibilityMode TaskStore::taskVisibilityMode(QString *errorMessage) const {
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("SELECT task_visibility FROM user_preferences WHERE singleton = 1"));
+  if (!query.exec() || !query.next()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot read task visibility preference"), query));
+    return TaskVisibilityMode::All;
+  }
+  const auto mode = taskVisibilityModeFromName(query.value(0).toString());
+  if (!mode.has_value()) {
+    setError(errorMessage, QStringLiteral("Stored task visibility preference is invalid"));
+    return TaskVisibilityMode::All;
+  }
+  return *mode;
+}
+
+bool TaskStore::setTaskVisibilityMode(const TaskVisibilityMode mode, QString *errorMessage) {
+  QString error;
+  if (taskVisibilityMode(&error) == mode) {
+    if (!error.isEmpty()) {
+      setError(errorMessage, error);
+      return false;
+    }
+    return true;
+  }
+
+  QSqlQuery query(m_database);
+  query.prepare(
+      QStringLiteral("UPDATE user_preferences SET task_visibility = ?, pending_mutation_id = ?, dirty = 1, "
+                     "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE singleton = 1"));
+  query.addBindValue(taskVisibilityModeName(mode));
+  query.addBindValue(newIdentifier());
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot save task visibility preference"), query));
+    return false;
+  }
+  emit taskVisibilityChanged();
+  return true;
+}
+
+QJsonObject TaskStore::pendingUserPreferencesMutation(QString *errorMessage) const {
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "SELECT task_visibility, pending_mutation_id, dirty FROM user_preferences WHERE singleton = 1"));
+  if (!query.exec() || !query.next()) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot read pending user preference mutation"), query));
+    return {};
+  }
+  if (!query.value(2).toBool()) {
+    return {};
+  }
+  const QString mutationId = query.value(1).toString();
+  const auto mode = taskVisibilityModeFromName(query.value(0).toString());
+  if (mutationId.isEmpty() || !mode.has_value()) {
+    setError(errorMessage, QStringLiteral("Pending user preference mutation is invalid"));
+    return {};
+  }
+  return {
+      {QStringLiteral("mutationId"), mutationId},
+      {QStringLiteral("taskVisibility"), taskVisibilityModeName(*mode)},
+  };
+}
+
+bool TaskStore::applySyncedUserPreferences(const QJsonObject &preferences, const QString &acceptedMutationId,
+                                           QString *errorMessage) {
+  const auto synchronizedMode =
+      taskVisibilityModeFromName(preferences.value(QStringLiteral("taskVisibility")).toString());
+  const qint64 revision = preferences.value(QStringLiteral("revision")).toInteger(-1);
+  const QString updatedAt = preferences.value(QStringLiteral("updatedAt")).toString();
+  if (!synchronizedMode.has_value() || revision < 0 || updatedAt.isEmpty()) {
+    setError(errorMessage, QStringLiteral("Synchronized user preferences are invalid"));
+    return false;
+  }
+
+  QSqlQuery current(m_database);
+  current.prepare(QStringLiteral(
+      "SELECT task_visibility, pending_mutation_id, dirty FROM user_preferences WHERE singleton = 1"));
+  if (!current.exec() || !current.next()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot read local user preferences"), current));
+    return false;
+  }
+  const TaskVisibilityMode localMode =
+      taskVisibilityModeFromName(current.value(0).toString()).value_or(TaskVisibilityMode::All);
+  const QString pendingMutationId = current.value(1).toString();
+  if (current.value(2).toBool() && acceptedMutationId != pendingMutationId) {
+    return true;
+  }
+
+  QSqlQuery update(m_database);
+  update.prepare(QStringLiteral(
+      "UPDATE user_preferences SET task_visibility = ?, revision = ?, pending_mutation_id = NULL, "
+      "dirty = 0, updated_at = ? WHERE singleton = 1"));
+  update.addBindValue(taskVisibilityModeName(*synchronizedMode));
+  update.addBindValue(revision);
+  update.addBindValue(updatedAt);
+  if (!update.exec()) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot apply synchronized user preferences"), update));
+    return false;
+  }
+  if (localMode != *synchronizedMode) {
+    emit taskVisibilityChanged();
+  }
   return true;
 }
 

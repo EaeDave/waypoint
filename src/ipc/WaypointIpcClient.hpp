@@ -51,6 +51,8 @@ public:
                               const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
                               QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr) const;
+  [[nodiscard]] QString taskVisibility(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool saveTaskVisibility(const QString &taskVisibility, QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncConfiguration(QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonObject syncStatus(QString *errorMessage = nullptr) const;
   [[nodiscard]] bool saveSyncConfiguration(const QString &endpoint, const QString &token, bool replaceToken,

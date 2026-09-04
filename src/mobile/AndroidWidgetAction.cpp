@@ -58,6 +58,19 @@ Java_org_eaedave_waypoint_WaypointWidgetActionService_applyTaskCompletion(
   return widgetActionResponse(environment, applied, result, error);
 }
 
+extern "C" JNIEXPORT jstring JNICALL
+Java_org_eaedave_waypoint_WaypointWidgetActionService_applyTaskVisibility(JNIEnv *environment, jclass,
+                                                                          jstring databasePath,
+                                                                          jstring taskVisibility) {
+  QString error;
+  waypoint::TaskStore store(fromJavaString(environment, databasePath));
+  waypoint::WidgetTaskActionResult result;
+  const bool applied = store.open(&error) &&
+                       waypoint::applyWidgetTaskVisibility(store, fromJavaString(environment, taskVisibility),
+                                                           QDateTime::currentDateTime(), &result, &error);
+  return widgetActionResponse(environment, applied, result, error);
+}
+
 extern "C" JNIEXPORT jstring JNICALL Java_org_eaedave_waypoint_WaypointWidgetActionService_applyHabitCheckIn(
     JNIEnv *environment, jclass, jstring databasePath, jstring habitId, jstring date, const jlong amount) {
   QString error;

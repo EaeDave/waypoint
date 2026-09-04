@@ -52,6 +52,21 @@ bool applyWidgetTaskCompletion(TaskStore &store, const QString &taskId, const QD
   return refreshWidgetActionResult(store, now, result, errorMessage);
 }
 
+bool applyWidgetTaskVisibility(TaskStore &store, const QString &taskVisibility, const QDateTime &now,
+                               WidgetTaskActionResult *result, QString *errorMessage) {
+  const auto mode = taskVisibilityModeFromName(taskVisibility);
+  if (!mode.has_value() || !now.isValid() || result == nullptr) {
+    setError(errorMessage, QStringLiteral("Invalid widget task visibility request"));
+    return false;
+  }
+  QString error;
+  if (!store.setTaskVisibilityMode(*mode, &error)) {
+    setError(errorMessage, error);
+    return false;
+  }
+  return refreshWidgetActionResult(store, now, result, errorMessage);
+}
+
 bool applyWidgetHabitCheckIn(TaskStore &store, const QString &habitId, const QDate &date, const qint64 amount,
                              const QDateTime &now, WidgetTaskActionResult *result, QString *errorMessage) {
   if (habitId.isEmpty() || !date.isValid() || amount < 0 || !now.isValid() || result == nullptr) {

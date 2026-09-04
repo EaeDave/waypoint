@@ -19,6 +19,9 @@ struct WidgetTaskActionResult final {
                                              const QDate &occurrenceDate, bool recurring, bool completed,
                                              const QDateTime &now, WidgetTaskActionResult *result,
                                              QString *errorMessage = nullptr);
+[[nodiscard]] bool applyWidgetTaskVisibility(TaskStore &store, const QString &taskVisibility,
+                                             const QDateTime &now, WidgetTaskActionResult *result,
+                                             QString *errorMessage = nullptr);
 
 [[nodiscard]] bool applyWidgetHabitCheckIn(TaskStore &store, const QString &habitId, const QDate &date,
                                            qint64 amount, const QDateTime &now,

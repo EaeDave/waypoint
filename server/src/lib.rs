@@ -93,6 +93,8 @@ struct SyncRequest {
     cursor: i64,
     #[serde(default)]
     mutations: Vec<SyncMutation>,
+    #[serde(default)]
+    preference_mutation: Option<UserPreferenceMutation>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,12 +107,29 @@ struct SyncMutation {
     payload: Value,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPreferenceMutation {
+    mutation_id: String,
+    task_visibility: String,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SyncResponse {
     next_cursor: i64,
     accepted_mutation_ids: Vec<String>,
+    accepted_preference_mutation_id: Option<String>,
     changes: Vec<SyncChange>,
+    preferences: UserPreferences,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct UserPreferences {
+    task_visibility: String,
+    revision: i64,
+    updated_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -309,6 +328,37 @@ async fn sync(
         .map_err(ApiError::database)?;
         wake_sequence = Some(sequence);
     }
+    let mut accepted_preference_mutation_id = None;
+    let mut preference_changed = false;
+    if let Some(preference_mutation) = request.preference_mutation {
+        let mutation_id = Uuid::parse_str(&preference_mutation.mutation_id).map_err(|_| {
+            ApiError::bad_request(format!(
+                "invalid preference mutationId: {}",
+                preference_mutation.mutation_id
+            ))
+        })?;
+        let inserted = sqlx::query_scalar::<_, Uuid>(
+            "INSERT INTO user_preference_mutations(mutation_id, device_id) VALUES($1, $2) \
+             ON CONFLICT(mutation_id) DO NOTHING RETURNING mutation_id",
+        )
+        .bind(mutation_id)
+        .bind(&request.device_id)
+        .fetch_optional(&mut *transaction)
+        .await
+        .map_err(ApiError::database)?;
+        accepted_preference_mutation_id = Some(preference_mutation.mutation_id);
+        if inserted.is_some() {
+            sqlx::query(
+                "UPDATE user_preferences SET task_visibility = $1, revision = revision + 1, \
+                 updated_at = now() WHERE singleton = TRUE",
+            )
+            .bind(preference_mutation.task_visibility)
+            .execute(&mut *transaction)
+            .await
+            .map_err(ApiError::database)?;
+            preference_changed = true;
+        }
+    }
 
     let rows = sqlx::query(
         "SELECT sequence, entity_type, entity_id, operation, payload \
@@ -335,6 +385,29 @@ async fn sync(
         });
     }
 
+    let preference_row = sqlx::query(
+        "SELECT task_visibility, revision, \
+         to_char(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') AS updated_at \
+         FROM user_preferences WHERE singleton = TRUE",
+    )
+    .fetch_one(&mut *transaction)
+    .await
+    .map_err(ApiError::database)?;
+    let preferences = UserPreferences {
+        task_visibility: preference_row
+            .try_get("task_visibility")
+            .map_err(ApiError::database)?,
+        revision: preference_row
+            .try_get("revision")
+            .map_err(ApiError::database)?,
+        updated_at: preference_row
+            .try_get("updated_at")
+            .map_err(ApiError::database)?,
+    };
+    if preference_changed && wake_sequence.is_none() {
+        wake_sequence = Some(preferences.revision);
+    }
+
     transaction.commit().await.map_err(ApiError::database)?;
     if let Some(sequence) = wake_sequence {
         publish_sync_wakeup(&state, sequence, request.device_id.clone());
@@ -342,7 +415,9 @@ async fn sync(
     Ok(Json(SyncResponse {
         next_cursor,
         accepted_mutation_ids,
+        accepted_preference_mutation_id,
         changes,
+        preferences,
     }))
 }
 
@@ -429,6 +504,21 @@ fn validate_request(request: &SyncRequest) -> Result<(), ApiError> {
     }
     for mutation in &request.mutations {
         validate_mutation(mutation)?;
+    }
+    if let Some(preference_mutation) = &request.preference_mutation {
+        Uuid::parse_str(&preference_mutation.mutation_id).map_err(|_| {
+            ApiError::bad_request(format!(
+                "invalid preference mutationId: {}",
+                preference_mutation.mutation_id
+            ))
+        })?;
+        if preference_mutation.task_visibility != "all"
+            && preference_mutation.task_visibility != "pending"
+        {
+            return Err(ApiError::bad_request(
+                "taskVisibility must be 'all' or 'pending'",
+            ));
+        }
     }
     Ok(())
 }
@@ -860,7 +950,24 @@ mod tests {
             device_id: "test-device".to_owned(),
             cursor: 0,
             mutations,
+            preference_mutation: None,
         }
+    }
+
+    #[test]
+    fn validates_task_visibility_preference_mutations() {
+        let mut request = request_with(Vec::new());
+        request.preference_mutation = Some(UserPreferenceMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            task_visibility: "pending".to_owned(),
+        });
+        assert!(validate_request(&request).is_ok());
+
+        request.preference_mutation = Some(UserPreferenceMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            task_visibility: "completed".to_owned(),
+        });
+        assert!(validate_request(&request).is_err());
     }
 
     #[test]

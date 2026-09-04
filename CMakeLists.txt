@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.4 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.5 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -33,6 +33,8 @@ add_library(waypoint_core STATIC
     src/core/SyncConfiguration.hpp
     src/core/TaskStore.cpp
     src/core/TaskStore.hpp
+    src/core/TaskVisibility.cpp
+    src/core/TaskVisibility.hpp
 )
 target_include_directories(waypoint_core PUBLIC src)
 target_link_libraries(waypoint_core PUBLIC waypoint_version Qt6::Core Qt6::Network Qt6::Sql)
@@ -116,6 +118,7 @@ if(ANDROID)
             qml/mobile/components/MobileIcon.qml
             qml/mobile/components/SectionCard.qml
             qml/mobile/components/TaskEditor.qml
+            qml/mobile/components/TaskVisibilityChip.qml
             qml/mobile/views/CalendarPage.qml
             qml/mobile/views/HabitsPage.qml
             qml/mobile/views/SettingsPage.qml
@@ -217,6 +220,7 @@ else()
             qml/components/CalendarGrid.qml
             qml/components/QuickTaskComposer.qml
             qml/components/TaskRow.qml
+            qml/components/TaskVisibilityChip.qml
             qml/views/MonthView.qml
             qml/views/TodayView.qml
             qml/views/SettingsView.qml

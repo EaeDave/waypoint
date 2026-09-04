@@ -81,6 +81,10 @@ Item {
                 Layout.fillWidth: true
             }
 
+            TaskVisibilityChip {
+                controller: root.controller
+            }
+
             Text {
                 visible: !root.compact
                 text: "N  NOVA TAREFA"
@@ -129,7 +133,8 @@ Item {
                     Layout.topMargin: 18
                     Layout.bottomMargin: 8
                     visible: taskList.count === 0
-                    text: "Seu dia está livre."
+                    text: root.controller.taskVisibility === "pending"
+                        ? "Nenhuma tarefa pendente." : "Seu dia está livre."
                     horizontalAlignment: Text.AlignHCenter
                     color: WaypointTheme.disabledText
                     font.family: WaypointTheme.fontFamily

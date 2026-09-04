@@ -27,6 +27,18 @@ void playCompletionSound(const QString &description) {
                                         QStringLiteral("-d"), description});
 }
 
+QList<TaskOccurrence> visibleOccurrences(const QList<TaskOccurrence> &occurrences,
+                                         const TaskVisibilityMode mode) {
+  QList<TaskOccurrence> visible;
+  visible.reserve(occurrences.size());
+  for (const TaskOccurrence &occurrence : occurrences) {
+    if (isTaskVisible(occurrence, mode)) {
+      visible.append(occurrence);
+    }
+  }
+  return visible;
+}
+
 } // namespace
 
 WaypointIpcServer::WaypointIpcServer(TaskStore *taskStore, SyncEngine *syncEngine,
@@ -116,11 +128,12 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
     const QDate to = QDate::fromString(request.value(QStringLiteral("to")).toString(), Qt::ISODate);
     const QList<TaskOccurrence> records = m_taskStore->listOccurrences(from, to, &error);
+    const TaskVisibilityMode visibility = m_taskStore->taskVisibilityMode(&error);
     if (!error.isEmpty()) {
       return protocol::errorResponse(error);
     }
     QJsonArray occurrences;
-    for (const TaskOccurrence &occurrence : records) {
+    for (const TaskOccurrence &occurrence : visibleOccurrences(records, visibility)) {
       occurrences.append(occurrence.toJson());
     }
     return {{QStringLiteral("ok"), true},
@@ -133,11 +146,13 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const QDate today =
         requestedDate.isEmpty() ? QDate::currentDate() : QDate::fromString(requestedDate, Qt::ISODate);
     const QList<TaskOccurrence> records = m_taskStore->listActionableOccurrences(today, &error);
+    const TaskVisibilityMode visibility = m_taskStore->taskVisibilityMode(&error);
     if (!error.isEmpty()) {
       return protocol::errorResponse(error);
     }
+    const QList<TaskOccurrence> visibleRecords = visibleOccurrences(records, visibility);
     QJsonArray occurrences;
-    for (const TaskOccurrence &occurrence : records) {
+    for (const TaskOccurrence &occurrence : visibleRecords) {
       occurrences.append(occurrence.toJson());
     }
     const QList<HabitProgress> habitRecords = m_taskStore->listHabitProgress(today, &error);
@@ -148,7 +163,7 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     for (const HabitProgress &progress : habitRecords) {
       habits.append(progress.toJson());
     }
-    const OccurrenceSummary summary = summarizeOccurrences(records, today);
+    const OccurrenceSummary summary = summarizeOccurrences(visibleRecords, today);
     return {{QStringLiteral("ok"), true},
             {QStringLiteral("date"), today.toString(Qt::ISODate)},
             {QStringLiteral("pendingCount"), summary.pendingToday},
@@ -317,6 +332,23 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("task-visibility")) {
+    const TaskVisibilityMode mode = m_taskStore->taskVisibilityMode(&error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("taskVisibility"), taskVisibilityModeName(mode)}};
+  }
+  if (command == QStringLiteral("set-task-visibility")) {
+    const auto mode = taskVisibilityModeFromName(request.value(QStringLiteral("taskVisibility")).toString());
+    if (!mode.has_value()) {
+      return protocol::errorResponse(QStringLiteral("Task visibility must be 'all' or 'pending'"));
+    }
+    if (!m_taskStore->setTaskVisibilityMode(*mode, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("taskVisibility"), taskVisibilityModeName(*mode)}};
   }
   if (command == QStringLiteral("get-sync-config")) {
     QJsonObject response = m_syncEngine->publicConfiguration();

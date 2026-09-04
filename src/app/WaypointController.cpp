@@ -81,6 +81,7 @@ TaskListModel *WaypointController::selectedDateTasks() { return &m_selectedDateT
 QVariantList WaypointController::todayHabits() const { return m_todayHabits; }
 
 CalendarModel *WaypointController::calendar() { return &m_calendar; }
+QString WaypointController::taskVisibility() const { return m_taskVisibility; }
 
 QString WaypointController::selectedDateKey() const { return m_selectedDate.toString(Qt::ISODate); }
 
@@ -176,6 +177,15 @@ void WaypointController::refresh() {
   if (!error.isEmpty()) {
     updateConnection(false, error);
     return;
+  }
+  const QString taskVisibility = m_client.taskVisibility(&error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
+  if (m_taskVisibility != taskVisibility) {
+    m_taskVisibility = taskVisibility;
+    emit taskVisibilityChanged();
   }
 
   QJsonArray todayValues;
@@ -337,6 +347,16 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
 bool WaypointController::deleteTask(const QString &taskId) {
   QString error;
   if (!m_client.deleteTask(taskId, &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  refresh();
+  return true;
+}
+
+bool WaypointController::setTaskVisibility(const QString &taskVisibility) {
+  QString error;
+  if (!m_client.saveTaskVisibility(taskVisibility, &error)) {
     updateConnection(false, error);
     return false;
   }
