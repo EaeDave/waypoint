@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -10,6 +12,24 @@ Item {
     property string feedbackMessage: ""
     property bool feedbackError: false
     readonly property bool compact: width < WaypointTheme.compactBreakpoint
+    property string editingCategoryId: ""
+    readonly property var categoryPalette: [
+        { name: "Azul", color: "#979FEC" },
+        { name: "Verde", color: "#9EC49F" },
+        { name: "Âmbar", color: "#E9C98D" },
+        { name: "Vermelho", color: "#B37580" },
+        { name: "Ciano", color: "#80B9C7" },
+        { name: "Violeta", color: "#C79BCB" },
+        { name: "Laranja", color: "#D59A6F" },
+        { name: "Cinza", color: "#A8A8A8" }
+    ]
+    property string editingCategoryColor: ""
+    readonly property var categoryColorOptions: {
+        const options = categoryPalette.slice();
+        if (editingCategoryColor !== "" && categoryColorIndex(editingCategoryColor) < 0)
+            options.unshift({ name: "Cor atual", color: editingCategoryColor });
+        return options;
+    }
     readonly property var brazilianStates: [
         { code: "", name: "Nenhum estado" },
         { code: "AC", name: "Acre" }, { code: "AL", name: "Alagoas" },
@@ -43,6 +63,21 @@ Item {
         }
         return -1;
     }
+    function categoryColorIndex(color) {
+        for (let index = 0; index < categoryPalette.length; ++index) {
+            if (categoryPalette[index].color === color)
+                return index;
+        }
+        return -1;
+    }
+
+    function resetCategoryEditor() {
+        editingCategoryId = "";
+        editingCategoryColor = "";
+        categoryNameField.clear();
+        categoryColorField.currentIndex = 0;
+    }
+
 
     function loadHolidayConfiguration() {
         stateField.currentIndex = stateIndex(controller.holidayStateCode);
@@ -288,6 +323,163 @@ Item {
                                     tokenField.clear();
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: categoryColumn.implicitHeight + 28
+                radius: WaypointTheme.radius
+                color: WaypointTheme.surface
+                border.width: 1
+                border.color: WaypointTheme.divider
+
+                ColumnLayout {
+                    id: categoryColumn
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 10
+
+                    Text {
+                        text: "CATEGORIAS DE TAREFAS"
+                        color: WaypointTheme.foreground
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.titleSize
+                        font.bold: true
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Organize tarefas com uma categoria opcional e uma cor."
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                        wrapMode: Text.Wrap
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.controller.syncConfigured
+                                 && !root.controller.categorySyncAvailable
+                        text: "Categorias permanecem somente neste dispositivo até o servidor ser atualizado."
+                        color: WaypointTheme.warning
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                        wrapMode: Text.Wrap
+                    }
+
+                    Repeater {
+                        model: root.controller.taskCategories
+
+                        RowLayout {
+                            id: categoryRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Rectangle {
+                                Layout.preferredWidth: 10
+                                Layout.preferredHeight: 10
+                                radius: 5
+                                color: categoryRow.modelData.color
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: categoryRow.modelData.name
+                                color: WaypointTheme.foreground
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.bodySize
+                                elide: Text.ElideRight
+                            }
+
+                            AppButton {
+                                text: "Editar"
+                                onClicked: {
+                                    root.editingCategoryId = categoryRow.modelData.id;
+                                    root.editingCategoryColor = categoryRow.modelData.color;
+                                    categoryNameField.text = categoryRow.modelData.name;
+                                    const paletteIndex =
+                                        root.categoryColorIndex(categoryRow.modelData.color);
+                                    categoryColorField.currentIndex =
+                                        paletteIndex < 0 ? 0 : paletteIndex;
+                                    categoryNameField.forceActiveFocus();
+                                }
+                            }
+
+                            AppButton {
+                                text: "Excluir"
+                                destructive: true
+                                onClicked: {
+                                    const removed = root.controller.deleteTaskCategory(
+                                        categoryRow.modelData.id);
+                                    root.feedbackError = !removed;
+                                    root.feedbackMessage = removed
+                                        ? "Categoria removida. As tarefas ficaram sem categoria."
+                                        : root.controller.errorMessage;
+                                    if (removed && root.editingCategoryId === categoryRow.modelData.id)
+                                        root.resetCategoryEditor();
+                                }
+                            }
+                        }
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: root.compact ? 1 : 2
+                        columnSpacing: 8
+                        rowSpacing: 8
+
+                        AppTextField {
+                            id: categoryNameField
+                            Layout.fillWidth: true
+                            placeholderText: "Nome da categoria"
+                            onTextChanged: {
+                                const codePoints = Array.from(text);
+                                if (codePoints.length > 80)
+                                    text = codePoints.slice(0, 80).join("");
+                            }
+                        }
+
+                        AppComboBox {
+                            id: categoryColorField
+                            Layout.fillWidth: true
+                            model: root.categoryColorOptions
+                            textRole: "name"
+                            valueRole: "color"
+                            colorRole: "color"
+                        }
+                    }
+
+                    Flow {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: implicitHeight
+                        spacing: 8
+
+                        AppButton {
+                            text: root.editingCategoryId === "" ? "Adicionar categoria"
+                                                               : "Salvar categoria"
+                            selected: true
+                            enabled: categoryNameField.text.trim() !== ""
+                            onClicked: {
+                                const saved = root.controller.saveTaskCategory(
+                                    root.editingCategoryId,
+                                    categoryNameField.text,
+                                    categoryColorField.currentValue);
+                                root.feedbackError = !saved;
+                                root.feedbackMessage = saved ? "Categoria salva."
+                                                             : root.controller.errorMessage;
+                                if (saved)
+                                    root.resetCategoryEditor();
+                            }
+                        }
+
+                        AppButton {
+                            visible: root.editingCategoryId !== ""
+                            text: "Cancelar"
+                            onClicked: root.resetCategoryEditor()
                         }
                     }
                 }

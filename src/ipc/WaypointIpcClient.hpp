@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/HabitRecord.hpp"
+#include "core/TaskCategory.hpp"
 #include "core/TaskRecord.hpp"
 
 #include <QJsonArray>
@@ -20,6 +21,7 @@ public:
 
   [[nodiscard]] bool ping(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskRecord> listTasks(QString *errorMessage = nullptr) const;
+  [[nodiscard]] QList<TaskCategory> listTaskCategories(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listOccurrences(const QDate &from, const QDate &to,
                                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
@@ -33,9 +35,16 @@ public:
   [[nodiscard]] bool undoLastHabitEntry(const QString &habitId, const QDate &date,
                                         QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteHabit(const QString &habitId, QString *errorMessage = nullptr) const;
-  [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                             const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
-                             const QString &emoji, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool addTaskCategory(const QString &name, const QString &color,
+                                     QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool editTaskCategory(const QString &categoryId, const QString &name,
+                                      const QString &color, QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool deleteTaskCategory(const QString &categoryId,
+                                        QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool addTask(const QString &title, const QDate &scheduledDate,
+                             const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                             const QList<int> &reminderMinutesBefore, const QString &emoji,
+                             const QString &categoryId, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed,
                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
@@ -46,9 +55,10 @@ public:
                                       const QString &scope, QString *errorMessage = nullptr) const;
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr) const;
-  [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                              const RecurrenceRule &recurrence,
-                              const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
+  [[nodiscard]] bool editTask(const QString &taskId, const QString &title,
+                              const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                              const std::optional<QList<int>> &reminderMinutesBefore,
+                              const QString &emoji, const std::optional<QString> &categoryId,
                               QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteTask(const QString &taskId, QString *errorMessage = nullptr) const;
   [[nodiscard]] QString taskVisibility(QString *errorMessage = nullptr) const;

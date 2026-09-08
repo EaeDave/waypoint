@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/HabitRecord.hpp"
+#include "core/TaskCategory.hpp"
 #include "core/SyncConfiguration.hpp"
 #include "core/TaskRecord.hpp"
 #include "core/TaskVisibility.hpp"
@@ -23,6 +24,7 @@ public:
 
   [[nodiscard]] bool open(QString *errorMessage = nullptr);
   [[nodiscard]] QList<TaskRecord> listActiveTasks(QString *errorMessage = nullptr) const;
+  [[nodiscard]] QList<TaskCategory> listActiveTaskCategories(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrenceState> listOccurrenceStates(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listOccurrences(const QDate &from, const QDate &to,
                                                       QString *errorMessage = nullptr) const;
@@ -44,6 +46,12 @@ public:
   [[nodiscard]] bool releaseReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
                                              int reminderMinutesBefore, QString *errorMessage = nullptr);
   [[nodiscard]] QJsonArray pendingMutations(QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonArray pendingMutations(const QStringList &entityTypes,
+                                            qsizetype maximumCount,
+                                            QString *errorMessage = nullptr) const;
+  [[nodiscard]] QStringList serverSupportedEntityTypes(QString *errorMessage = nullptr) const;
+  [[nodiscard]] bool saveServerSupportedEntityTypes(const QStringList &entityTypes,
+                                                    QString *errorMessage = nullptr);
   [[nodiscard]] QString syncCursor(QString *errorMessage = nullptr) const;
   [[nodiscard]] SyncConfiguration syncConfiguration(QString *errorMessage = nullptr) const;
   [[nodiscard]] bool saveSyncConfiguration(const SyncConfiguration &configuration,
@@ -68,6 +76,13 @@ public:
   [[nodiscard]] bool replaceMunicipalities(const QString &stateCode, const QJsonArray &municipalities,
                                            QString *errorMessage = nullptr);
 
+  [[nodiscard]] bool createTaskCategory(const QString &name, const QString &color,
+                                        TaskCategory *createdCategory = nullptr,
+                                        QString *errorMessage = nullptr);
+  [[nodiscard]] bool editTaskCategory(const QString &categoryId, const QString &name,
+                                      const QString &color, QString *errorMessage = nullptr);
+  [[nodiscard]] bool deleteTaskCategory(const QString &categoryId,
+                                        QString *errorMessage = nullptr);
   [[nodiscard]] bool createHabit(const QString &title, qint64 targetAmount, const QString &unit,
                                  HabitCheckInMode checkInMode, qint64 incrementAmount,
                                  const QList<int> &weekdays, const QList<QTime> &reminderTimes,
@@ -83,20 +98,23 @@ public:
                                  QString *errorMessage = nullptr);
   [[nodiscard]] bool undoLastHabitEntry(const QString &habitId, const QDate &date,
                                         QString *errorMessage = nullptr);
-  [[nodiscard]] bool createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                                const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
-                                const QString &emoji, TaskRecord *createdTask = nullptr,
+  [[nodiscard]] bool createTask(const QString &title, const QDate &scheduledDate,
+                                const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                                const QList<int> &reminderMinutesBefore, const QString &emoji,
+                                const QString &categoryId, TaskRecord *createdTask = nullptr,
                                 QString *errorMessage = nullptr);
-  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, QString *errorMessage = nullptr);
+  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed,
+                                      QString *errorMessage = nullptr);
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
                                             bool completed, QString *errorMessage = nullptr);
   [[nodiscard]] bool skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                     QString *errorMessage = nullptr);
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
                                     const QTime &scheduledTime, QString *errorMessage = nullptr);
-  [[nodiscard]] bool editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                              const RecurrenceRule &recurrence,
-                              const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
+  [[nodiscard]] bool editTask(const QString &taskId, const QString &title,
+                              const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                              const std::optional<QList<int>> &reminderMinutesBefore,
+                              const QString &emoji, const std::optional<QString> &categoryId,
                               QString *errorMessage = nullptr);
   [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                       RecurrenceEditScope scope, QString *errorMessage = nullptr);
@@ -107,6 +125,7 @@ public:
 
 signals:
   void tasksChanged();
+  void categoriesChanged();
   void habitsChanged();
   void holidaysChanged();
   void holidayPreferencesChanged();
@@ -119,6 +138,8 @@ private:
   [[nodiscard]] bool enqueueMutation(const QString &mutationId, const QString &entityType,
                                      const QString &entityId, const QString &operation,
                                      const QJsonObject &payload, QString *errorMessage);
+  [[nodiscard]] bool validateTaskCategoryId(const QString &categoryId,
+                                            QString *errorMessage) const;
   [[nodiscard]] bool setOccurrenceState(const QString &taskId, const QDate &occurrenceDate,
                                         OccurrenceStatus status, QString *errorMessage);
   [[nodiscard]] bool beginTransaction(QString *errorMessage);

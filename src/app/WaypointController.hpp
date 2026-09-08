@@ -17,6 +17,7 @@ class WaypointController final : public QObject {
   Q_PROPERTY(TaskListModel *todayTasks READ todayTasks CONSTANT)
   Q_PROPERTY(TaskListModel *selectedDateTasks READ selectedDateTasks CONSTANT)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY habitsChanged)
+  Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY categoriesChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(
@@ -27,6 +28,7 @@ class WaypointController final : public QObject {
   Q_PROPERTY(bool syncConfigured READ syncConfigured NOTIFY syncConfigurationChanged)
   Q_PROPERTY(QString syncState READ syncState NOTIFY syncStatusChanged)
   Q_PROPERTY(QString syncLastError READ syncLastError NOTIFY syncStatusChanged)
+  Q_PROPERTY(bool categorySyncAvailable READ categorySyncAvailable NOTIFY syncStatusChanged)
   Q_PROPERTY(QString lastSuccessfulSync READ lastSuccessfulSync NOTIFY syncStatusChanged)
   Q_PROPERTY(QString holidayStateCode READ holidayStateCode NOTIFY holidayConfigurationChanged)
   Q_PROPERTY(QString holidayCityCode READ holidayCityCode NOTIFY holidayConfigurationChanged)
@@ -51,6 +53,7 @@ public:
   [[nodiscard]] TaskListModel *todayTasks();
   [[nodiscard]] TaskListModel *selectedDateTasks();
   [[nodiscard]] QVariantList todayHabits() const;
+  [[nodiscard]] QVariantList taskCategories() const;
   [[nodiscard]] CalendarModel *calendar();
   [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QString selectedDateKey() const;
@@ -61,6 +64,7 @@ public:
   [[nodiscard]] bool syncConfigured() const;
   [[nodiscard]] QString syncState() const;
   [[nodiscard]] QString syncLastError() const;
+  [[nodiscard]] bool categorySyncAvailable() const;
   [[nodiscard]] QString lastSuccessfulSync() const;
   [[nodiscard]] QString holidayStateCode() const;
   [[nodiscard]] QString holidayCityCode() const;
@@ -83,9 +87,10 @@ public:
   Q_INVOKABLE void refresh();
   Q_INVOKABLE bool addTask(const QString &title, const QString &scheduledDateKey,
                            const QString &scheduledTimeKey, const QString &frequency, int interval,
-                           const QVariantList &weekdays, const QString &endMode, const QString &untilDateKey,
-                           int occurrenceCount, const QVariantList &reminderMinutesBefore,
-                           const QString &emoji);
+                           const QVariantList &weekdays, const QString &endMode,
+                           const QString &untilDateKey, int occurrenceCount,
+                           const QVariantList &reminderMinutesBefore, const QString &emoji,
+                           const QString &categoryId);
   Q_INVOKABLE bool setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
                                           bool completed);
   Q_INVOKABLE bool skipOccurrence(const QString &taskId, const QString &occurrenceDateKey);
@@ -93,10 +98,12 @@ public:
                                     const QString &scope);
   Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey,
                                   const QString &scheduledTimeKey);
-  Q_INVOKABLE bool editTask(const QString &taskId, const QString &title, const QString &scheduledTimeKey,
-                            const QString &frequency, int interval, const QVariantList &weekdays,
-                            const QString &endMode, const QString &untilDateKey, int occurrenceCount,
-                            const QVariantList &reminderMinutesBefore, const QString &emoji);
+  Q_INVOKABLE bool editTask(const QString &taskId, const QString &title,
+                            const QString &scheduledTimeKey, const QString &frequency, int interval,
+                            const QVariantList &weekdays, const QString &endMode,
+                            const QString &untilDateKey, int occurrenceCount,
+                            const QVariantList &reminderMinutesBefore, const QString &emoji,
+                            const QString &categoryId);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
@@ -106,6 +113,9 @@ public:
   Q_INVOKABLE bool recordHabit(const QString &habitId, qint64 amount = 0);
   Q_INVOKABLE bool undoHabit(const QString &habitId);
   Q_INVOKABLE bool deleteHabit(const QString &habitId);
+  Q_INVOKABLE bool saveTaskCategory(const QString &categoryId, const QString &name,
+                                    const QString &color);
+  Q_INVOKABLE bool deleteTaskCategory(const QString &categoryId);
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
   Q_INVOKABLE bool disableRemoteSync();
   Q_INVOKABLE bool syncNow();
@@ -120,6 +130,7 @@ public:
 signals:
   void selectedDateKeyChanged();
   void habitsChanged();
+  void categoriesChanged();
   void taskVisibilityChanged();
   void connectionChanged();
   void errorMessageChanged();
@@ -146,11 +157,13 @@ private:
   TaskListModel m_selectedDateTasks;
   CalendarModel m_calendar;
   QVariantList m_todayHabits;
+  QVariantList m_taskCategories;
   QTimer m_refreshTimer;
   QDate m_selectedDate;
   QByteArray m_snapshotSignature;
   QByteArray m_holidaySignature;
   QByteArray m_municipalitySignature;
+  QByteArray m_categorySignature;
   QJsonArray m_holidays;
   QVariantList m_municipalities;
   bool m_online = false;
@@ -162,6 +175,7 @@ private:
   QString m_syncLastError;
   QString m_lastSuccessfulSync;
   QString m_holidayStateCode;
+  bool m_categorySyncAvailable = false;
   QString m_holidayCityCode;
   QString m_holidaySyncState = QStringLiteral("local-only");
   QString m_holidaySyncLastError;

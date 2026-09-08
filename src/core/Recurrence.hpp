@@ -50,6 +50,9 @@ struct TaskOccurrence final {
   QTime scheduledTime;
   QList<int> reminderMinutesBefore{0};
   QString emoji;
+  QString categoryId;
+  QString categoryName;
+  QString categoryColor;
   bool completed = false;
   bool skipped = false;
   bool recurring = false;

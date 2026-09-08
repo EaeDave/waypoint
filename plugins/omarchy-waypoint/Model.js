@@ -39,6 +39,8 @@ function monthCells(year, month, occurrences, holidays) {
         let completed = 0
         let overdue = 0
         let skipped = 0
+        const categoryMarkersById = {}
+        const categoryMarkerOrder = []
         for (const occurrence of occurrences || []) {
             if (occurrence.occurrenceDate !== key)
                 continue
@@ -53,6 +55,18 @@ function monthCells(year, month, occurrences, holidays) {
                 if (key < today)
                     ++overdue
             }
+            const categoryId = String(occurrence.categoryId || "__uncategorized")
+            if (!categoryMarkersById[categoryId]) {
+                categoryMarkersById[categoryId] = {
+                    id: categoryId,
+                    name: String(occurrence.categoryName || "Sem categoria"),
+                    color: String(occurrence.categoryColor || "#979FEC"),
+                    overdue: false
+                }
+                categoryMarkerOrder.push(categoryId)
+            }
+            if (occurrence.skipped || (!occurrence.completed && key < today))
+                categoryMarkersById[categoryId].overdue = true
         }
         const holidayEvents = (holidays || []).filter(holiday => holiday.date === key)
         let holidayKind = ""
@@ -60,6 +74,10 @@ function monthCells(year, month, occurrences, holidays) {
             if (holidayPriority(holiday.kind) > holidayPriority(holidayKind))
                 holidayKind = holiday.kind
         }
+        const categoryMarkers = []
+        for (let markerIndex = 0;
+             markerIndex < Math.min(3, categoryMarkerOrder.length); ++markerIndex)
+            categoryMarkers.push(categoryMarkersById[categoryMarkerOrder[markerIndex]])
         cells.push({
             date: date,
             key: key,
@@ -73,7 +91,9 @@ function monthCells(year, month, occurrences, holidays) {
             skipped: skipped,
             holidays: holidayEvents,
             holidayCount: holidayEvents.length,
-            holidayKind: holidayKind
+            holidayKind: holidayKind,
+            categoryMarkers: categoryMarkers,
+            categoryOverflow: Math.max(0, categoryMarkerOrder.length - categoryMarkers.length),
         })
     }
     return cells

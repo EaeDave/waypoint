@@ -18,7 +18,8 @@ void setError(QString *destination, const QString &message) {
 
 } // namespace
 
-bool prepareBackgroundSync(TaskStore &store, BackgroundSyncRequest *request, QString *errorMessage) {
+bool prepareBackgroundSync(TaskStore &store, const bool includeCategoryMutations,
+                           BackgroundSyncRequest *request, QString *errorMessage) {
   if (request == nullptr) {
     setError(errorMessage, QStringLiteral("Background sync request destination is required"));
     return false;
@@ -38,7 +39,8 @@ bool prepareBackgroundSync(TaskStore &store, BackgroundSyncRequest *request, QSt
   BackgroundSyncRequest prepared;
   prepared.endpoint = configuration.endpoint;
   prepared.token = configuration.token;
-  prepared.payload = buildSyncRequest(store, syncDeviceId(), &error);
+  prepared.payload =
+      buildSyncRequest(store, syncDeviceId(), includeCategoryMutations, &error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
     return false;
@@ -61,8 +63,24 @@ bool applyBackgroundSync(TaskStore &store, const QJsonObject &response, Backgrou
     setError(errorMessage, error);
     return false;
   }
+  const bool categorySyncAvailable =
+      store.serverSupportedEntityTypes(&error).contains(QStringLiteral("category"));
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return false;
+  }
+  const QJsonArray pendingCategories =
+      categorySyncAvailable
+          ? store.pendingMutations({QStringLiteral("category")}, 1, &error)
+          : QJsonArray{};
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return false;
+  }
 
   BackgroundSyncResult applied;
+  applied.categoryFollowUpRequired =
+      categorySyncAvailable && !pendingCategories.isEmpty();
   const QDateTime now = QDateTime::currentDateTime();
   applied.widgetSnapshot = buildWidgetSnapshot(store, now.date(), 6, 12, &error);
   if (!error.isEmpty()) {

@@ -1,5 +1,6 @@
 #include "app/CalendarModel.hpp"
 
+#include <algorithm>
 #include <QLocale>
 
 namespace waypoint {
@@ -60,6 +61,24 @@ QVariant CalendarModel::data(const QModelIndex &index, int role) const {
     return cell.holidayKind;
   case HolidayNamesRole:
     return cell.holidayNames;
+  case CategoryMarkersRole: {
+    QVariantList markers;
+    const qsizetype limit = std::min<qsizetype>(3, cell.categoryMarkers.size());
+    markers.reserve(limit);
+    for (qsizetype markerIndex = 0; markerIndex < limit; ++markerIndex) {
+      const CategoryMarker &marker = cell.categoryMarkers.at(markerIndex);
+      markers.append(QVariantMap{
+          {QStringLiteral("id"), marker.id},
+          {QStringLiteral("name"), marker.name},
+          {QStringLiteral("color"), marker.color},
+          {QStringLiteral("taskCount"), marker.taskCount},
+          {QStringLiteral("urgent"), marker.urgent},
+      });
+    }
+    return markers;
+  }
+  case CategoryOverflowRole:
+    return std::max<qsizetype>(0, cell.categoryMarkers.size() - 3);
   default:
     return {};
   }
@@ -80,6 +99,8 @@ QHash<int, QByteArray> CalendarModel::roleNames() const {
       {HolidayKindRole, "holidayKind"},
       {HolidayNamesRole, "holidayNames"},
       {WeekNumberRole, "weekNumber"},
+      {CategoryMarkersRole, "categoryMarkers"},
+      {CategoryOverflowRole, "categoryOverflow"},
   };
 }
 
@@ -150,15 +171,34 @@ void CalendarModel::rebuildCells() {
       if (!occurrence.calendarMarker) {
         continue;
       }
+      const bool urgent = occurrence.skipped ||
+                          (!occurrence.completed && occurrence.occurrenceDate < today);
       if (occurrence.skipped) {
         ++cell.skippedCount;
       } else if (occurrence.completed) {
         ++cell.completedCount;
       } else {
         ++cell.pendingCount;
-        if (occurrence.occurrenceDate < today) {
+        if (urgent) {
           ++cell.overdueCount;
         }
+      }
+      const QString markerId = occurrence.categoryName.isEmpty() ? QString{} : occurrence.categoryId;
+      auto marker =
+          std::ranges::find_if(cell.categoryMarkers, [&markerId](const CategoryMarker &candidate) {
+            return candidate.id == markerId;
+          });
+      if (marker == cell.categoryMarkers.end()) {
+        cell.categoryMarkers.append({
+            markerId,
+            occurrence.categoryName,
+            occurrence.categoryColor,
+            1,
+            urgent,
+        });
+      } else {
+        ++marker->taskCount;
+        marker->urgent = marker->urgent || urgent;
       }
     }
     for (const QJsonValue &value : m_sourceHolidays) {

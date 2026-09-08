@@ -16,6 +16,7 @@ Panel {
     property var anchorItem: null
     property var hostWidget: null
     property var occurrences: []
+    property var categories: []
     property var todayTasks: []
     property var todayHabits: []
     property var holidays: []
@@ -46,6 +47,8 @@ Panel {
     property string pendingQuickEmoji: ""
     property string pendingQuickTime: ""
     property string editingEmoji: ""
+    property string quickCategoryId: ""
+    property string editingCategoryId: ""
     property string emojiPickerTarget: ""
     property int pickerHour: 0
     property int pickerMinute: 0
@@ -106,6 +109,13 @@ Panel {
         else if (scope === "municipal")
             coverage = "MUNICIPAL";
         return coverage === "" ? category : category + " " + coverage;
+    }
+
+    function categoryOptions() {
+        const options = [{ label: "Sem categoria", value: "" }];
+        for (const category of categories || [])
+            options.push({ label: "●  " + category.name, value: category.id });
+        return options;
     }
 
 
@@ -348,7 +358,7 @@ Panel {
                 return;
             hostWidget.addTask(pendingQuickTitle, pendingQuickDate,
                                pendingQuickTime, editingReminderMinutesBefore,
-                               pendingQuickEmoji);
+                               pendingQuickEmoji, quickCategoryId);
             quickAdd.text = "";
             quickEmoji = "";
             closeReminderPicker();
@@ -367,6 +377,7 @@ Panel {
         taskTitleInput.text = String(task.title || "");
         taskTimeInput.text = String(task.scheduledTime || "");
         editingEmoji = String(task.emoji || "");
+        editingCategoryId = String(task.categoryId || "");
         setEditingReminders(task.reminderMinutesBefore || [0]);
         editingRecurrence = task.recurrence || ({ frequency: "none", interval: 1, weekdays: [],
                                                   endMode: "never", untilDate: "",
@@ -413,7 +424,7 @@ Panel {
             occurrenceCount: endMode === "afterCount" ? taskCustomOccurrenceCount.value : 0
         };
         hostWidget.editTask(editingTaskId, title, time, recurrence,
-                            editingReminderMinutesBefore, editingEmoji);
+                            editingReminderMinutesBefore, editingEmoji, editingCategoryId);
         closeTaskEditor();
     }
     function deleteEditedTask() {
@@ -789,6 +800,17 @@ Panel {
                                                 color: root.holidayColor(modelData.holidayKind)
                                             }
 
+                                            ToolTip.visible: dayMouse.containsMouse
+                                                                 && modelData.categoryMarkers.length > 0
+                                            ToolTip.text: {
+                                                const labels = [];
+                                                for (const marker of modelData.categoryMarkers)
+                                                    labels.push(marker.name);
+                                                if (modelData.categoryOverflow > 0)
+                                                    labels.push("+" + modelData.categoryOverflow);
+                                                return labels.join(", ");
+                                            }
+
 
                                             Row {
                                                 anchors.horizontalCenter: parent.horizontalCenter
@@ -807,15 +829,27 @@ Panel {
                                                 }
 
                                                 Repeater {
-                                                    model: Math.min(modelData.pending, 3)
+                                                    model: modelData.categoryMarkers
 
                                                     Rectangle {
-                                                        required property int index
-                                                        width: Style.space(3)
+                                                        required property var modelData
+                                                        width: Style.space(4)
                                                         height: width
                                                         radius: width / 2
-                                                        color: index < modelData.overdue ? Color.urgent : Color.accent
+                                                        color: modelData.color
+                                                        border.width: modelData.overdue
+                                                                      ? Style.spacing.hairline : 0
+                                                        border.color: Color.urgent
                                                     }
+                                                }
+
+                                                Text {
+                                                    visible: modelData.categoryOverflow > 0
+                                                    text: "+" + modelData.categoryOverflow
+                                                    color: Color.accent
+                                                    font.family: root.fontFamily
+                                                    font.pixelSize: Style.font.caption
+                                                    font.bold: true
                                                 }
                                             }
 
@@ -940,6 +974,20 @@ Panel {
                                 onClicked: root.openEmojiPicker("quick", root.quickEmoji)
                             }
 
+                            Dropdown {
+                                id: quickCategoryInput
+                                Layout.preferredWidth: Style.space(130)
+                                showLabel: false
+                                foreground: root.foreground
+                                background: "transparent"
+                                accent: Color.accent
+                                options: root.categoryOptions()
+                                value: root.quickCategoryId
+                                onChanged: function(value) {
+                                    root.quickCategoryId = String(value || "");
+                                }
+                            }
+
                             TextField {
                                 id: quickAdd
                                 Layout.fillWidth: true
@@ -1026,10 +1074,20 @@ Panel {
                                     !modelData.completed && !modelData.skipped
                                     && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
                                 width: parent.width
-                                height: Style.space(46)
+                                height: Style.space(58)
                                 radius: Style.cornerRadius
                                 color: taskMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
 
+
+                                Rectangle {
+                                    visible: String(modelData.categoryName || "") !== ""
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: Style.spacing.hairline * 2
+                                    radius: width / 2
+                                    color: modelData.categoryColor || Color.accent
+                                }
                                 Row {
                                     anchors.fill: parent
                                     anchors.leftMargin: Style.space(8)
@@ -1072,6 +1130,18 @@ Panel {
                                             font.family: root.fontFamily
                                             font.pixelSize: Style.font.body
                                             font.strikeout: modelData.completed
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            visible: String(modelData.categoryName || "") !== ""
+                                            text: String(modelData.categoryName || "").toUpperCase()
+                                            color: modelData.completed
+                                                   ? Qt.darker(root.foreground, 1.8)
+                                                   : modelData.categoryColor || Color.accent
+                                            elide: Text.ElideRight
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.caption
+                                            font.bold: true
                                         }
                                         Text {
                                             width: parent.width
@@ -1869,6 +1939,20 @@ Panel {
                             bordered: true
                             tooltipText: "Selecionar horário"
                             onClicked: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
+                        }
+
+                        Dropdown {
+                            id: taskCategoryInput
+                            Layout.fillWidth: true
+                            showLabel: false
+                            foreground: Color.popups.text
+                            background: Color.popups.background
+                            accent: Color.accent
+                            options: root.categoryOptions()
+                            value: root.editingCategoryId
+                            onChanged: function(value) {
+                                root.editingCategoryId = String(value || "");
+                            }
                         }
 
                         Button {

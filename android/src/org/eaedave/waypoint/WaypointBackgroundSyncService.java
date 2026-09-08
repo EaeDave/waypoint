@@ -68,7 +68,7 @@ public final class WaypointBackgroundSyncService extends QtService {
   private int synchronizeOnce() {
     try {
       String databasePath = getFilesDir().getAbsolutePath() + "/waypoint.sqlite3";
-      JSONObject prepared = new JSONObject(prepareBackgroundSync(databasePath));
+      JSONObject prepared = new JSONObject(prepareBackgroundSync(databasePath, false));
       if (!prepared.optBoolean("ok", false)) {
         Log.i(TAG, prepared.optString("error", "Background synchronization is unavailable"));
         return prepared.optBoolean("retry", true) ? RESULT_RETRY : RESULT_SUCCESS;
@@ -84,6 +84,26 @@ public final class WaypointBackgroundSyncService extends QtService {
         Log.w(TAG, applied.optString("error", "Unable to apply synchronization response"));
         return RESULT_RETRY;
       }
+
+      if (applied.optBoolean("categoryFollowUpRequired", false)) {
+        JSONObject followUpPrepared =
+            new JSONObject(prepareBackgroundSync(databasePath, true));
+        if (!followUpPrepared.optBoolean("ok", false)
+            || !endpoint.equals(followUpPrepared.optString("endpoint"))) {
+          Log.w(TAG, "Unable to prepare category synchronization follow-up");
+          return RESULT_RETRY;
+        }
+        syncToken = followUpPrepared.getString("token");
+        JSONObject followUpRequest = followUpPrepared.getJSONObject("request");
+        response =
+            request("POST", new URL(endpoint), syncToken, followUpRequest.toString());
+        applied = new JSONObject(applyBackgroundSync(databasePath, response));
+        if (!applied.optBoolean("ok", false)) {
+          Log.w(TAG, applied.optString("error", "Unable to apply category synchronization response"));
+          return RESULT_RETRY;
+        }
+      }
+
       WaypointWidgetBridge.publishSnapshot(this, applied.getJSONObject("snapshot").toString());
       WaypointNotifications.replaceSchedule(this, applied.getJSONArray("schedule").toString());
       return RESULT_SUCCESS;
@@ -181,7 +201,8 @@ public final class WaypointBackgroundSyncService extends QtService {
     return result.toString();
   }
 
-  private static native String prepareBackgroundSync(String databasePath);
+  private static native String prepareBackgroundSync(
+      String databasePath, boolean includeCategoryMutations);
   private static native String refreshWidgetSnapshot(String databasePath);
   private static native String applyBackgroundSync(String databasePath, String responsePayload);
 }

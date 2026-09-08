@@ -10,6 +10,7 @@ BarWidget {
     moduleName: "io.waypoint.bar"
 
     property var occurrences: []
+    property var categories: []
     property var today: ({ pendingCount: 0, overdueCount: 0, occurrences: [], habits: [] })
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
@@ -56,13 +57,14 @@ BarWidget {
         actionProcess.running = true;
     }
 
-    function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji) {
+    function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji, categoryId) {
         const time = scheduledTime || Qt.formatTime(new Date(), "HH:mm");
         const reminders = reminderMinutesBefore.length === 0
             ? "none" : reminderMinutesBefore.join(",");
         runAction(["add", "--date", Model.dateKey(date),
                    "--time", time, "--reminders", reminders,
-                   "--title", title, "--emoji", emoji || ""]);
+                   "--title", title, "--emoji", emoji || "",
+                   "--category-id", categoryId || ""]);
     }
 
     function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
@@ -76,11 +78,12 @@ BarWidget {
         runAction(["task-visibility", taskVisibility]);
     }
     function editTask(taskId, title, scheduledTime, recurrence,
-                      reminderMinutesBefore, emoji) {
+                      reminderMinutesBefore, emoji, categoryId) {
         const reminders = reminderMinutesBefore.length === 0
             ? "none" : reminderMinutesBefore.join(",");
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
                            "--reminders", reminders, "--emoji", emoji || "",
+                           "--category-id", categoryId || "",
                            "--frequency", recurrence.frequency || "none",
                            "--interval", String(recurrence.interval || 1),
                            "--end-mode", recurrence.endMode || "never",
@@ -151,6 +154,7 @@ BarWidget {
         target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
         target.todayTasks = Qt.binding(() => root.today.occurrences || []);
         target.todayHabits = Qt.binding(() => root.today.habits || []);
+        target.categories = Qt.binding(() => root.categories);
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
         target.loadError = Qt.binding(() => root.loadError);
@@ -229,6 +233,7 @@ BarWidget {
                     root.today = response.today || ({ pendingCount: 0, overdueCount: 0,
                                                        occurrences: [], habits: [] });
                     root.occurrences = response.occurrences || [];
+                    root.categories = response.categories || [];
                     root.taskVisibility = response.taskVisibility || "all";
                     root.holidays = response.holidays || [];
                     root.holidaySyncStatus = response.holidaySync || ({ state: "local-only", lastError: "" });

@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../data/TaskCategoryOptions.js" as TaskCategoryOptions
 
 Rectangle {
     id: root
@@ -12,6 +13,9 @@ Rectangle {
     required property string scheduledDateKey
     required property string scheduledTimeKey
     required property string emoji
+    required property string categoryId
+    required property string categoryName
+    required property string categoryColor
     required property bool completed
     required property bool skipped
     required property bool overdue
@@ -27,9 +31,19 @@ Rectangle {
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: root.skipped || root.overdue || root.recurring ? 62 : 50
+    implicitHeight: root.skipped || root.overdue || root.recurring || root.categoryName !== "" ? 62 : 50
     radius: WaypointTheme.radius
     color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
+    Rectangle {
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        visible: root.categoryName !== ""
+        width: 3
+        radius: 2
+        color: root.categoryColor
+    }
+
 
     RowLayout {
         anchors.fill: parent
@@ -97,19 +111,21 @@ Rectangle {
 
             Text {
                 visible: root.skipped || root.overdue || root.recurring
+                         || root.categoryName !== ""
                 text: {
-                    const recurrence = root.recurring ? root.recurrenceLabel : "";
-                    const date = Qt.formatDate(root.scheduledDateValue, "dd MMM");
-                    if (root.skipped) {
-                        const missed = "NÃO FEITA · " + date;
-                        return recurrence === "" ? missed : missed + " · " + recurrence;
-                    }
-                    if (!root.overdue)
-                        return recurrence;
-                    const overdue = "ATRASADA · " + date;
-                    return recurrence === "" ? overdue : overdue + " · " + recurrence;
+                    const parts = [];
+                    if (root.categoryName !== "")
+                        parts.push(root.categoryName.toUpperCase());
+                    if (root.skipped)
+                        parts.push("NÃO FEITA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
+                    else if (root.overdue)
+                        parts.push("ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
+                    if (root.recurring)
+                        parts.push(root.recurrenceLabel);
+                    return parts.join(" · ");
                 }
-                color: root.skipped || root.overdue ? WaypointTheme.urgent : WaypointTheme.accent
+                color: root.skipped || root.overdue ? WaypointTheme.urgent
+                     : root.categoryName !== "" ? root.categoryColor : WaypointTheme.accent
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
                 font.bold: true
@@ -239,6 +255,16 @@ Rectangle {
              : frequency === "monthly" ? 3 : 4;
     }
 
+    function categoryIndex(categoryId) {
+        const options = TaskCategoryOptions.fromCategories(root.controller.taskCategories);
+        for (let index = 0; index < options.length; ++index) {
+            if (String(options[index].id) === categoryId)
+                return index;
+        }
+        return 0;
+    }
+
+
     function selectedFrequency() {
         if (recurrenceInput.currentIndex === 5)
             return customFrequency.currentValue;
@@ -261,6 +287,7 @@ Rectangle {
         editTime.text = root.scheduledTimeKey;
         editEmoji.emoji = root.emoji;
         editReminders.setMinutesBefore(root.reminderMinutesBefore || [0]);
+        editCategory.currentIndex = root.categoryIndex(root.categoryId);
         const frequency = String(root.recurrence.frequency || "none");
         customFrequency.currentIndex = Math.max(
             0, customFrequency.indexOfValue(frequency === "none" ? "daily" : frequency));
@@ -294,7 +321,8 @@ Rectangle {
                 custom ? customInterval.value : 1, root.selectedWeekdays(), endMode,
                 endMode === "onDate" ? customUntilDate.text.trim() : "",
                 endMode === "afterCount" ? customOccurrenceCount.value : 0,
-                editReminders.minutesBefore, editEmoji.emoji))
+                editReminders.minutesBefore, editEmoji.emoji,
+                editCategory.currentValue))
             editPopup.close();
     }
 
@@ -354,6 +382,15 @@ Rectangle {
                 id: editReminders
                 Layout.fillWidth: true
             }
+            AppComboBox {
+                id: editCategory
+                Layout.fillWidth: true
+                textRole: "name"
+                valueRole: "id"
+                colorRole: "color"
+                model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
+            }
+
 
             AppComboBox {
                 id: recurrenceInput

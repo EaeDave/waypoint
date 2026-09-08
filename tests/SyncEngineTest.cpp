@@ -8,6 +8,34 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QtTest>
+namespace {
+
+bool appendCompleteHttpRequest(QTcpSocket *socket, QByteArray *request) {
+  request->append(socket->readAll());
+  const qsizetype headerEnd = request->indexOf(QByteArrayLiteral("\r\n\r\n"));
+  if (headerEnd < 0) {
+    return false;
+  }
+
+  qint64 contentLength = 0;
+  const QList<QByteArray> headerLines = request->left(headerEnd).split('\n');
+  for (const QByteArray &rawLine : headerLines) {
+    const QByteArray line = rawLine.trimmed();
+    if (!line.toLower().startsWith(QByteArrayLiteral("content-length:"))) {
+      continue;
+    }
+    bool converted = false;
+    contentLength =
+        line.sliced(sizeof("content-length:") - 1).trimmed().toLongLong(&converted);
+    if (!converted || contentLength < 0) {
+      return false;
+    }
+    break;
+  }
+  return request->size() >= headerEnd + 4 + contentLength;
+}
+
+} // namespace
 
 class SyncEngineTest final : public QObject {
   Q_OBJECT
@@ -17,6 +45,10 @@ private slots:
   void rejectUnsafeServerUrl();
   void preserveExistingTokenWhenRequested();
   void synchronizeTaskVisibilityCompatibly();
+  void negotiateCategorySyncCapabilities();
+  void limitSyncMutationBatchSize();
+  void renegotiateBeforeUploadingCategories();
+  void discardSyncReplyAfterEndpointChange();
   void syncsImmediatelyWhenEventArrives();
   void recoversWhenSyncRequestStopsTransferring();
   void preserveHolidayPreferencesWithoutServer();
@@ -244,7 +276,8 @@ void SyncEngineTest::synchronizeTaskVisibilityCompatibly() {
   QVERIFY2(store.open(&error), qPrintable(error));
   QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::Pending, &error), qPrintable(error));
 
-  const QJsonObject request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  const QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
   const QJsonObject mutation = request.value(QStringLiteral("preferenceMutation")).toObject();
   QCOMPARE(mutation.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("pending"));
@@ -272,6 +305,255 @@ void SyncEngineTest::synchronizeTaskVisibilityCompatibly() {
   QVERIFY(store.pendingUserPreferencesMutation(&error).isEmpty());
   QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::Pending);
 }
+
+void SyncEngineTest::negotiateCategorySyncCapabilities() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"), nullptr, &error),
+           qPrintable(error));
+
+  QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(request.value(QStringLiteral("supportedEntityTypes")).toArray().last().toString(),
+           QStringLiteral("category"));
+  QVERIFY(request.value(QStringLiteral("mutations")).toArray().isEmpty());
+
+  const QJsonObject legacyResponse{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+      {QStringLiteral("changes"), QJsonArray{}},
+  };
+  QVERIFY2(waypoint::applySyncResponse(store, legacyResponse, &error), qPrintable(error));
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
+  QVERIFY(request.value(QStringLiteral("mutations")).toArray().isEmpty());
+
+  QJsonObject malformedResponse = legacyResponse;
+  malformedResponse.insert(QStringLiteral("supportedEntityTypes"),
+                           QStringLiteral("category"));
+  QVERIFY(!waypoint::applySyncResponse(store, malformedResponse, &error));
+  QVERIFY(error.contains(QStringLiteral("capabilities")));
+  error.clear();
+
+  QJsonArray supported{
+      QStringLiteral("task"),
+      QStringLiteral("occurrence"),
+      QStringLiteral("habit"),
+      QStringLiteral("habit-entry"),
+      QStringLiteral("category"),
+  };
+  QJsonObject currentResponse = legacyResponse;
+  currentResponse.insert(QStringLiteral("supportedEntityTypes"), supported);
+  QVERIFY2(waypoint::applySyncResponse(store, currentResponse, &error), qPrintable(error));
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), true, &error);
+  const QJsonArray mutations = request.value(QStringLiteral("mutations")).toArray();
+  QCOMPARE(mutations.size(), 1);
+  QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
+           QStringLiteral("category"));
+}
+
+void SyncEngineTest::limitSyncMutationBatchSize() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  for (int categoryIndex = 0; categoryIndex < 501; ++categoryIndex) {
+    QVERIFY2(
+        store.createTaskCategory(
+            QStringLiteral("Category %1").arg(categoryIndex),
+            QStringLiteral("#3B82F6"), nullptr, &error),
+        qPrintable(error));
+  }
+
+  const QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), true, &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(request.value(QStringLiteral("mutations")).toArray().size(), 500);
+  QCOMPARE(store.pendingMutations(&error).size(), 501);
+}
+
+void SyncEngineTest::renegotiateBeforeUploadingCategories() {
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"),
+                                    nullptr, &error),
+           qPrintable(error));
+  QVERIFY2(store.saveServerSupportedEntityTypes(
+               {QStringLiteral("task"), QStringLiteral("occurrence"),
+                QStringLiteral("habit"), QStringLiteral("habit-entry"),
+                QStringLiteral("category")},
+               &error),
+           qPrintable(error));
+  const waypoint::SyncConfiguration configuration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync").arg(server.serverPort())),
+      QByteArrayLiteral("token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+
+  waypoint::SyncEngine engine(&store);
+  engine.start();
+
+  const QByteArray body = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[],"supportedEntityTypes":["task","occurrence","habit","habit-entry","category"]})");
+  const QByteArray response =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ") +
+      QByteArray::number(body.size()) + QByteArrayLiteral("\r\n\r\n") + body;
+
+  QTcpSocket *eventSocket = nullptr;
+  QByteArray firstSyncRequest;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+    QTcpSocket *socket = server.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(appendCompleteHttpRequest(socket, &request), 2000);
+    if (request.startsWith("GET /v1/events ")) {
+      eventSocket = socket;
+      const QByteArray headers = QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"
+          "Connection: keep-alive\r\n\r\n");
+      QCOMPARE(socket->write(headers), headers.size());
+      QVERIFY(socket->flush());
+    } else {
+      firstSyncRequest = request;
+      QCOMPARE(socket->write(response), response.size());
+      QVERIFY(socket->flush());
+    }
+  }
+  QVERIFY(eventSocket != nullptr);
+  QVERIFY2(!firstSyncRequest.contains("\"entityType\":\"category\""),
+           firstSyncRequest.constData());
+
+  QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+  QTcpSocket *followUp = server.nextPendingConnection();
+  QVERIFY(followUp != nullptr);
+  QByteArray followUpRequest;
+  QTRY_VERIFY_WITH_TIMEOUT(
+      appendCompleteHttpRequest(followUp, &followUpRequest), 2000);
+  QVERIFY2(followUpRequest.startsWith("POST /v1/sync "), followUpRequest.constData());
+  QVERIFY2(followUpRequest.contains("\"entityType\":\"category\""),
+           followUpRequest.constData());
+  QCOMPARE(followUp->write(response), response.size());
+  QVERIFY(followUp->flush());
+}
+
+void SyncEngineTest::discardSyncReplyAfterEndpointChange() {
+  QTcpServer oldServer;
+  QTcpServer newServer;
+  QVERIFY(oldServer.listen(QHostAddress::LocalHost));
+  QVERIFY(newServer.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"),
+                                    nullptr, &error),
+           qPrintable(error));
+  const waypoint::SyncConfiguration oldConfiguration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync")
+               .arg(oldServer.serverPort())),
+      QByteArrayLiteral("old-token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(oldConfiguration, &error),
+           qPrintable(error));
+
+  waypoint::SyncEngine engine(&store);
+  engine.start();
+
+  const QByteArray eventHeaders = QByteArrayLiteral(
+      "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+      "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n");
+  QTcpSocket *oldSyncSocket = nullptr;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(oldServer.hasPendingConnections(), 2000);
+    QTcpSocket *socket = oldServer.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(socket, &request), 2000);
+    if (request.startsWith("GET /v1/events ")) {
+      QCOMPARE(socket->write(eventHeaders), eventHeaders.size());
+      QVERIFY(socket->flush());
+    } else {
+      QVERIFY2(request.startsWith("POST /v1/sync "), request.constData());
+      oldSyncSocket = socket;
+    }
+  }
+  QVERIFY(oldSyncSocket != nullptr);
+
+  QVERIFY2(
+      engine.updateConfiguration(
+          QStringLiteral("http://127.0.0.1:%1/v1/sync")
+              .arg(newServer.serverPort()),
+          QByteArrayLiteral("new-token"), true, &error),
+      qPrintable(error));
+
+  const QByteArray capabilityBody = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[],"supportedEntityTypes":["task","occurrence","habit","habit-entry","category"]})");
+  const QByteArray staleResponse =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+          "Connection: close\r\nContent-Length: ") +
+      QByteArray::number(capabilityBody.size()) +
+      QByteArrayLiteral("\r\n\r\n") + capabilityBody;
+  oldSyncSocket->write(staleResponse);
+  oldSyncSocket->flush();
+
+  const QByteArray legacyBody = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[]})");
+  const QByteArray legacyResponse =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+          "Connection: close\r\nContent-Length: ") +
+      QByteArray::number(legacyBody.size()) +
+      QByteArrayLiteral("\r\n\r\n") + legacyBody;
+  QByteArray newSyncRequest;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(newServer.hasPendingConnections(), 2000);
+    QTcpSocket *socket = newServer.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(socket, &request), 2000);
+    if (request.startsWith("GET /v1/events ")) {
+      QCOMPARE(socket->write(eventHeaders), eventHeaders.size());
+      QVERIFY(socket->flush());
+    } else {
+      newSyncRequest = request;
+      QCOMPARE(socket->write(legacyResponse), legacyResponse.size());
+      QVERIFY(socket->flush());
+    }
+  }
+
+  QVERIFY2(newSyncRequest.startsWith("POST /v1/sync "),
+           newSyncRequest.constData());
+  QVERIFY2(!newSyncRequest.contains("\"entityType\":\"category\""),
+           newSyncRequest.constData());
+
+  QSignalSpy additionalConnectionSpy(&newServer, &QTcpServer::newConnection);
+  if (!newServer.hasPendingConnections()) {
+    additionalConnectionSpy.wait(500);
+  }
+  while (newServer.hasPendingConnections()) {
+    QTcpSocket *additionalSocket = newServer.nextPendingConnection();
+    QVERIFY(additionalSocket != nullptr);
+    QByteArray additionalRequest;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(additionalSocket, &additionalRequest), 2000);
+    QVERIFY2(!additionalRequest.contains("\"entityType\":\"category\""),
+             additionalRequest.constData());
+  }
+}
+
 
 QTEST_MAIN(SyncEngineTest)
 #include "SyncEngineTest.moc"

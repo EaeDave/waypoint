@@ -68,15 +68,15 @@ void ReminderSchedulerTest::deliverDuePendingTaskExactlyOnce() {
   const QTime dueTime(9, 30);
   waypoint::TaskRecord dueTask;
   QVERIFY2(store.createTask(QStringLiteral("Reunião"), date, dueTime, {}, QList<int>{0}, QStringLiteral("📣"),
-                            &dueTask, &error),
+                            {}, &dueTask, &error),
            qPrintable(error));
   waypoint::TaskRecord completedTask;
-  QVERIFY2(store.createTask(QStringLiteral("Concluída"), date, dueTime, {}, QList<int>{0}, {}, &completedTask,
-                            &error),
+  QVERIFY2(store.createTask(QStringLiteral("Concluída"), date, dueTime, {}, QList<int>{0}, {}, {},
+                            &completedTask, &error),
            qPrintable(error));
   QVERIFY2(store.setTaskCompleted(completedTask.id, true, &error), qPrintable(error));
-  QVERIFY2(store.createTask(QStringLiteral("Mais tarde"), date, QTime(10, 0), {}, QList<int>{0}, {}, nullptr,
-                            &error),
+  QVERIFY2(store.createTask(QStringLiteral("Mais tarde"), date, QTime(10, 0), {}, QList<int>{0}, {}, {},
+                            nullptr, &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -104,8 +104,8 @@ void ReminderSchedulerTest::retryNotificationFailureWithinDueMinute() {
 
   const QDate date(2026, 9, 1);
   const QTime dueTime(14, 5);
-  QVERIFY2(store.createTask(QStringLiteral("Tentar novamente"), date, dueTime, {}, QList<int>{0}, {}, nullptr,
-                            &error),
+  QVERIFY2(store.createTask(QStringLiteral("Tentar novamente"), date, dueTime, {}, QList<int>{0}, {}, {},
+                            nullptr, &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -132,7 +132,7 @@ void ReminderSchedulerTest::deliverRecurringOccurrenceOnItsDate() {
   const QTime dueTime(7, 45);
   waypoint::TaskRecord task;
   QVERIFY2(store.createTask(QStringLiteral("Alongar"), anchorDate, dueTime, recurrence, QList<int>{60, 0}, {},
-                            &task, &error),
+                            {}, &task, &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -166,7 +166,8 @@ void ReminderSchedulerTest::deliverEveryConfiguredReminderAcrossDates() {
   const QDate dueDate(2026, 9, 2);
   const QTime dueTime(2, 0);
   const QList<int> reminders{300, 180, 60, 30, 0};
-  QVERIFY2(store.createTask(QStringLiteral("Viagem"), dueDate, dueTime, {}, reminders, {}, nullptr, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Viagem"), dueDate, dueTime, {}, reminders, {}, {}, nullptr,
+                            &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;
@@ -191,7 +192,7 @@ void ReminderSchedulerTest::deliverMostRecentMissedReminderWithoutSpammingOlderO
   const QDate date(2026, 9, 2);
   const QTime dueTime(18, 0);
   QVERIFY2(store.createTask(QStringLiteral("Café da tarde"), date, dueTime, {}, QList<int>{60, 30, 5, 0},
-                            QStringLiteral("☕"), nullptr, &error),
+                            QStringLiteral("☕"), {}, nullptr, &error),
            qPrintable(error));
 
   RecordingNotificationSink sink;

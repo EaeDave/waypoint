@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.7 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.8 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -24,6 +24,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS ${waypoint_qt_components})
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
+    src/core/TaskCategory.cpp
+    src/core/TaskCategory.hpp
     src/core/HabitRecord.cpp
     src/core/HabitRecord.hpp
     src/core/Recurrence.cpp
@@ -104,6 +106,8 @@ if(ANDROID)
         src/mobile/AndroidWidgetAction.cpp
     )
     set_source_files_properties(qml/mobile/MobileTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+    set_source_files_properties(qml/data/TaskCategoryOptions.js
+        PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
     qt_add_qml_module(waypoint_android
         URI Waypoint.Mobile
         VERSION 1.0
@@ -123,6 +127,7 @@ if(ANDROID)
             qml/mobile/views/HabitsPage.qml
             qml/mobile/views/SettingsPage.qml
             qml/mobile/views/TodayPage.qml
+            qml/data/TaskCategoryOptions.js
     )
     target_include_directories(waypoint_android PRIVATE src)
     target_link_libraries(waypoint_android PRIVATE
@@ -196,6 +201,8 @@ else()
     )
     set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
     set_source_files_properties(qml/data/EmojiCatalog.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
+    set_source_files_properties(qml/data/TaskCategoryOptions.js
+        PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
 
     qt_add_qml_module(waypoint
         URI Waypoint
@@ -225,6 +232,7 @@ else()
             qml/views/TodayView.qml
             qml/views/SettingsView.qml
             qml/data/EmojiCatalog.js
+            qml/data/TaskCategoryOptions.js
     )
     target_include_directories(waypoint PRIVATE src)
     target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc waypoint_update waypoint_version Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)

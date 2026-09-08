@@ -120,16 +120,26 @@ int main(int argc, char *argv[]) {
   parser.addVersionOption();
   parser.addPositionalArgument(
       QStringLiteral("command"),
-      QStringLiteral("ping, snapshot, habits, add-habit, edit-habit, record-habit, undo-habit, "
-                     "delete-habit, add, complete, reopen, skip, edit, reschedule, delete, "
-                     "task-visibility, sync-status, sync-config, configure-sync, disable-sync, sync-now, "
-                     "holiday-status, holiday-preferences, configure-holidays, municipalities, holidays, "
+      QStringLiteral("ping, snapshot, categories, add-category, edit-category, delete-category, "
+                     "habits, add-habit, edit-habit, record-habit, undo-habit, delete-habit, add, "
+                     "complete, reopen, skip, edit, reschedule, delete, task-visibility, sync-status, "
+                     "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
+                     "holiday-preferences, configure-holidays, municipalities, holidays, "
                      "refresh-holidays, update-status, check-update, or update"));
   parser.addPositionalArgument(QStringLiteral("arguments"), QStringLiteral("Command arguments"),
                                QStringLiteral("[arguments...]"));
   parser.addOption({{QStringLiteral("t"), QStringLiteral("title")},
                     QStringLiteral("Task or habit title"),
                     QStringLiteral("title")});
+  parser.addOption(
+      {QStringLiteral("name"), QStringLiteral("Task category name"), QStringLiteral("name")});
+  parser.addOption(
+      {QStringLiteral("color"), QStringLiteral("Task category color in #RRGGBB format"),
+       QStringLiteral("color")});
+  parser.addOption(
+      {QStringLiteral("category-id"),
+       QStringLiteral("Optional task category id; pass an empty value to clear it"),
+       QStringLiteral("id")});
   parser.addOption({{QStringLiteral("d"), QStringLiteral("date")},
                     QStringLiteral("Calendar date in YYYY-MM-DD format"),
                     QStringLiteral("date")});
@@ -258,9 +268,17 @@ int main(int argc, char *argv[]) {
     if (!error.isEmpty()) {
       return printError(error);
     }
+    QJsonArray categories;
+    for (const waypoint::TaskCategory &category : client.listTaskCategories(&error)) {
+      categories.append(category.toJson());
+    }
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
     printJson({{QStringLiteral("ok"), true},
                {QStringLiteral("today"), todaySummary},
                {QStringLiteral("occurrences"), occurrences},
+               {QStringLiteral("categories"), categories},
                {QStringLiteral("taskVisibility"), taskVisibility},
                {QStringLiteral("sync"), sync},
                {QStringLiteral("holidays"), holidayData.value(QStringLiteral("holidays"))},
@@ -287,6 +305,46 @@ int main(int argc, char *argv[]) {
     printJson({{QStringLiteral("ok"), true},
                {QStringLiteral("date"), date.toString(Qt::ISODate)},
                {QStringLiteral("habits"), habits}});
+    return 0;
+  }
+  if (command == QStringLiteral("categories")) {
+    QJsonArray categories;
+    for (const waypoint::TaskCategory &category : client.listTaskCategories(&error)) {
+      categories.append(category.toJson());
+    }
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}, {QStringLiteral("categories"), categories}});
+    return 0;
+  }
+  if (command == QStringLiteral("add-category")) {
+    if (!client.addTaskCategory(parser.value(QStringLiteral("name")),
+                                parser.value(QStringLiteral("color")), &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("edit-category")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("edit-category requires a category id"));
+    }
+    if (!client.editTaskCategory(positional.at(1), parser.value(QStringLiteral("name")),
+                                 parser.value(QStringLiteral("color")), &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
+    return 0;
+  }
+  if (command == QStringLiteral("delete-category")) {
+    if (positional.size() < 2) {
+      return printError(QStringLiteral("delete-category requires a category id"));
+    }
+    if (!client.deleteTaskCategory(positional.at(1), &error)) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}});
     return 0;
   }
   if (command == QStringLiteral("add-habit")) {
@@ -380,7 +438,8 @@ int main(int argc, char *argv[]) {
       return printError(error);
     }
     if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {}, *reminders,
-                        parser.value(QStringLiteral("emoji")), &error)) {
+                        parser.value(QStringLiteral("emoji")),
+                        parser.value(QStringLiteral("category-id")), &error)) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});
@@ -605,8 +664,12 @@ int main(int argc, char *argv[]) {
       }
       reminders = *parsedReminders;
     }
+    const std::optional<QString> categoryId =
+        parser.isSet(QStringLiteral("category-id"))
+            ? std::optional<QString>(parser.value(QStringLiteral("category-id")))
+            : std::nullopt;
     succeeded = client.editTask(taskId, title, time, recurrence, reminders,
-                                parser.value(QStringLiteral("emoji")), &error);
+                                parser.value(QStringLiteral("emoji")), categoryId, &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

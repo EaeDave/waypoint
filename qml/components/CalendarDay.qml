@@ -18,6 +18,8 @@ Rectangle {
     required property int holidayCount
     required property string holidayKind
     required property var holidayNames
+    required property var categoryMarkers
+    required property int categoryOverflow
     property bool selected: false
 
     signal activated(string selectedDateKey)
@@ -29,6 +31,30 @@ Rectangle {
             return WaypointTheme.accent;
         return WaypointTheme.warning;
     }
+    function summaryText() {
+        const pending = root.pendingCount > 0
+            ? root.pendingCount + " pendente" + (root.pendingCount === 1 ? "" : "s") : "";
+        const completed = root.completedCount > 0
+            ? root.completedCount + " concluída" + (root.completedCount === 1 ? "" : "s") : "";
+        const skipped = root.skippedCount > 0
+            ? root.skippedCount + " não feita" + (root.skippedCount === 1 ? "" : "s") : "";
+        const categories = [];
+        for (const marker of root.categoryMarkers) {
+            const label = marker.name === "" ? "Sem categoria" : marker.name;
+            categories.push(label + (marker.taskCount > 1 ? " (" + marker.taskCount + ")" : ""));
+        }
+        if (root.categoryOverflow > 0)
+            categories.push("mais " + root.categoryOverflow + " categoria"
+                            + (root.categoryOverflow === 1 ? "" : "s"));
+        const taskSummary = [pending, completed, skipped].filter(part => part !== "").join(" · ");
+        const categorySummary = categories.length > 0 ? categories.join(" · ") : "";
+        const holidaySummary = root.holidayCount > 0 ? root.holidayNames.join(" · ") : "";
+        return [taskSummary, categorySummary, holidaySummary]
+            .filter(part => part !== "").join("\n");
+    }
+
+    Accessible.name: root.calendarDateKey + (root.summaryText() === "" ? "" : ": " + root.summaryText())
+
 
     implicitWidth: 58
     implicitHeight: 48
@@ -63,6 +89,13 @@ Rectangle {
         color: root.holidayColor(root.holidayKind)
     }
 
+    MouseArea {
+        id: pointer
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.activated(root.calendarDateKey)
+    }
     Row {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
@@ -79,19 +112,40 @@ Rectangle {
         }
 
         Repeater {
-            model: Math.min(root.pendingCount, 3)
+            model: root.categoryMarkers
 
             Rectangle {
-                required property int index
-                width: 4
-                height: 4
-                radius: 2
-                color: root.overdueCount > index ? WaypointTheme.urgent : WaypointTheme.accent
+                required property var modelData
+                width: 5
+                height: 5
+                radius: 3
+                color: modelData.color === "" ? WaypointTheme.accent : modelData.color
+                border.width: modelData.urgent ? 1 : 0
+                border.color: WaypointTheme.urgent
+                ToolTip.visible: markerPointer.containsMouse
+                ToolTip.text: (modelData.name === "" ? "Sem categoria" : modelData.name)
+                              + (modelData.taskCount > 1 ? " · " + modelData.taskCount + " tarefas" : "")
+                MouseArea {
+                    id: markerPointer
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.NoButton
+                }
             }
         }
 
+        Text {
+            visible: root.categoryOverflow > 0
+            text: "+" + root.categoryOverflow
+            color: WaypointTheme.subduedText
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.captionSize
+            font.bold: true
+        }
+
         Rectangle {
-            visible: root.pendingCount === 0 && root.skippedCount === 0 && root.completedCount > 0
+            visible: root.categoryMarkers.length === 0 && root.skippedCount === 0
+                     && root.completedCount > 0
             width: 4
             height: 4
             radius: 2
@@ -104,25 +158,7 @@ Rectangle {
     ToolTip.visible: pointer.containsMouse
                          && (root.pendingCount + root.completedCount + root.skippedCount
                              + root.holidayCount) > 0
-    ToolTip.text: {
-        const pending = root.pendingCount > 0
-            ? root.pendingCount + " pendente" + (root.pendingCount === 1 ? "" : "s") : "";
-        const completed = root.completedCount > 0
-            ? root.completedCount + " concluída" + (root.completedCount === 1 ? "" : "s") : "";
-        const skipped = root.skippedCount > 0
-            ? root.skippedCount + " não feita" + (root.skippedCount === 1 ? "" : "s") : "";
-        const taskSummary = [pending, completed, skipped].filter(part => part !== "").join(" · ");
-        const holidaySummary = root.holidayCount > 0 ? root.holidayNames.join(" · ") : "";
-        return taskSummary !== "" && holidaySummary !== "" ? taskSummary + "\n" + holidaySummary
-                                                          : taskSummary + holidaySummary;
-    }
+    ToolTip.text: root.summaryText()
     ToolTip.delay: 350
 
-    MouseArea {
-        id: pointer
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.activated(root.calendarDateKey)
-    }
 }

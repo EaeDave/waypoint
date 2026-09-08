@@ -32,6 +32,10 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent, const int transfer
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::taskVisibilityChanged, this, &SyncEngine::scheduleSoon);
+  connect(m_taskStore, &TaskStore::categoriesChanged, this, [this] {
+    m_categoryUploadAuthorized = false;
+    scheduleSoon();
+  });
 }
 
 bool SyncEngine::enabled() const {
@@ -51,6 +55,7 @@ QJsonObject SyncEngine::status() const {
       {QStringLiteral("state"), m_state},
       {QStringLiteral("configured"), enabled()},
       {QStringLiteral("lastError"), m_lastError},
+      {QStringLiteral("categorySyncAvailable"), m_categorySyncAvailable},
       {QStringLiteral("lastSuccessfulSync"),
        m_lastSuccessfulSync.isValid() ? m_lastSuccessfulSync.toUTC().toString(Qt::ISODateWithMs) : QString()},
   };
@@ -75,8 +80,20 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
   if (!m_taskStore->saveSyncConfiguration(configuration, errorMessage)) {
     return false;
   }
+  if (m_syncReply != nullptr) {
+    QNetworkReply *reply = m_syncReply;
+    m_syncReply = nullptr;
+    disconnect(reply, nullptr, this, nullptr);
+    reply->abort();
+    reply->deleteLater();
+    m_inFlight = false;
+  }
+  m_syncRequested = false;
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
+  m_categorySyncAvailable = false;
+  m_categoryUploadAuthorized = false;
+  m_categoryCapabilityEndpoint = QUrl{};
   m_debounceTimer.stop();
   closeEventStream();
   if (!enabled()) {
@@ -104,6 +121,15 @@ void SyncEngine::start() {
   }
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
+  m_categoryUploadAuthorized = false;
+  m_categoryCapabilityEndpoint = QUrl{};
+  m_categorySyncAvailable =
+      m_taskStore->serverSupportedEntityTypes(&error).contains(QStringLiteral("category"));
+  if (!error.isEmpty()) {
+    setStatus(QStringLiteral("error"), error);
+    log(QStringLiteral("error"), error);
+    return;
+  }
   if (!enabled()) {
     setStatus(QStringLiteral("local-only"));
     log(QStringLiteral("info"), QStringLiteral("Remote synchronization is disabled"));
@@ -124,32 +150,48 @@ void SyncEngine::syncNow() {
     return;
   }
 
+  const bool includeCategoryMutations =
+      m_categoryUploadAuthorized && m_categoryCapabilityEndpoint == m_endpoint;
   QString error;
-  const QJsonObject payload = buildSyncRequest(*m_taskStore, syncDeviceId(), &error);
+  const QJsonObject payload =
+      buildSyncRequest(*m_taskStore, syncDeviceId(), includeCategoryMutations, &error);
   if (!error.isEmpty()) {
     setStatus(QStringLiteral("error"), error);
     log(QStringLiteral("error"), error);
     return;
   }
+  m_lastRequestIncludedCategoryMutations = false;
+  for (const QJsonValue &value : payload.value(QStringLiteral("mutations")).toArray()) {
+    if (value.toObject().value(QStringLiteral("entityType")).toString() ==
+        QStringLiteral("category")) {
+      m_lastRequestIncludedCategoryMutations = true;
+      break;
+    }
+  }
+  m_categoryUploadAuthorized = false;
   QNetworkRequest request(m_endpoint);
   request.setTransferTimeout(m_transferTimeoutMilliseconds);
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_token);
 
-  QNetworkReply *reply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-  reply->setParent(this);
+  m_syncReply =
+      m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+  m_syncReply->setParent(this);
   m_inFlight = true;
   setStatus(QStringLiteral("syncing"));
-  connect(reply, &QNetworkReply::finished, this, &SyncEngine::finishSync);
+  connect(m_syncReply, &QNetworkReply::finished, this, &SyncEngine::finishSync);
 }
 
 void SyncEngine::finishSync() {
   auto *reply = qobject_cast<QNetworkReply *>(sender());
-  m_inFlight = false;
-  if (reply == nullptr) {
-    continuePendingSync();
+  if (reply == nullptr || reply != m_syncReply) {
+    if (reply != nullptr) {
+      reply->deleteLater();
+    }
     return;
   }
+  m_syncReply = nullptr;
+  m_inFlight = false;
   const auto finishRequest = [this, reply] {
     reply->deleteLater();
     continuePendingSync();
@@ -183,7 +225,25 @@ void SyncEngine::finishSync() {
     finishRequest();
     return;
   }
-
+  m_categorySyncAvailable =
+      m_taskStore->serverSupportedEntityTypes().contains(QStringLiteral("category"));
+  m_categoryUploadAuthorized = m_categorySyncAvailable;
+  m_categoryCapabilityEndpoint =
+      m_categorySyncAvailable ? m_endpoint : QUrl{};
+  if (m_categorySyncAvailable && !m_lastRequestIncludedCategoryMutations) {
+    QString pendingError;
+    const QJsonArray pendingCategories = m_taskStore->pendingMutations(
+        {QStringLiteral("category")}, 1, &pendingError);
+    if (!pendingError.isEmpty()) {
+      setStatus(QStringLiteral("error"), pendingError);
+      log(QStringLiteral("error"), pendingError);
+      finishRequest();
+      return;
+    }
+    if (!pendingCategories.isEmpty()) {
+      m_syncRequested = true;
+    }
+  }
   m_lastSuccessfulSync = QDateTime::currentDateTimeUtc();
   setStatus(QStringLiteral("ready"));
   finishRequest();

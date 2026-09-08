@@ -104,14 +104,17 @@ Java_org_eaedave_waypoint_WaypointBackgroundSyncService_refreshWidgetSnapshot(JN
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_org_eaedave_waypoint_WaypointBackgroundSyncService_prepareBackgroundSync(JNIEnv *environment, jclass,
-                                                                              jstring databasePath) {
+Java_org_eaedave_waypoint_WaypointBackgroundSyncService_prepareBackgroundSync(
+    JNIEnv *environment, jclass, jstring databasePath,
+    const jboolean includeCategoryMutations) {
   QJsonObject response;
   QString error;
   waypoint::TaskStore store(fromJavaString(environment, databasePath));
   waypoint::BackgroundSyncRequest request;
   const bool opened = store.open(&error);
-  const bool prepared = opened && waypoint::prepareBackgroundSync(store, &request, &error);
+  const bool prepared =
+      opened && waypoint::prepareBackgroundSync(
+                    store, includeCategoryMutations == JNI_TRUE, &request, &error);
   response.insert(QStringLiteral("ok"), prepared);
   if (prepared) {
     response.insert(QStringLiteral("endpoint"), request.endpoint.toString(QUrl::FullyEncoded));
@@ -146,6 +149,8 @@ Java_org_eaedave_waypoint_WaypointBackgroundSyncService_applyBackgroundSync(JNIE
   if (applied) {
     resultJson.insert(QStringLiteral("snapshot"), result.widgetSnapshot);
     resultJson.insert(QStringLiteral("schedule"), result.notificationSchedule);
+    resultJson.insert(QStringLiteral("categoryFollowUpRequired"),
+                      result.categoryFollowUpRequired);
   } else {
     resultJson.insert(QStringLiteral("error"), error);
   }

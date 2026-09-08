@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../data/TaskCategoryOptions.js" as TaskCategoryOptions
 
 Rectangle {
     id: root
@@ -26,6 +27,7 @@ Rectangle {
     function currentTimeKey() {
         return Qt.formatTime(new Date(), "HH:mm");
     }
+
 
     function anchorWeekdayIndex() {
         const parts = scheduledDateKey.split("-");
@@ -78,7 +80,8 @@ Rectangle {
                                     selectedWeekdays(), endMode,
                                     endMode === "onDate" ? untilDate.text.trim() : "",
                                     endMode === "afterCount" ? occurrenceCount.value : 0,
-                                    reminderInput.minutesBefore, root.selectedEmoji)) {
+                                    reminderInput.minutesBefore, root.selectedEmoji,
+                                    categoryInput.currentValue)) {
             input.text = "";
             root.selectedEmoji = "";
             preset.currentIndex = 0;
@@ -86,6 +89,7 @@ Rectangle {
             ending.currentIndex = 0;
             weekdayMask = 0;
             reminderInput.setMinutesBefore([0]);
+            categoryInput.currentIndex = 0;
             repeatPopup.close();
             input.forceActiveFocus();
         }
@@ -109,6 +113,17 @@ Rectangle {
             emoji: root.selectedEmoji
             onSelectionAccepted: selectedEmoji => root.selectedEmoji = selectedEmoji
         }
+        AppComboBox {
+            id: categoryInput
+            Layout.preferredWidth: root.compact ? 112 : 150
+            textRole: "name"
+            valueRole: "id"
+            colorRole: "color"
+            model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
+            ToolTip.visible: hovered
+            ToolTip.text: "Categoria da tarefa"
+        }
+
 
         TextField {
             id: input

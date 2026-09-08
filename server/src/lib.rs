@@ -16,12 +16,15 @@ use fcm::FcmClient;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sqlx::{PgPool, Row};
-use std::{convert::Infallible, sync::Arc, time::Duration};
+use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
 use subtle::ConstantTimeEq;
 use tokio::sync::broadcast;
 use tokio_stream::{StreamExt, wrappers::BroadcastStream};
 use unicode_segmentation::UnicodeSegmentation;
 use uuid::Uuid;
+const LEGACY_ENTITY_TYPES: [&str; 4] = ["task", "occurrence", "habit", "habit-entry"];
+const SUPPORTED_ENTITY_TYPES: [&str; 5] =
+    ["task", "occurrence", "habit", "habit-entry", "category"];
 
 #[derive(Clone)]
 pub struct AppState {
@@ -95,6 +98,8 @@ struct SyncRequest {
     mutations: Vec<SyncMutation>,
     #[serde(default)]
     preference_mutation: Option<UserPreferenceMutation>,
+    #[serde(default)]
+    supported_entity_types: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -122,6 +127,7 @@ struct SyncResponse {
     accepted_preference_mutation_id: Option<String>,
     changes: Vec<SyncChange>,
     preferences: UserPreferences,
+    supported_entity_types: [&'static str; 5],
 }
 
 #[derive(Debug, Serialize)]
@@ -258,6 +264,11 @@ async fn sync(
     let mut transaction = state.pool.begin().await.map_err(ApiError::database)?;
     let mut accepted_mutation_ids = Vec::with_capacity(request.mutations.len());
     let mut wake_sequence = None;
+    let requested_entity_types: Vec<String> = if request.supported_entity_types.is_empty() {
+        LEGACY_ENTITY_TYPES.into_iter().map(str::to_owned).collect()
+    } else {
+        request.supported_entity_types.clone()
+    };
 
     for mutation in request.mutations {
         let mutation_id = Uuid::parse_str(&mutation.mutation_id).map_err(|_| {
@@ -281,19 +292,28 @@ async fn sync(
             continue;
         }
 
-        let current_version = sqlx::query_scalar::<_, i64>(
-            "SELECT version FROM sync_entities \
+        let current_entity = sqlx::query_as::<_, (i64, sqlx::types::Json<Value>)>(
+            "SELECT version, payload FROM sync_entities \
              WHERE entity_type = $1 AND entity_id = $2 FOR UPDATE",
         )
         .bind(entity_type)
         .bind(entity_id)
         .fetch_optional(&mut *transaction)
         .await
-        .map_err(ApiError::database)?
-        .unwrap_or(0);
+        .map_err(ApiError::database)?;
+        let current_version = current_entity
+            .as_ref()
+            .map(|(version, _)| *version)
+            .unwrap_or(0);
         let server_version = current_version + 1;
 
         let mut payload = mutation.payload;
+        preserve_legacy_task_category(
+            entity_type,
+            &mutation.operation,
+            &mut payload,
+            current_entity.as_ref().map(|(_, payload)| &payload.0),
+        );
         payload["version"] = Value::Number(server_version.into());
         let deleted = mutation.operation == "delete";
 
@@ -311,7 +331,7 @@ async fn sync(
         .bind(deleted)
         .execute(&mut *transaction)
         .await
-        .map_err(ApiError::database)?;
+        .map_err(sync_entity_database_error)?;
 
         let sequence = sqlx::query_scalar::<_, i64>(
             "INSERT INTO changes \
@@ -362,9 +382,11 @@ async fn sync(
 
     let rows = sqlx::query(
         "SELECT sequence, entity_type, entity_id, operation, payload \
-         FROM changes WHERE sequence > $1 ORDER BY sequence LIMIT 1000",
+         FROM changes WHERE sequence > $1 AND entity_type = ANY($2) \
+         ORDER BY sequence LIMIT 1000",
     )
     .bind(request.cursor)
+    .bind(&requested_entity_types)
     .fetch_all(&mut *transaction)
     .await
     .map_err(ApiError::database)?;
@@ -373,12 +395,13 @@ async fn sync(
     let mut changes = Vec::with_capacity(rows.len());
     for row in rows {
         let sequence: i64 = row.try_get("sequence").map_err(ApiError::database)?;
+        let entity_type: String = row.try_get("entity_type").map_err(ApiError::database)?;
+        next_cursor = sequence;
         let payload: sqlx::types::Json<Value> =
             row.try_get("payload").map_err(ApiError::database)?;
-        next_cursor = sequence;
         changes.push(SyncChange {
             sequence,
-            entity_type: row.try_get("entity_type").map_err(ApiError::database)?,
+            entity_type,
             entity_id: row.try_get("entity_id").map_err(ApiError::database)?,
             operation: row.try_get("operation").map_err(ApiError::database)?,
             payload: payload.0,
@@ -418,6 +441,7 @@ async fn sync(
         accepted_preference_mutation_id,
         changes,
         preferences,
+        supported_entity_types: SUPPORTED_ENTITY_TYPES,
     }))
 }
 
@@ -487,6 +511,19 @@ pub(crate) fn authorize(headers: &HeaderMap, expected_token: &str) -> Result<(),
     }
     Err(ApiError::Unauthorized)
 }
+fn preserve_legacy_task_category(
+    entity_type: &str,
+    operation: &str,
+    payload: &mut Value,
+    current_payload: Option<&Value>,
+) {
+    if entity_type != "task" || operation != "upsert" || payload.get("categoryId").is_some() {
+        return;
+    }
+    if let Some(category_id) = current_payload.and_then(|value| value.get("categoryId")) {
+        payload["categoryId"] = category_id.clone();
+    }
+}
 
 fn validate_request(request: &SyncRequest) -> Result<(), ApiError> {
     if request.cursor < 0 {
@@ -501,6 +538,21 @@ fn validate_request(request: &SyncRequest) -> Result<(), ApiError> {
         return Err(ApiError::bad_request(
             "at most 500 mutations are accepted per sync",
         ));
+    }
+    if request.supported_entity_types.len() > SUPPORTED_ENTITY_TYPES.len() {
+        return Err(ApiError::bad_request(
+            "supportedEntityTypes contains too many values",
+        ));
+    }
+    let mut requested_types = HashSet::new();
+    for entity_type in &request.supported_entity_types {
+        if !SUPPORTED_ENTITY_TYPES.contains(&entity_type.as_str())
+            || !requested_types.insert(entity_type)
+        {
+            return Err(ApiError::bad_request(
+                "supportedEntityTypes contains an invalid or duplicate value",
+            ));
+        }
     }
     for mutation in &request.mutations {
         validate_mutation(mutation)?;
@@ -540,6 +592,7 @@ fn validate_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
         "occurrence" => validate_occurrence_mutation(mutation),
         "habit" => validate_habit_mutation(mutation),
         "habit-entry" => validate_habit_entry_mutation(mutation),
+        "category" => validate_category_mutation(mutation),
         entity_type => Err(ApiError::bad_request(format!(
             "invalid entityType: {entity_type}"
         ))),
@@ -555,6 +608,44 @@ fn validate_delete_tombstone(mutation: &SyncMutation, entity_name: &str) -> Resu
     DateTime::parse_from_rfc3339(deleted_at).map_err(|_| {
         ApiError::bad_request(format!("invalid {entity_name} deletedAt: {deleted_at}"))
     })?;
+    Ok(())
+}
+fn validate_category_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
+    Uuid::parse_str(&mutation.entity_id).map_err(|_| {
+        ApiError::bad_request(format!("invalid category entityId: {}", mutation.entity_id))
+    })?;
+    if mutation.payload.get("id").and_then(Value::as_str) != Some(mutation.entity_id.as_str()) {
+        return Err(ApiError::bad_request(format!(
+            "category.id must match entityId for mutation {}",
+            mutation.mutation_id
+        )));
+    }
+    if mutation.operation == "delete" {
+        return validate_delete_tombstone(mutation, "category");
+    }
+    let name = mutation
+        .payload
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if name.trim() != name || name.is_empty() || name.chars().count() > 80 {
+        return Err(ApiError::bad_request(
+            "category name must be trimmed and contain 1 to 80 characters",
+        ));
+    }
+    let color = mutation
+        .payload
+        .get("color")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if color.len() != 7
+        || !color.starts_with('#')
+        || !color[1..].bytes().all(|byte| byte.is_ascii_hexdigit())
+    {
+        return Err(ApiError::bad_request(
+            "category color must use #RRGGBB format",
+        ));
+    }
     Ok(())
 }
 
@@ -610,6 +701,15 @@ fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
                 mutation.mutation_id
             )));
         }
+    }
+    if let Some(category_id) = mutation.payload.get("categoryId")
+        && !category_id.is_null()
+    {
+        let category_id = category_id
+            .as_str()
+            .ok_or_else(|| ApiError::bad_request("task categoryId must be a UUID or null"))?;
+        Uuid::parse_str(category_id)
+            .map_err(|_| ApiError::bad_request("task categoryId must be a UUID or null"))?;
     }
     if let Some(reminder_value) = mutation.payload.get("reminderMinutesBefore") {
         let reminders = reminder_value
@@ -903,6 +1003,17 @@ fn validate_habit_entry_mutation(mutation: &SyncMutation) -> Result<(), ApiError
     Ok(())
 }
 
+fn sync_entity_database_error(error: sqlx::Error) -> ApiError {
+    if error
+        .as_database_error()
+        .and_then(|database_error| database_error.constraint())
+        == Some("sync_entities_active_category_name_idx")
+    {
+        return ApiError::bad_request("another active category already uses this name");
+    }
+    ApiError::database(error)
+}
+
 #[derive(Debug)]
 pub(crate) enum ApiError {
     Unauthorized,
@@ -951,6 +1062,7 @@ mod tests {
             cursor: 0,
             mutations,
             preference_mutation: None,
+            supported_entity_types: Vec::new(),
         }
     }
 
@@ -1029,6 +1141,83 @@ mod tests {
             }),
         };
         assert!(validate_request(&request_with(vec![mutation])).is_ok());
+    }
+
+    #[test]
+    fn validates_category_mutations_and_task_assignments() {
+        let category_id = Uuid::new_v4().to_string();
+        let category = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "category".to_owned(),
+            entity_id: category_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": category_id,
+                "name": "Work",
+                "color": "#3B82F6"
+            }),
+        };
+        assert!(validate_request(&request_with(vec![category])).is_ok());
+
+        let task_id = Uuid::new_v4().to_string();
+        let task = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": task_id,
+                "title": "Categorized",
+                "scheduledDate": "2026-09-01",
+                "categoryId": category_id
+            }),
+        };
+        assert!(validate_request(&request_with(vec![task])).is_ok());
+    }
+
+    #[test]
+    fn rejects_invalid_category_colors_and_task_assignments() {
+        let category_id = Uuid::new_v4().to_string();
+        let category = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "category".to_owned(),
+            entity_id: category_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": category_id,
+                "name": "Work",
+                "color": "blue"
+            }),
+        };
+        assert!(validate_request(&request_with(vec![category])).is_err());
+
+        let task_id = Uuid::new_v4().to_string();
+        let task = SyncMutation {
+            mutation_id: Uuid::new_v4().to_string(),
+            entity_type: "task".to_owned(),
+            entity_id: task_id.clone(),
+            operation: "upsert".to_owned(),
+            payload: json!({
+                "id": task_id,
+                "title": "Invalid category",
+                "scheduledDate": "2026-09-01",
+                "categoryId": "not-a-uuid"
+            }),
+        };
+        assert!(validate_request(&request_with(vec![task])).is_err());
+    }
+
+    #[test]
+    fn preserves_category_when_legacy_task_payload_omits_it() {
+        let category_id = Uuid::new_v4().to_string();
+        let mut payload = json!({"id": Uuid::new_v4().to_string(), "title": "Legacy edit"});
+        let current = json!({"categoryId": category_id});
+        preserve_legacy_task_category("task", "upsert", &mut payload, Some(&current));
+        assert_eq!(payload["categoryId"], current["categoryId"]);
+
+        payload["categoryId"] = Value::Null;
+        preserve_legacy_task_category("task", "upsert", &mut payload, Some(&current));
+        assert!(payload["categoryId"].is_null());
     }
 
     #[test]
