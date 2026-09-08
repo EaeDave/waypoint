@@ -372,9 +372,16 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       }
       String categoryName = task.optString("categoryName", "").trim();
       int categoryColor = colorValue(task.optString("categoryColor", ""), COLOR_ACCENT);
+      SpannableStringBuilder timeText = new SpannableStringBuilder(time);
       if (!categoryName.isEmpty()) {
-        time = time.isEmpty() ? categoryName.toUpperCase(PORTUGUESE)
-                              : time + " · " + categoryName.toUpperCase(PORTUGUESE);
+        if (timeText.length() > 0) {
+          timeText.append(" · ");
+        }
+        int categoryStart = timeText.length();
+        timeText.append(categoryName.toUpperCase(PORTUGUESE));
+        timeText.setSpan(
+            new ForegroundColorSpan(completed ? COLOR_DISABLED : categoryColor),
+            categoryStart, timeText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
       }
 
       views.setViewVisibility(TASK_ROW_IDS[index], View.VISIBLE);
@@ -386,9 +393,9 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       views.setTextColor(TASK_TITLE_IDS[index], completed ? COLOR_DISABLED
                                                 : skipped ? COLOR_URGENT
                                                           : COLOR_FOREGROUND);
-      views.setTextViewText(TASK_TIME_IDS[index], time);
+      views.setTextViewText(TASK_TIME_IDS[index], timeText);
       views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT
-                                                : completed ? COLOR_DISABLED : categoryColor);
+                                                : completed ? COLOR_DISABLED : COLOR_SUBDUED);
       views.setOnClickPendingIntent(TASK_ROW_IDS[index], openApp);
       views.setOnClickPendingIntent(
           TASK_STATUS_IDS[index],

@@ -64,6 +64,8 @@ private:
   bool m_inFlight = false;
   bool m_syncRequested = false;
   bool m_categorySyncAvailable = false;
+  bool m_categoryUploadAuthorized = false;
+  bool m_lastRequestIncludedCategoryMutations = false;
   int m_eventReconnectSeconds = 1;
 };
 

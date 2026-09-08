@@ -801,6 +801,7 @@ Panel {
                                             }
 
                                             ToolTip.visible: dayMouse.containsMouse
+                                                                 && modelData.categoryMarkers.length > 0
                                             ToolTip.text: {
                                                 const labels = [];
                                                 for (const marker of modelData.categoryMarkers)

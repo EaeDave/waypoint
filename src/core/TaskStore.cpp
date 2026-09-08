@@ -247,7 +247,8 @@ bool TaskStore::migrate(QString *errorMessage) {
           "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 80), "
           "color TEXT NOT NULL CHECK(length(color) = 7), created_at TEXT NOT NULL, "
           "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)"),
-      QStringLiteral("CREATE INDEX IF NOT EXISTS task_categories_active_idx "
+      QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
+                     "task_categories_active_name_unique_idx "
                      "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS outbox ("
                      "mutation_id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, "
@@ -2439,6 +2440,26 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
                    QStringLiteral("Remote task category is invalid: %1")
                        .arg(validationError.isEmpty() ? QStringLiteral("invalid metadata")
                                                       : validationError));
+          return false;
+        }
+        QSqlQuery duplicate(m_database);
+        duplicate.prepare(QStringLiteral(
+            "SELECT 1 FROM task_categories "
+            "WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL AND id <> ? LIMIT 1"));
+        duplicate.addBindValue(category.name);
+        duplicate.addBindValue(category.id);
+        if (!duplicate.exec()) {
+          rollbackTransaction();
+          setError(errorMessage,
+                   queryFailure(QStringLiteral("Cannot validate remote task category name"),
+                                duplicate));
+          return false;
+        }
+        if (duplicate.next()) {
+          rollbackTransaction();
+          setError(errorMessage,
+                   QStringLiteral("Another active category already uses the name '%1'")
+                       .arg(category.name));
           return false;
         }
         apply.prepare(

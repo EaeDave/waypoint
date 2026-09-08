@@ -15,7 +15,8 @@ void setError(QString *destination, const QString &message) {
 
 bool validateTaskCategoryName(const QString &name, QString *errorMessage) {
   const QString normalized = name.trimmed();
-  if (normalized.isEmpty() || normalized.size() > maximumTaskCategoryNameLength) {
+  if (normalized.isEmpty() ||
+      normalized.toUcs4().size() > maximumTaskCategoryNameLength) {
     setError(errorMessage,
              QStringLiteral("Category name must contain 1 to %1 characters")
                  .arg(maximumTaskCategoryNameLength));
@@ -26,7 +27,7 @@ bool validateTaskCategoryName(const QString &name, QString *errorMessage) {
 }
 
 bool validateTaskCategoryColor(const QString &color, QString *errorMessage) {
-  static const QRegularExpression pattern(QStringLiteral("^#[0-9A-Fa-f]{6}$"));
+  static const QRegularExpression pattern(QStringLiteral("\\A#[0-9A-Fa-f]{6}\\z"));
   if (!pattern.match(color).hasMatch()) {
     setError(errorMessage, QStringLiteral("Category color must use #RRGGBB format"));
     return false;

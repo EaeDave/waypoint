@@ -26,7 +26,6 @@ const LEGACY_ENTITY_TYPES: [&str; 4] = ["task", "occurrence", "habit", "habit-en
 const SUPPORTED_ENTITY_TYPES: [&str; 5] =
     ["task", "occurrence", "habit", "habit-entry", "category"];
 
-
 #[derive(Clone)]
 pub struct AppState {
     pub(crate) pool: PgPool,
@@ -265,13 +264,10 @@ async fn sync(
     let mut transaction = state.pool.begin().await.map_err(ApiError::database)?;
     let mut accepted_mutation_ids = Vec::with_capacity(request.mutations.len());
     let mut wake_sequence = None;
-    let requested_entity_types: HashSet<String> = if request.supported_entity_types.is_empty() {
-        LEGACY_ENTITY_TYPES
-            .into_iter()
-            .map(str::to_owned)
-            .collect()
+    let requested_entity_types: Vec<String> = if request.supported_entity_types.is_empty() {
+        LEGACY_ENTITY_TYPES.into_iter().map(str::to_owned).collect()
     } else {
-        request.supported_entity_types.iter().cloned().collect()
+        request.supported_entity_types.clone()
     };
 
     for mutation in request.mutations {
@@ -335,7 +331,7 @@ async fn sync(
         .bind(deleted)
         .execute(&mut *transaction)
         .await
-        .map_err(ApiError::database)?;
+        .map_err(sync_entity_database_error)?;
 
         let sequence = sqlx::query_scalar::<_, i64>(
             "INSERT INTO changes \
@@ -386,9 +382,11 @@ async fn sync(
 
     let rows = sqlx::query(
         "SELECT sequence, entity_type, entity_id, operation, payload \
-         FROM changes WHERE sequence > $1 ORDER BY sequence LIMIT 1000",
+         FROM changes WHERE sequence > $1 AND entity_type = ANY($2) \
+         ORDER BY sequence LIMIT 1000",
     )
     .bind(request.cursor)
+    .bind(&requested_entity_types)
     .fetch_all(&mut *transaction)
     .await
     .map_err(ApiError::database)?;
@@ -399,9 +397,6 @@ async fn sync(
         let sequence: i64 = row.try_get("sequence").map_err(ApiError::database)?;
         let entity_type: String = row.try_get("entity_type").map_err(ApiError::database)?;
         next_cursor = sequence;
-        if !requested_entity_types.contains(&entity_type) {
-            continue;
-        }
         let payload: sqlx::types::Json<Value> =
             row.try_get("payload").map_err(ApiError::database)?;
         changes.push(SyncChange {
@@ -530,7 +525,6 @@ fn preserve_legacy_task_category(
     }
 }
 
-
 fn validate_request(request: &SyncRequest) -> Result<(), ApiError> {
     if request.cursor < 0 {
         return Err(ApiError::bad_request("cursor must be non-negative"));
@@ -618,10 +612,7 @@ fn validate_delete_tombstone(mutation: &SyncMutation, entity_name: &str) -> Resu
 }
 fn validate_category_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     Uuid::parse_str(&mutation.entity_id).map_err(|_| {
-        ApiError::bad_request(format!(
-            "invalid category entityId: {}",
-            mutation.entity_id
-        ))
+        ApiError::bad_request(format!("invalid category entityId: {}", mutation.entity_id))
     })?;
     if mutation.payload.get("id").and_then(Value::as_str) != Some(mutation.entity_id.as_str()) {
         return Err(ApiError::bad_request(format!(
@@ -657,7 +648,6 @@ fn validate_category_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     }
     Ok(())
 }
-
 
 fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
     Uuid::parse_str(&mutation.entity_id).map_err(|_| {
@@ -1011,6 +1001,17 @@ fn validate_habit_entry_mutation(mutation: &SyncMutation) -> Result<(), ApiError
         ));
     }
     Ok(())
+}
+
+fn sync_entity_database_error(error: sqlx::Error) -> ApiError {
+    if error
+        .as_database_error()
+        .and_then(|database_error| database_error.constraint())
+        == Some("sync_entities_active_category_name_idx")
+    {
+        return ApiError::bad_request("another active category already uses this name");
+    }
+    ApiError::database(error)
 }
 
 #[derive(Debug)]

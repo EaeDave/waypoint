@@ -18,6 +18,7 @@ private slots:
   void preserveExistingTokenWhenRequested();
   void synchronizeTaskVisibilityCompatibly();
   void negotiateCategorySyncCapabilities();
+  void renegotiateBeforeUploadingCategories();
   void syncsImmediatelyWhenEventArrives();
   void recoversWhenSyncRequestStopsTransferring();
   void preserveHolidayPreferencesWithoutServer();
@@ -245,7 +246,8 @@ void SyncEngineTest::synchronizeTaskVisibilityCompatibly() {
   QVERIFY2(store.open(&error), qPrintable(error));
   QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::Pending, &error), qPrintable(error));
 
-  const QJsonObject request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  const QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
   const QJsonObject mutation = request.value(QStringLiteral("preferenceMutation")).toObject();
   QCOMPARE(mutation.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("pending"));
@@ -282,7 +284,8 @@ void SyncEngineTest::negotiateCategorySyncCapabilities() {
   QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"), nullptr, &error),
            qPrintable(error));
 
-  QJsonObject request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
   QCOMPARE(request.value(QStringLiteral("supportedEntityTypes")).toArray().last().toString(),
            QStringLiteral("category"));
@@ -294,8 +297,15 @@ void SyncEngineTest::negotiateCategorySyncCapabilities() {
       {QStringLiteral("changes"), QJsonArray{}},
   };
   QVERIFY2(waypoint::applySyncResponse(store, legacyResponse, &error), qPrintable(error));
-  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), false, &error);
   QVERIFY(request.value(QStringLiteral("mutations")).toArray().isEmpty());
+
+  QJsonObject malformedResponse = legacyResponse;
+  malformedResponse.insert(QStringLiteral("supportedEntityTypes"),
+                           QStringLiteral("category"));
+  QVERIFY(!waypoint::applySyncResponse(store, malformedResponse, &error));
+  QVERIFY(error.contains(QStringLiteral("capabilities")));
+  error.clear();
 
   QJsonArray supported{
       QStringLiteral("task"),
@@ -307,12 +317,83 @@ void SyncEngineTest::negotiateCategorySyncCapabilities() {
   QJsonObject currentResponse = legacyResponse;
   currentResponse.insert(QStringLiteral("supportedEntityTypes"), supported);
   QVERIFY2(waypoint::applySyncResponse(store, currentResponse, &error), qPrintable(error));
-  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), true, &error);
   const QJsonArray mutations = request.value(QStringLiteral("mutations")).toArray();
   QCOMPARE(mutations.size(), 1);
   QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
            QStringLiteral("category"));
 }
+
+void SyncEngineTest::renegotiateBeforeUploadingCategories() {
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"),
+                                    nullptr, &error),
+           qPrintable(error));
+  QVERIFY2(store.saveServerSupportedEntityTypes(
+               {QStringLiteral("task"), QStringLiteral("occurrence"),
+                QStringLiteral("habit"), QStringLiteral("habit-entry"),
+                QStringLiteral("category")},
+               &error),
+           qPrintable(error));
+  const waypoint::SyncConfiguration configuration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync").arg(server.serverPort())),
+      QByteArrayLiteral("token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+
+  waypoint::SyncEngine engine(&store);
+  engine.start();
+
+  const QByteArray body = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[],"supportedEntityTypes":["task","occurrence","habit","habit-entry","category"]})");
+  const QByteArray response =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: ") +
+      QByteArray::number(body.size()) + QByteArrayLiteral("\r\n\r\n") + body;
+
+  QTcpSocket *eventSocket = nullptr;
+  QByteArray firstSyncRequest;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+    QTcpSocket *socket = server.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 2000);
+    const QByteArray request = socket->readAll();
+    if (request.startsWith("GET /v1/events ")) {
+      eventSocket = socket;
+      const QByteArray headers = QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\n"
+          "Connection: keep-alive\r\n\r\n");
+      QCOMPARE(socket->write(headers), headers.size());
+      QVERIFY(socket->flush());
+    } else {
+      firstSyncRequest = request;
+      QCOMPARE(socket->write(response), response.size());
+      QVERIFY(socket->flush());
+    }
+  }
+  QVERIFY(eventSocket != nullptr);
+  QVERIFY2(!firstSyncRequest.contains("\"entityType\":\"category\""),
+           firstSyncRequest.constData());
+
+  QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+  QTcpSocket *followUp = server.nextPendingConnection();
+  QVERIFY(followUp != nullptr);
+  QTRY_VERIFY_WITH_TIMEOUT(followUp->bytesAvailable() > 0, 2000);
+  const QByteArray followUpRequest = followUp->readAll();
+  QVERIFY2(followUpRequest.startsWith("POST /v1/sync "), followUpRequest.constData());
+  QVERIFY2(followUpRequest.contains("\"entityType\":\"category\""),
+           followUpRequest.constData());
+  QCOMPARE(followUp->write(response), response.size());
+  QVERIFY(followUp->flush());
+}
+
 
 QTEST_MAIN(SyncEngineTest)
 #include "SyncEngineTest.moc"

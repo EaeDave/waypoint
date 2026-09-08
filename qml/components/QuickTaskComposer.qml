@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../data/TaskCategoryOptions.js" as TaskCategoryOptions
 
 Rectangle {
     id: root
@@ -25,12 +26,6 @@ Rectangle {
     }
     function currentTimeKey() {
         return Qt.formatTime(new Date(), "HH:mm");
-    }
-    function categoryOptions() {
-        const options = [{ id: "", name: "Sem categoria", color: "" }];
-        for (const category of root.controller.taskCategories)
-            options.push(category);
-        return options;
     }
 
 
@@ -124,7 +119,7 @@ Rectangle {
             textRole: "name"
             valueRole: "id"
             colorRole: "color"
-            model: root.categoryOptions()
+            model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
             ToolTip.visible: hovered
             ToolTip.text: "Categoria da tarefa"
         }

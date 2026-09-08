@@ -32,7 +32,10 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent, const int transfer
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::taskVisibilityChanged, this, &SyncEngine::scheduleSoon);
-  connect(m_taskStore, &TaskStore::categoriesChanged, this, &SyncEngine::scheduleSoon);
+  connect(m_taskStore, &TaskStore::categoriesChanged, this, [this] {
+    m_categoryUploadAuthorized = false;
+    scheduleSoon();
+  });
 }
 
 bool SyncEngine::enabled() const {
@@ -80,6 +83,7 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
   m_categorySyncAvailable = false;
+  m_categoryUploadAuthorized = false;
   m_debounceTimer.stop();
   closeEventStream();
   if (!enabled()) {
@@ -107,6 +111,7 @@ void SyncEngine::start() {
   }
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
+  m_categoryUploadAuthorized = false;
   m_categorySyncAvailable =
       m_taskStore->serverSupportedEntityTypes(&error).contains(QStringLiteral("category"));
   if (!error.isEmpty()) {
@@ -135,12 +140,22 @@ void SyncEngine::syncNow() {
   }
 
   QString error;
-  const QJsonObject payload = buildSyncRequest(*m_taskStore, syncDeviceId(), &error);
+  const QJsonObject payload =
+      buildSyncRequest(*m_taskStore, syncDeviceId(), m_categoryUploadAuthorized, &error);
   if (!error.isEmpty()) {
     setStatus(QStringLiteral("error"), error);
     log(QStringLiteral("error"), error);
     return;
   }
+  m_lastRequestIncludedCategoryMutations = false;
+  for (const QJsonValue &value : payload.value(QStringLiteral("mutations")).toArray()) {
+    if (value.toObject().value(QStringLiteral("entityType")).toString() ==
+        QStringLiteral("category")) {
+      m_lastRequestIncludedCategoryMutations = true;
+      break;
+    }
+  }
+  m_categoryUploadAuthorized = false;
   QNetworkRequest request(m_endpoint);
   request.setTransferTimeout(m_transferTimeoutMilliseconds);
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
@@ -195,7 +210,21 @@ void SyncEngine::finishSync() {
   }
   m_categorySyncAvailable =
       m_taskStore->serverSupportedEntityTypes().contains(QStringLiteral("category"));
-
+  m_categoryUploadAuthorized = m_categorySyncAvailable;
+  if (m_categorySyncAvailable && !m_lastRequestIncludedCategoryMutations) {
+    QString pendingError;
+    const QJsonArray pendingCategories =
+        m_taskStore->pendingMutations({QStringLiteral("category")}, &pendingError);
+    if (!pendingError.isEmpty()) {
+      setStatus(QStringLiteral("error"), pendingError);
+      log(QStringLiteral("error"), pendingError);
+      finishRequest();
+      return;
+    }
+    if (!pendingCategories.isEmpty()) {
+      m_syncRequested = true;
+    }
+  }
   m_lastSuccessfulSync = QDateTime::currentDateTimeUtc();
   setStatus(QStringLiteral("ready"));
   finishRequest();

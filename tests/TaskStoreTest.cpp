@@ -4,6 +4,7 @@
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QUuid>
 #include <QtTest>
 
 #include <optional>
@@ -222,10 +223,22 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
     QVERIFY(!store.createTaskCategory(QStringLiteral("trabalho"), QStringLiteral("#EF4444"),
                                       nullptr, &error));
     QVERIFY(error.contains(QStringLiteral("already uses")));
+    waypoint::TaskCategory unicodeCategory;
+    QVERIFY2(store.createTaskCategory(QStringLiteral("😀").repeated(80),
+                                      QStringLiteral("#112233"), &unicodeCategory, &error),
+             qPrintable(error));
+    QVERIFY2(store.deleteTaskCategory(unicodeCategory.id, &error), qPrintable(error));
+    QVERIFY(!store.createTaskCategory(QStringLiteral("Quebra"),
+                                      QStringLiteral("#112233\n"), nullptr, &error));
+    QVERIFY(error.contains(QStringLiteral("#RRGGBB")));
 
+    waypoint::RecurrenceRule recurrence;
+    recurrence.frequency = waypoint::RecurrenceFrequency::Daily;
+    recurrence.endMode = waypoint::RecurrenceEndMode::AfterCount;
+    recurrence.occurrenceCount = 3;
     waypoint::TaskRecord task;
-    QVERIFY2(store.createTask(QStringLiteral("Planejar"), QDate(2026, 9, 3), QTime(9, 0), {},
-                              QList<int>{0}, {}, category.id, &task, &error),
+    QVERIFY2(store.createTask(QStringLiteral("Planejar"), QDate(2026, 9, 3), QTime(9, 0),
+                              recurrence, QList<int>{0}, {}, category.id, &task, &error),
              qPrintable(error));
     taskId = task.id;
     QCOMPARE(store.listActiveTasks(&error).first().categoryName, QStringLiteral("Trabalho"));
@@ -235,6 +248,13 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
     QCOMPARE(occurrence.categoryId, category.id);
     QCOMPARE(occurrence.categoryName, QStringLiteral("Trabalho"));
     QCOMPARE(occurrence.categoryColor, QStringLiteral("#3B82F6"));
+    const QList<waypoint::TaskOccurrence> recurringOccurrences =
+        store.listOccurrences(QDate(2026, 9, 3), QDate(2026, 9, 4), &error);
+    QCOMPARE(recurringOccurrences.size(), 2);
+    QCOMPARE(recurringOccurrences.at(1).occurrenceDate, QDate(2026, 9, 4));
+    QCOMPARE(recurringOccurrences.at(1).categoryId, category.id);
+    QCOMPARE(recurringOccurrences.at(1).categoryName, QStringLiteral("Trabalho"));
+    QCOMPARE(recurringOccurrences.at(1).categoryColor, QStringLiteral("#3B82F6"));
   }
 
   waypoint::TaskStore reopened(path);
@@ -260,6 +280,22 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
                                        &replacement, &error),
            qPrintable(error));
   QVERIFY(replacement.id != categoryId);
+  waypoint::TaskCategory remoteDuplicate;
+  remoteDuplicate.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+  remoteDuplicate.name = replacement.name.toLower();
+  remoteDuplicate.color = QStringLiteral("#A8A8A8");
+  remoteDuplicate.createdAt = QDateTime::currentDateTimeUtc();
+  remoteDuplicate.updatedAt = remoteDuplicate.createdAt;
+  remoteDuplicate.version = 1;
+  const QJsonObject duplicateCategoryChange{
+      {QStringLiteral("entityType"), QStringLiteral("category")},
+      {QStringLiteral("entityId"), remoteDuplicate.id},
+      {QStringLiteral("operation"), QStringLiteral("upsert")},
+      {QStringLiteral("payload"), remoteDuplicate.toJson()},
+  };
+  QVERIFY(!reopened.applyRemoteChanges({duplicateCategoryChange}, QStringLiteral("1"), {}, &error));
+  QVERIFY(error.contains(QStringLiteral("already uses")));
+  QCOMPARE(reopened.listActiveTaskCategories(&error).size(), 1);
   QVERIFY2(reopened.editTask(taskId, QStringLiteral("Planejar"), QTime(9, 0), {},
                              QList<int>{0}, {}, replacement.id, &error),
            qPrintable(error));

@@ -19,6 +19,12 @@ bool responseSucceeded(const QJsonObject &response, QString *errorMessage) {
   return false;
 }
 
+void setError(QString *destination, const QString &message) {
+  if (destination != nullptr) {
+    *destination = message;
+  }
+}
+
 TaskOccurrence occurrenceFromJson(const QJsonObject &json) {
   TaskOccurrence occurrence;
   occurrence.taskId = json.value(QStringLiteral("taskId")).toString();
@@ -106,15 +112,28 @@ QList<TaskRecord> WaypointIpcClient::listTasks(QString *errorMessage) const {
   return tasks;
 }
 QList<TaskCategory> WaypointIpcClient::listTaskCategories(QString *errorMessage) const {
+  QString categoryError;
   const QJsonObject response =
-      request({{QStringLiteral("command"), QStringLiteral("categories")}}, errorMessage);
-  if (!responseSucceeded(response, errorMessage)) {
+      request({{QStringLiteral("command"), QStringLiteral("categories")}}, &categoryError);
+  if (!categoryError.isEmpty()) {
+    if (errorMessage != nullptr) {
+      *errorMessage = categoryError;
+    }
+    return {};
+  }
+  if (!responseSucceeded(response, &categoryError)) {
+    if (categoryError.startsWith(QStringLiteral("Unknown Waypoint IPC command:"))) {
+      setError(errorMessage, {});
+      return {};
+    }
+    setError(errorMessage, categoryError);
     return {};
   }
   QList<TaskCategory> categories;
   for (const QJsonValue &value : response.value(QStringLiteral("categories")).toArray()) {
     categories.append(TaskCategory::fromJson(value.toObject()));
   }
+  setError(errorMessage, {});
   return categories;
 }
 

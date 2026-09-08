@@ -38,7 +38,7 @@ bool prepareBackgroundSync(TaskStore &store, BackgroundSyncRequest *request, QSt
   BackgroundSyncRequest prepared;
   prepared.endpoint = configuration.endpoint;
   prepared.token = configuration.token;
-  prepared.payload = buildSyncRequest(store, syncDeviceId(), &error);
+  prepared.payload = buildSyncRequest(store, syncDeviceId(), false, &error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
     return false;

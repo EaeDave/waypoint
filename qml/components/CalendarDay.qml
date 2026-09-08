@@ -89,6 +89,13 @@ Rectangle {
         color: root.holidayColor(root.holidayKind)
     }
 
+    MouseArea {
+        id: pointer
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.activated(root.calendarDateKey)
+    }
     Row {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
@@ -113,7 +120,7 @@ Rectangle {
                 height: 5
                 radius: 3
                 color: modelData.color === "" ? WaypointTheme.accent : modelData.color
-                border.width: modelData.overdue ? 1 : 0
+                border.width: modelData.urgent ? 1 : 0
                 border.color: WaypointTheme.urgent
                 ToolTip.visible: markerPointer.containsMouse
                 ToolTip.text: (modelData.name === "" ? "Sem categoria" : modelData.name)
@@ -154,11 +161,4 @@ Rectangle {
     ToolTip.text: root.summaryText()
     ToolTip.delay: 350
 
-    MouseArea {
-        id: pointer
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-        onClicked: root.activated(root.calendarDateKey)
-    }
 }

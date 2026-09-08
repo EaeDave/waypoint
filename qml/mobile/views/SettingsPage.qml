@@ -402,7 +402,6 @@ Item {
                     id: categoryNameField
                     Layout.fillWidth: true
                     placeholderText: "Nome da categoria"
-                    maximumLength: 80
                     Accessible.id: "category-name"
                     Accessible.name: "Nome da categoria"
                 }
@@ -470,7 +469,7 @@ Item {
                     id: categoryRow
                     required property var modelData
                     Layout.fillWidth: true
-                    implicitHeight: 52
+                    implicitHeight: MobileTheme.touchHeight + 16
                     color: MobileTheme.surface
                     radius: MobileTheme.radius
                     border.width: 1

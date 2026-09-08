@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../../data/TaskCategoryOptions.js" as TaskCategoryOptions
 
 Popup {
     id: root
@@ -42,16 +43,6 @@ Popup {
         return 0;
     }
 
-    function categoryOptions() {
-        const options = [{
-            id: "",
-            name: "Sem categoria",
-            color: ""
-        }];
-        for (const category of controller.taskCategories)
-            options.push(category);
-        return options;
-    }
 
     function toggleWeekday(day) {
         let next = selectedWeekdays.slice();
@@ -228,7 +219,7 @@ Popup {
                 MobileComboBox {
                     id: categoryField
                     Layout.fillWidth: true
-                    model: root.categoryOptions()
+                    model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
                     textRole: "name"
                     valueRole: "id"
                     colorRole: "color"

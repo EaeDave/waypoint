@@ -52,16 +52,15 @@ QString syncDeviceId() {
   return QString::fromLatin1(QCryptographicHash::hash(identity, QCryptographicHash::Sha256).toHex().left(24));
 }
 
-QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString *errorMessage) {
+QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId,
+                             const bool includeCategoryMutations, QString *errorMessage) {
   if (deviceId.trimmed().isEmpty()) {
     setError(errorMessage, QStringLiteral("Synchronization requires a device identifier"));
     return {};
   }
   QString error;
-  const QStringList serverTypes = store.serverSupportedEntityTypes(&error);
-  const QStringList uploadTypes = serverTypes.contains(QStringLiteral("category"))
-                                      ? supportedEntityTypes()
-                                      : legacyEntityTypes();
+  const QStringList uploadTypes =
+      includeCategoryMutations ? supportedEntityTypes() : legacyEntityTypes();
   const QJsonArray mutations = store.pendingMutations(uploadTypes, &error);
   const QString cursor = store.syncCursor(&error);
   const QJsonObject preferenceMutation = store.pendingUserPreferencesMutation(&error);
@@ -85,8 +84,13 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString 
 bool applySyncResponse(TaskStore &store, const QJsonObject &response, QString *errorMessage) {
   QStringList serverTypes = legacyEntityTypes();
   if (response.contains(QStringLiteral("supportedEntityTypes"))) {
+    const QJsonValue capabilityValue = response.value(QStringLiteral("supportedEntityTypes"));
+    if (!capabilityValue.isArray()) {
+      setError(errorMessage, QStringLiteral("Synchronization response capabilities are invalid"));
+      return false;
+    }
     serverTypes.clear();
-    const QJsonArray values = response.value(QStringLiteral("supportedEntityTypes")).toArray();
+    const QJsonArray values = capabilityValue.toArray();
     for (const QJsonValue &value : values) {
       const QString entityType = value.toString();
       if (entityType.isEmpty() || serverTypes.contains(entityType)) {

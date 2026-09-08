@@ -72,7 +72,7 @@ QVariant CalendarModel::data(const QModelIndex &index, int role) const {
           {QStringLiteral("name"), marker.name},
           {QStringLiteral("color"), marker.color},
           {QStringLiteral("taskCount"), marker.taskCount},
-          {QStringLiteral("overdue"), marker.overdue},
+          {QStringLiteral("urgent"), marker.urgent},
       });
     }
     return markers;
@@ -198,7 +198,7 @@ void CalendarModel::rebuildCells() {
         });
       } else {
         ++marker->taskCount;
-        marker->overdue = marker->overdue || urgent;
+        marker->urgent = marker->urgent || urgent;
       }
     }
     for (const QJsonValue &value : m_sourceHolidays) {

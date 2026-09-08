@@ -327,8 +327,11 @@ Item {
                                 }
 
                                 Text {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
                                     visible: taskRow.modelData.categoryName !== ""
                                     text: taskRow.modelData.categoryName.toUpperCase()
+                                    elide: Text.ElideRight
                                     color: taskRow.modelData.completed
                                            ? MobileTheme.disabled : taskRow.modelData.categoryColor
                                     font.family: MobileTheme.fontFamily

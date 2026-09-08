@@ -23,6 +23,13 @@ Item {
         { name: "Laranja", color: "#D59A6F" },
         { name: "Cinza", color: "#A8A8A8" }
     ]
+    property string editingCategoryColor: ""
+    readonly property var categoryColorOptions: {
+        const options = categoryPalette.slice();
+        if (editingCategoryColor !== "" && categoryColorIndex(editingCategoryColor) < 0)
+            options.unshift({ name: "Cor atual", color: editingCategoryColor });
+        return options;
+    }
     readonly property var brazilianStates: [
         { code: "", name: "Nenhum estado" },
         { code: "AC", name: "Acre" }, { code: "AL", name: "Alagoas" },
@@ -61,7 +68,14 @@ Item {
             if (categoryPalette[index].color === color)
                 return index;
         }
-        return 0;
+        return -1;
+    }
+
+    function resetCategoryEditor() {
+        editingCategoryId = "";
+        editingCategoryColor = "";
+        categoryNameField.clear();
+        categoryColorField.currentIndex = 0;
     }
 
 
@@ -385,9 +399,12 @@ Item {
                                 text: "Editar"
                                 onClicked: {
                                     root.editingCategoryId = categoryRow.modelData.id;
+                                    root.editingCategoryColor = categoryRow.modelData.color;
                                     categoryNameField.text = categoryRow.modelData.name;
-                                    categoryColorField.currentIndex =
+                                    const paletteIndex =
                                         root.categoryColorIndex(categoryRow.modelData.color);
+                                    categoryColorField.currentIndex =
+                                        paletteIndex < 0 ? 0 : paletteIndex;
                                     categoryNameField.forceActiveFocus();
                                 }
                             }
@@ -402,10 +419,8 @@ Item {
                                     root.feedbackMessage = removed
                                         ? "Categoria removida. As tarefas ficaram sem categoria."
                                         : root.controller.errorMessage;
-                                    if (removed && root.editingCategoryId === categoryRow.modelData.id) {
-                                        root.editingCategoryId = "";
-                                        categoryNameField.clear();
-                                    }
+                                    if (removed && root.editingCategoryId === categoryRow.modelData.id)
+                                        root.resetCategoryEditor();
                                 }
                             }
                         }
@@ -421,13 +436,12 @@ Item {
                             id: categoryNameField
                             Layout.fillWidth: true
                             placeholderText: "Nome da categoria"
-                            maximumLength: 80
                         }
 
                         AppComboBox {
                             id: categoryColorField
                             Layout.fillWidth: true
-                            model: root.categoryPalette
+                            model: root.categoryColorOptions
                             textRole: "name"
                             valueRole: "color"
                             colorRole: "color"
@@ -452,22 +466,15 @@ Item {
                                 root.feedbackError = !saved;
                                 root.feedbackMessage = saved ? "Categoria salva."
                                                              : root.controller.errorMessage;
-                                if (saved) {
-                                    root.editingCategoryId = "";
-                                    categoryNameField.clear();
-                                    categoryColorField.currentIndex = 0;
-                                }
+                                if (saved)
+                                    root.resetCategoryEditor();
                             }
                         }
 
                         AppButton {
                             visible: root.editingCategoryId !== ""
                             text: "Cancelar"
-                            onClicked: {
-                                root.editingCategoryId = "";
-                                categoryNameField.clear();
-                                categoryColorField.currentIndex = 0;
-                            }
+                            onClicked: root.resetCategoryEditor()
                         }
                     }
                 }

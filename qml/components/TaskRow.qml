@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "../data/TaskCategoryOptions.js" as TaskCategoryOptions
 
 Rectangle {
     id: root
@@ -253,15 +254,9 @@ Rectangle {
              : frequency === "weekly" ? 2
              : frequency === "monthly" ? 3 : 4;
     }
-    function categoryOptions() {
-        const options = [{ id: "", name: "Sem categoria", color: "" }];
-        for (const category of root.controller.taskCategories)
-            options.push(category);
-        return options;
-    }
 
     function categoryIndex(categoryId) {
-        const options = categoryOptions();
+        const options = TaskCategoryOptions.fromCategories(root.controller.taskCategories);
         for (let index = 0; index < options.length; ++index) {
             if (String(options[index].id) === categoryId)
                 return index;
@@ -393,7 +388,7 @@ Rectangle {
                 textRole: "name"
                 valueRole: "id"
                 colorRole: "color"
-                model: root.categoryOptions()
+                model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
             }
 
 

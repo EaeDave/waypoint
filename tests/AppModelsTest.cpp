@@ -221,6 +221,11 @@ void AppModelsTest::exposeSkippedRecurringOccurrence() {
         skippedDate.toString(Qt::ISODate)) {
       QCOMPARE(calendar.data(index, waypoint::CalendarModel::PendingCountRole).toInt(), 0);
       QCOMPARE(calendar.data(index, waypoint::CalendarModel::SkippedCountRole).toInt(), 1);
+      const QVariantList markers =
+          calendar.data(index, waypoint::CalendarModel::CategoryMarkersRole).toList();
+      QCOMPARE(markers.size(), 1);
+      QVERIFY(markers.first().toMap().value(QStringLiteral("urgent")).toBool());
+      QVERIFY(!markers.first().toMap().contains(QStringLiteral("overdue")));
       return;
     }
   }

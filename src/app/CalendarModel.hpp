@@ -61,7 +61,7 @@ private:
     QString name;
     QString color;
     int taskCount = 0;
-    bool overdue = false;
+    bool urgent = false;
   };
 
   struct CalendarCell final {
