@@ -54,8 +54,10 @@ private:
   QTimer m_debounceTimer;
   QTimer m_eventReconnectTimer;
   QNetworkReply *m_eventStream = nullptr;
+  QNetworkReply *m_syncReply = nullptr;
   QByteArray m_eventBuffer;
   QUrl m_endpoint;
+  QUrl m_categoryCapabilityEndpoint;
   QByteArray m_token;
   QDateTime m_lastSuccessfulSync;
   int m_transferTimeoutMilliseconds;

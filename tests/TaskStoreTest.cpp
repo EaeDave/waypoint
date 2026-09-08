@@ -18,6 +18,7 @@ private slots:
   void persistFiveReminderOffsetsAndRejectInvalidLists();
   void persistCompoundEmojiAcrossStorageAndSync();
   void persistTaskCategoriesAndAssignments();
+  void reportDuplicateCategoryNamesDuringUpgrade();
   void rejectInvisibleTitle();
   void preserveFloatingCalendarDate();
   void persistSyncConfiguration();
@@ -29,6 +30,43 @@ private slots:
   void applyRemoteOccurrenceChangesIdempotently();
   void applyRecurrenceDeletionScopes();
 };
+void TaskStoreTest::reportDuplicateCategoryNamesDuringUpgrade() {
+  QTemporaryDir directory;
+  QVERIFY(directory.isValid());
+  const QString path = directory.filePath(QStringLiteral("tasks.sqlite3"));
+  const QString connectionName =
+      QStringLiteral("category-upgrade-%1")
+          .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+  {
+    QSqlDatabase database =
+        QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    database.setDatabaseName(path);
+    QVERIFY(database.open());
+    QSqlQuery query(database);
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE task_categories ("
+        "id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+        "version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE INDEX task_categories_active_idx "
+        "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO task_categories(id, name, color, created_at, updated_at) VALUES "
+        "('one', 'Work', '#112233', '2026-09-01T00:00:00.000Z', "
+        "'2026-09-01T00:00:00.000Z'), "
+        "('two', 'work', '#445566', '2026-09-01T00:00:00.000Z', "
+        "'2026-09-01T00:00:00.000Z')")));
+    database.close();
+  }
+  QSqlDatabase::removeDatabase(connectionName);
+
+  waypoint::TaskStore store(path);
+  QString error;
+  QVERIFY(!store.open(&error));
+  QVERIFY(error.contains(QStringLiteral("duplicate active category name")));
+}
+
 
 void TaskStoreTest::createCompleteAndRescheduleTask() {
   QTemporaryDir directory;

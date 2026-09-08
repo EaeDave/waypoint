@@ -7,5 +7,7 @@ ALTER TABLE changes ADD CONSTRAINT changes_entity_type_check
     CHECK (entity_type IN ('task', 'occurrence', 'habit', 'habit-entry', 'category'));
 
 CREATE UNIQUE INDEX sync_entities_active_category_name_idx
-    ON sync_entities (lower(payload->>'name'))
+    ON sync_entities (
+        translate(payload->>'name', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz')
+    )
     WHERE entity_type = 'category' AND deleted = FALSE;

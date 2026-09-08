@@ -472,21 +472,56 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
       QByteArrayLiteral("secret-token"),
   };
   QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Trabalho"), QStringLiteral("#3B82F6"),
+                                    nullptr, &error),
+           qPrintable(error));
 
   waypoint::BackgroundSyncRequest request;
-  QVERIFY2(waypoint::prepareBackgroundSync(store, &request, &error), qPrintable(error));
+  QVERIFY2(waypoint::prepareBackgroundSync(store, false, &request, &error),
+           qPrintable(error));
   QCOMPARE(request.endpoint, configuration.endpoint);
   QCOMPARE(request.token, configuration.token);
   QVERIFY(!request.payload.value(QStringLiteral("deviceId")).toString().isEmpty());
   QCOMPARE(request.payload.value(QStringLiteral("cursor")).toInteger(), 0);
+  QVERIFY(request.payload.value(QStringLiteral("mutations")).toArray().isEmpty());
 
-  const QJsonObject response{
+  const QJsonArray supportedEntityTypes{
+      QStringLiteral("task"), QStringLiteral("occurrence"),
+      QStringLiteral("habit"), QStringLiteral("habit-entry"),
+      QStringLiteral("category"),
+  };
+  const QJsonObject negotiationResponse{
       {QStringLiteral("nextCursor"), 0},
       {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
       {QStringLiteral("changes"), QJsonArray{}},
+      {QStringLiteral("supportedEntityTypes"), supportedEntityTypes},
   };
   waypoint::BackgroundSyncResult result;
-  QVERIFY2(waypoint::applyBackgroundSync(store, response, &result, &error), qPrintable(error));
+  QVERIFY2(waypoint::applyBackgroundSync(store, negotiationResponse, &result, &error),
+           qPrintable(error));
+  QVERIFY(result.categoryFollowUpRequired);
+
+  waypoint::BackgroundSyncRequest followUp;
+  QVERIFY2(waypoint::prepareBackgroundSync(store, true, &followUp, &error),
+           qPrintable(error));
+  const QJsonArray mutations =
+      followUp.payload.value(QStringLiteral("mutations")).toArray();
+  QCOMPARE(mutations.size(), 1);
+  QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
+           QStringLiteral("category"));
+  const QString mutationId =
+      mutations.first().toObject().value(QStringLiteral("mutationId")).toString();
+  QVERIFY(!mutationId.isEmpty());
+
+  const QJsonObject appliedResponse{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{mutationId}},
+      {QStringLiteral("changes"), QJsonArray{}},
+      {QStringLiteral("supportedEntityTypes"), supportedEntityTypes},
+  };
+  QVERIFY2(waypoint::applyBackgroundSync(store, appliedResponse, &result, &error),
+           qPrintable(error));
+  QVERIFY(!result.categoryFollowUpRequired);
   QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 5);
   QVERIFY(result.notificationSchedule.isEmpty());
 }

@@ -8,6 +8,34 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QtTest>
+namespace {
+
+bool appendCompleteHttpRequest(QTcpSocket *socket, QByteArray *request) {
+  request->append(socket->readAll());
+  const qsizetype headerEnd = request->indexOf(QByteArrayLiteral("\r\n\r\n"));
+  if (headerEnd < 0) {
+    return false;
+  }
+
+  qint64 contentLength = 0;
+  const QList<QByteArray> headerLines = request->left(headerEnd).split('\n');
+  for (const QByteArray &rawLine : headerLines) {
+    const QByteArray line = rawLine.trimmed();
+    if (!line.toLower().startsWith(QByteArrayLiteral("content-length:"))) {
+      continue;
+    }
+    bool converted = false;
+    contentLength =
+        line.sliced(sizeof("content-length:") - 1).trimmed().toLongLong(&converted);
+    if (!converted || contentLength < 0) {
+      return false;
+    }
+    break;
+  }
+  return request->size() >= headerEnd + 4 + contentLength;
+}
+
+} // namespace
 
 class SyncEngineTest final : public QObject {
   Q_OBJECT
@@ -19,6 +47,7 @@ private slots:
   void synchronizeTaskVisibilityCompatibly();
   void negotiateCategorySyncCapabilities();
   void renegotiateBeforeUploadingCategories();
+  void discardSyncReplyAfterEndpointChange();
   void syncsImmediatelyWhenEventArrives();
   void recoversWhenSyncRequestStopsTransferring();
   void preserveHolidayPreferencesWithoutServer();
@@ -363,8 +392,8 @@ void SyncEngineTest::renegotiateBeforeUploadingCategories() {
     QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
     QTcpSocket *socket = server.nextPendingConnection();
     QVERIFY(socket != nullptr);
-    QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 2000);
-    const QByteArray request = socket->readAll();
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(appendCompleteHttpRequest(socket, &request), 2000);
     if (request.startsWith("GET /v1/events ")) {
       eventSocket = socket;
       const QByteArray headers = QByteArrayLiteral(
@@ -385,13 +414,109 @@ void SyncEngineTest::renegotiateBeforeUploadingCategories() {
   QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
   QTcpSocket *followUp = server.nextPendingConnection();
   QVERIFY(followUp != nullptr);
-  QTRY_VERIFY_WITH_TIMEOUT(followUp->bytesAvailable() > 0, 2000);
-  const QByteArray followUpRequest = followUp->readAll();
+  QByteArray followUpRequest;
+  QTRY_VERIFY_WITH_TIMEOUT(
+      appendCompleteHttpRequest(followUp, &followUpRequest), 2000);
   QVERIFY2(followUpRequest.startsWith("POST /v1/sync "), followUpRequest.constData());
   QVERIFY2(followUpRequest.contains("\"entityType\":\"category\""),
            followUpRequest.constData());
   QCOMPARE(followUp->write(response), response.size());
   QVERIFY(followUp->flush());
+}
+
+void SyncEngineTest::discardSyncReplyAfterEndpointChange() {
+  QTcpServer oldServer;
+  QTcpServer newServer;
+  QVERIFY(oldServer.listen(QHostAddress::LocalHost));
+  QVERIFY(newServer.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"),
+                                    nullptr, &error),
+           qPrintable(error));
+  const waypoint::SyncConfiguration oldConfiguration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync")
+               .arg(oldServer.serverPort())),
+      QByteArrayLiteral("old-token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(oldConfiguration, &error),
+           qPrintable(error));
+
+  waypoint::SyncEngine engine(&store);
+  engine.start();
+
+  const QByteArray eventHeaders = QByteArrayLiteral(
+      "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n"
+      "Cache-Control: no-cache\r\nConnection: keep-alive\r\n\r\n");
+  QTcpSocket *oldSyncSocket = nullptr;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(oldServer.hasPendingConnections(), 2000);
+    QTcpSocket *socket = oldServer.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(socket, &request), 2000);
+    if (request.startsWith("GET /v1/events ")) {
+      QCOMPARE(socket->write(eventHeaders), eventHeaders.size());
+      QVERIFY(socket->flush());
+    } else {
+      QVERIFY2(request.startsWith("POST /v1/sync "), request.constData());
+      oldSyncSocket = socket;
+    }
+  }
+  QVERIFY(oldSyncSocket != nullptr);
+
+  QVERIFY2(
+      engine.updateConfiguration(
+          QStringLiteral("http://127.0.0.1:%1/v1/sync")
+              .arg(newServer.serverPort()),
+          QByteArrayLiteral("new-token"), true, &error),
+      qPrintable(error));
+
+  const QByteArray capabilityBody = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[],"supportedEntityTypes":["task","occurrence","habit","habit-entry","category"]})");
+  const QByteArray staleResponse =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+          "Connection: close\r\nContent-Length: ") +
+      QByteArray::number(capabilityBody.size()) +
+      QByteArrayLiteral("\r\n\r\n") + capabilityBody;
+  oldSyncSocket->write(staleResponse);
+  oldSyncSocket->flush();
+
+  const QByteArray legacyBody = QByteArrayLiteral(
+      R"({"nextCursor":0,"acceptedMutationIds":[],"changes":[]})");
+  const QByteArray legacyResponse =
+      QByteArrayLiteral(
+          "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+          "Connection: close\r\nContent-Length: ") +
+      QByteArray::number(legacyBody.size()) +
+      QByteArrayLiteral("\r\n\r\n") + legacyBody;
+  QByteArray newSyncRequest;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(newServer.hasPendingConnections(), 2000);
+    QTcpSocket *socket = newServer.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    QByteArray request;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(socket, &request), 2000);
+    if (request.startsWith("GET /v1/events ")) {
+      QCOMPARE(socket->write(eventHeaders), eventHeaders.size());
+      QVERIFY(socket->flush());
+    } else {
+      newSyncRequest = request;
+      QCOMPARE(socket->write(legacyResponse), legacyResponse.size());
+      QVERIFY(socket->flush());
+    }
+  }
+
+  QVERIFY2(newSyncRequest.startsWith("POST /v1/sync "),
+           newSyncRequest.constData());
+  QVERIFY2(!newSyncRequest.contains("\"entityType\":\"category\""),
+           newSyncRequest.constData());
 }
 
 

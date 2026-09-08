@@ -247,9 +247,6 @@ bool TaskStore::migrate(QString *errorMessage) {
           "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 80), "
           "color TEXT NOT NULL CHECK(length(color) = 7), created_at TEXT NOT NULL, "
           "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)"),
-      QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS "
-                     "task_categories_active_name_unique_idx "
-                     "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS outbox ("
                      "mutation_id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, "
                      "entity_id TEXT NOT NULL, operation TEXT NOT NULL, "
@@ -331,6 +328,41 @@ bool TaskStore::migrate(QString *errorMessage) {
       setError(errorMessage, queryFailure(QStringLiteral("Cannot migrate Waypoint database"), query));
       return false;
     }
+  }
+
+  QSqlQuery dropLegacyCategoryIndex(m_database);
+  if (!dropLegacyCategoryIndex.exec(
+          QStringLiteral("DROP INDEX IF EXISTS task_categories_active_idx"))) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot replace legacy category name index"),
+                          dropLegacyCategoryIndex));
+    return false;
+  }
+
+  QSqlQuery duplicateCategoryNames(m_database);
+  if (!duplicateCategoryNames.exec(QStringLiteral(
+          "SELECT name FROM task_categories WHERE deleted_at IS NULL "
+          "GROUP BY name COLLATE NOCASE HAVING COUNT(*) > 1 LIMIT 1"))) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot inspect category names during migration"),
+                          duplicateCategoryNames));
+    return false;
+  }
+  if (duplicateCategoryNames.next()) {
+    setError(errorMessage,
+             QStringLiteral("Cannot migrate Waypoint database: duplicate active category name '%1'")
+                 .arg(duplicateCategoryNames.value(0).toString()));
+    return false;
+  }
+
+  QSqlQuery uniqueCategoryNames(m_database);
+  if (!uniqueCategoryNames.exec(QStringLiteral(
+          "CREATE UNIQUE INDEX IF NOT EXISTS task_categories_active_name_unique_idx "
+          "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"))) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot enforce unique active category names"),
+                          uniqueCategoryNames));
+    return false;
   }
 
   QSet<QString> taskColumns;

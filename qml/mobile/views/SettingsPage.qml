@@ -404,6 +404,11 @@ Item {
                     placeholderText: "Nome da categoria"
                     Accessible.id: "category-name"
                     Accessible.name: "Nome da categoria"
+                    onTextChanged: {
+                        const codePoints = Array.from(text);
+                        if (codePoints.length > 80)
+                            text = codePoints.slice(0, 80).join("");
+                    }
                 }
 
                 Flow {

@@ -80,10 +80,20 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
   if (!m_taskStore->saveSyncConfiguration(configuration, errorMessage)) {
     return false;
   }
+  if (m_syncReply != nullptr) {
+    QNetworkReply *reply = m_syncReply;
+    m_syncReply = nullptr;
+    disconnect(reply, nullptr, this, nullptr);
+    reply->abort();
+    reply->deleteLater();
+    m_inFlight = false;
+  }
+  m_syncRequested = false;
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
   m_categorySyncAvailable = false;
   m_categoryUploadAuthorized = false;
+  m_categoryCapabilityEndpoint = QUrl{};
   m_debounceTimer.stop();
   closeEventStream();
   if (!enabled()) {
@@ -112,6 +122,7 @@ void SyncEngine::start() {
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
   m_categoryUploadAuthorized = false;
+  m_categoryCapabilityEndpoint = QUrl{};
   m_categorySyncAvailable =
       m_taskStore->serverSupportedEntityTypes(&error).contains(QStringLiteral("category"));
   if (!error.isEmpty()) {
@@ -139,9 +150,11 @@ void SyncEngine::syncNow() {
     return;
   }
 
+  const bool includeCategoryMutations =
+      m_categoryUploadAuthorized && m_categoryCapabilityEndpoint == m_endpoint;
   QString error;
   const QJsonObject payload =
-      buildSyncRequest(*m_taskStore, syncDeviceId(), m_categoryUploadAuthorized, &error);
+      buildSyncRequest(*m_taskStore, syncDeviceId(), includeCategoryMutations, &error);
   if (!error.isEmpty()) {
     setStatus(QStringLiteral("error"), error);
     log(QStringLiteral("error"), error);
@@ -161,20 +174,24 @@ void SyncEngine::syncNow() {
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_token);
 
-  QNetworkReply *reply = m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
-  reply->setParent(this);
+  m_syncReply =
+      m_network.post(request, QJsonDocument(payload).toJson(QJsonDocument::Compact));
+  m_syncReply->setParent(this);
   m_inFlight = true;
   setStatus(QStringLiteral("syncing"));
-  connect(reply, &QNetworkReply::finished, this, &SyncEngine::finishSync);
+  connect(m_syncReply, &QNetworkReply::finished, this, &SyncEngine::finishSync);
 }
 
 void SyncEngine::finishSync() {
   auto *reply = qobject_cast<QNetworkReply *>(sender());
-  m_inFlight = false;
-  if (reply == nullptr) {
-    continuePendingSync();
+  if (reply == nullptr || reply != m_syncReply) {
+    if (reply != nullptr) {
+      reply->deleteLater();
+    }
     return;
   }
+  m_syncReply = nullptr;
+  m_inFlight = false;
   const auto finishRequest = [this, reply] {
     reply->deleteLater();
     continuePendingSync();
@@ -211,6 +228,8 @@ void SyncEngine::finishSync() {
   m_categorySyncAvailable =
       m_taskStore->serverSupportedEntityTypes().contains(QStringLiteral("category"));
   m_categoryUploadAuthorized = m_categorySyncAvailable;
+  m_categoryCapabilityEndpoint =
+      m_categorySyncAvailable ? m_endpoint : QUrl{};
   if (m_categorySyncAvailable && !m_lastRequestIncludedCategoryMutations) {
     QString pendingError;
     const QJsonArray pendingCategories =
