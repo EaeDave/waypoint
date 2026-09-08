@@ -232,6 +232,7 @@ jobs:
             --target "${{ needs.prepare.outputs.sha }}" \
             --title "Waypoint ${{ needs.prepare.outputs.version }}" \
             --generate-notes \
+            LICENSE \
             dist/SHA256SUMS \
             dist/waypoint-android-arm64.apk \
             dist/waypoint-linux-x86_64.tar.gz
