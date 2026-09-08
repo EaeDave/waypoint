@@ -96,12 +96,37 @@ ApplicationWindow {
                 }
 
                 ToolButton {
-                    id: monthButton
+                    id: tasksButton
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
                     checked: root.activePage === 1
                     onClicked: root.activePage = 1
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Todas as tarefas"
+                    contentItem: AppIcon {
+                        name: "list"
+                        color: tasksButton.checked ? WaypointTheme.foreground : WaypointTheme.subduedText
+                    }
+                    background: Rectangle {
+                        radius: WaypointTheme.radius
+                        color: tasksButton.checked ? WaypointTheme.controlSelectedFill
+                             : tasksButton.hovered ? WaypointTheme.controlHoverFill
+                             : "transparent"
+                        border.width: 1
+                        border.color: tasksButton.checked ? WaypointTheme.activeBorder
+                                    : tasksButton.hovered ? WaypointTheme.controlHoverBorder
+                                    : "transparent"
+                    }
+                }
+
+                ToolButton {
+                    id: monthButton
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    checked: root.activePage === 2
+                    onClicked: root.activePage = 2
                     ToolTip.visible: hovered
                     ToolTip.text: "Calendário"
                     contentItem: AppIcon {
@@ -129,9 +154,9 @@ ApplicationWindow {
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
-                    checked: root.activePage === 2
+                    checked: root.activePage === 3
                     text: "⋯"
-                    onClicked: root.activePage = 2
+                    onClicked: root.activePage = 3
                     ToolTip.visible: hovered
                     ToolTip.text: "Configurações"
                     contentItem: Text {
@@ -187,6 +212,10 @@ ApplicationWindow {
                 controller: root.waypointController
             }
 
+            TasksView {
+                controller: root.waypointController
+            }
+
             MonthView {
                 controller: root.waypointController
             }
@@ -210,6 +239,11 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+3"
         onActivated: root.activePage = 2
+    }
+
+    Shortcut {
+        sequence: "Ctrl+4"
+        onActivated: root.activePage = 3
     }
 
     Component.onCompleted: root.waypointController.start()

@@ -10,6 +10,7 @@ Popup {
 
     required property var controller
     property var editingTask: ({})
+    property bool editingDefinition: false
     property var selectedWeekdays: []
     property var selectedReminders: [0]
 
@@ -68,6 +69,7 @@ Popup {
 
     function openForCreate(dateKey) {
         editingTask = ({});
+        editingDefinition = false;
         emojiField.text = "";
         titleField.text = "";
         dateField.text = dateKey;
@@ -86,6 +88,7 @@ Popup {
 
     function openForEdit(task) {
         editingTask = task;
+        editingDefinition = !task.occurrenceDate;
         const recurrence = task.recurrence || {};
         emojiField.text = task.emoji || "";
         titleField.text = task.title || "";
@@ -404,8 +407,9 @@ Popup {
 
                 MobileButton {
                     Layout.fillWidth: true
-                    visible: !!root.editingTask.taskId && root.editingTask.recurring
-                             && !root.editingTask.completed && !root.editingTask.skipped
+                    visible: !root.editingDefinition && !!root.editingTask.taskId
+                             && root.editingTask.recurring && !root.editingTask.completed
+                             && !root.editingTask.skipped
                     text: "MARCAR COMO NÃO FEITA"
                     onClicked: {
                         if (root.controller.skipTaskOccurrence(root.editingTask.taskId,
@@ -416,7 +420,8 @@ Popup {
 
                 MobileButton {
                     Layout.fillWidth: true
-                    visible: !!root.editingTask.taskId && root.editingTask.skipped
+                    visible: !root.editingDefinition && !!root.editingTask.taskId
+                             && root.editingTask.skipped
                     text: "REABRIR OCORRÊNCIA"
                     onClicked: {
                         if (root.controller.setTaskCompleted(root.editingTask.taskId,

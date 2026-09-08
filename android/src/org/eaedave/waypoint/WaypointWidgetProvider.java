@@ -37,6 +37,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static final String ACTION_SELECT_DATE = "org.eaedave.waypoint.widget.SELECT_DATE";
   private static final String EXTRA_MONTH_DELTA = "monthDelta";
   private static final String EXTRA_DATE = "date";
+  private static final String EXTRA_OPEN_PAGE = "waypoint.openPage";
+  private static final String EXTRA_TASK_ID = "waypoint.taskId";
   private static final String STATE_PREFERENCES = "waypoint_widget_state";
   private static final String SELECTED_DATE_PREFIX = "selectedDate:";
   private static final String SELECTED_ON_PREFIX = "selectedOn:";
@@ -165,7 +167,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     PendingIntent openApp = openAppIntent(context, appWidgetId);
     views.setOnClickPendingIntent(R.id.widget_root, null);
     views.setOnClickPendingIntent(R.id.widget_month_title, openApp);
-    views.setOnClickPendingIntent(R.id.widget_add_task, openApp);
+    views.setOnClickPendingIntent(R.id.widget_add_task,
+                                  openTaskIntent(context, appWidgetId, "", 0));
     views.setOnClickPendingIntent(R.id.widget_previous_month, moveMonthIntent(context, appWidgetId, -1));
     views.setOnClickPendingIntent(R.id.widget_next_month, moveMonthIntent(context, appWidgetId, 1));
     manager.updateAppWidget(appWidgetId, views);
@@ -339,7 +342,6 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     views.setViewVisibility(R.id.widget_empty_tasks,
                             showDetails && taskCount == 0 && holidayCount == 0 ? View.VISIBLE : View.GONE);
 
-    PendingIntent openApp = openAppIntent(context, appWidgetId);
     for (int index = 0; index < TASK_ROW_IDS.length; ++index) {
       if (index >= taskLimit || index >= taskCount) {
         views.setViewVisibility(TASK_ROW_IDS[index], View.GONE);
@@ -383,6 +385,10 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
             new ForegroundColorSpan(completed ? COLOR_DISABLED : categoryColor),
             categoryStart, timeText.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
       }
+      String taskDescription = "Editar tarefa " + title;
+      if (!categoryName.isEmpty()) {
+        taskDescription += ", categoria " + categoryName;
+      }
 
       views.setViewVisibility(TASK_ROW_IDS[index], View.VISIBLE);
       int statusResource = completed ? R.drawable.waypoint_widget_task_completed
@@ -394,9 +400,12 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                                 : skipped ? COLOR_URGENT
                                                           : COLOR_FOREGROUND);
       views.setTextViewText(TASK_TIME_IDS[index], timeText);
+      views.setContentDescription(TASK_ROW_IDS[index], taskDescription);
       views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT
                                                 : completed ? COLOR_DISABLED : COLOR_SUBDUED);
-      views.setOnClickPendingIntent(TASK_ROW_IDS[index], openApp);
+      views.setOnClickPendingIntent(
+          TASK_ROW_IDS[index],
+          openTaskIntent(context, appWidgetId, task.optString("taskId", ""), index + 1));
       views.setOnClickPendingIntent(
           TASK_STATUS_IDS[index],
           taskCompletionIntent(context, appWidgetId, task, index, !completed && !skipped));
@@ -681,6 +690,32 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return PendingIntent.getForegroundService(context, appWidgetId * 100 + 70 + requestOffset, intent,
                                               PendingIntent.FLAG_UPDATE_CURRENT |
                                                   PendingIntent.FLAG_IMMUTABLE);
+  }
+
+  private static PendingIntent openTaskIntent(Context context, int appWidgetId, String taskId,
+                                             int requestOffset) {
+    Intent intent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+    if (intent == null) {
+      intent = new Intent(context, WaypointActivity.class)
+                   .setAction(Intent.ACTION_MAIN)
+                   .addCategory(Intent.CATEGORY_LAUNCHER);
+    }
+    Uri.Builder data = new Uri.Builder()
+                           .scheme("waypoint")
+                           .authority("widget")
+                           .appendPath(Integer.toString(appWidgetId))
+                           .appendPath("open")
+                           .appendPath("tasks");
+    intent.setData(taskId.isEmpty() ? data.appendPath("create").build()
+                                    : data.appendPath(taskId).build());
+    intent.putExtra(EXTRA_OPEN_PAGE, "tasks");
+    if (!taskId.isEmpty()) {
+      intent.putExtra(EXTRA_TASK_ID, taskId);
+    }
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+    return PendingIntent.getActivity(context, appWidgetId * 100 + 120 + requestOffset, intent,
+                                     PendingIntent.FLAG_UPDATE_CURRENT |
+                                         PendingIntent.FLAG_IMMUTABLE);
   }
 
   private static PendingIntent openAppIntent(Context context, int appWidgetId) {

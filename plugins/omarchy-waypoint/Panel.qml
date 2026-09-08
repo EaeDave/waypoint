@@ -112,9 +112,14 @@ Panel {
     }
 
     function categoryOptions() {
-        const options = [{ label: "Sem categoria", value: "" }];
-        for (const category of categories || [])
-            options.push({ label: "●  " + category.name, value: category.id });
+        const options = [{ label: "Sem categoria", value: "", color: Color.accent }];
+        for (const category of categories || []) {
+            options.push({
+                label: String(category.name || ""),
+                value: String(category.id || ""),
+                color: String(category.color || Color.accent)
+            });
+        }
         return options;
     }
 
@@ -974,19 +979,6 @@ Panel {
                                 onClicked: root.openEmojiPicker("quick", root.quickEmoji)
                             }
 
-                            Dropdown {
-                                id: quickCategoryInput
-                                Layout.preferredWidth: Style.space(130)
-                                showLabel: false
-                                foreground: root.foreground
-                                background: "transparent"
-                                accent: Color.accent
-                                options: root.categoryOptions()
-                                value: root.quickCategoryId
-                                onChanged: function(value) {
-                                    root.quickCategoryId = String(value || "");
-                                }
-                            }
 
                             TextField {
                                 id: quickAdd
@@ -997,6 +989,44 @@ Panel {
                                 font.family: root.fontFamily
                                 background: Item {}
                                 onAccepted: root.beginQuickTask()
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(4)
+
+                        Text {
+                            text: "CATEGORIA"
+                            color: Qt.darker(root.foreground, 1.5)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+
+                        Flow {
+                            width: parent.width
+                            spacing: Style.space(4)
+
+                            Repeater {
+                                model: root.categoryOptions()
+
+                                Button {
+                                    required property var modelData
+                                    text: modelData.value === ""
+                                          ? "SEM CATEGORIA"
+                                          : "●  " + String(modelData.label || "").toUpperCase()
+                                    foreground: modelData.value === ""
+                                                ? root.foreground : modelData.color
+                                    accent: modelData.color
+                                    bordered: true
+                                    selected: root.quickCategoryId === modelData.value
+                                    horizontalPadding: Style.space(7)
+                                    verticalPadding: Style.space(3)
+                                    onClicked: root.quickCategoryId = modelData.value
+                                }
                             }
                         }
                     }

@@ -62,6 +62,21 @@ QList<QTime> habitReminderTimes(const QVariantList &values) {
   return times;
 }
 
+QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
+  QVariantList values;
+  values.reserve(tasks.size());
+  for (const TaskRecord &task : tasks) {
+    QVariantMap value = task.toJson().toVariantMap();
+    value.insert(QStringLiteral("taskId"), task.id);
+    value.insert(QStringLiteral("categoryName"), task.categoryName);
+    value.insert(QStringLiteral("categoryColor"), task.categoryColor);
+    value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
+    value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
+    values.append(value);
+  }
+  return values;
+}
+
 } // namespace
 
 WaypointController::WaypointController(QObject *parent)
@@ -80,6 +95,7 @@ TaskListModel *WaypointController::selectedDateTasks() { return &m_selectedDateT
 
 QVariantList WaypointController::todayHabits() const { return m_todayHabits; }
 QVariantList WaypointController::taskCategories() const { return m_taskCategories; }
+QVariantList WaypointController::allTasks() const { return m_allTasks; }
 
 
 CalendarModel *WaypointController::calendar() { return &m_calendar; }
@@ -168,6 +184,11 @@ void WaypointController::refresh() {
     startDaemonOnce();
     return;
   }
+  const QList<TaskRecord> tasks = m_client.listTasks(&error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
   const QList<HabitProgress> todayHabitProgress = m_client.listHabitProgress(today, &error);
   if (!error.isEmpty()) {
     updateConnection(false, error);
@@ -213,6 +234,7 @@ void WaypointController::refresh() {
   for (const TaskOccurrence &occurrence : rangeOccurrences) {
     rangeValues.append(occurrence.toJson());
   }
+  const QVariantList taskValues = taskDefinitionValues(tasks);
   const QByteArray signature = QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
                                                          {QStringLiteral("habits"), habitValues},
                                                          {QStringLiteral("range"), rangeValues}})
@@ -225,6 +247,13 @@ void WaypointController::refresh() {
       m_todayHabits.append(value.toObject().toVariantMap());
     }
     emit habitsChanged();
+  }
+  const QByteArray taskSignature =
+      QJsonDocument::fromVariant(taskValues).toJson(QJsonDocument::Compact);
+  if (taskSignature != m_taskSignature) {
+    m_taskSignature = taskSignature;
+    m_allTasks = taskValues;
+    emit tasksChanged();
   }
   const QByteArray categorySignature = QJsonDocument(categoryValues).toJson(QJsonDocument::Compact);
   if (categorySignature != m_categorySignature) {
@@ -339,16 +368,19 @@ bool WaypointController::rescheduleTask(const QString &taskId, const QString &sc
   refresh();
   return true;
 }
-bool WaypointController::editTask(const QString &taskId, const QString &title,
-                                  const QString &scheduledTimeKey, const QString &frequency,
-                                  const int interval, const QVariantList &weekdays,
-                                  const QString &endMode, const QString &untilDateKey,
-                                  const int occurrenceCount,
-                                  const QVariantList &reminderMinutesBefore,
-                                  const QString &emoji, const QString &categoryId) {
+bool WaypointController::editTask(const QString &taskId, const QString &scheduledDateKey,
+                                  const QString &title, const QString &scheduledTimeKey,
+                                  const QString &frequency, const int interval,
+                                  const QVariantList &weekdays, const QString &endMode,
+                                  const QString &untilDateKey, const int occurrenceCount,
+                                  const QVariantList &reminderMinutesBefore, const QString &emoji,
+                                  const QString &categoryId) {
+  const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
-  if (!scheduledTime.isValid()) {
-    updateConnection(m_online, QStringLiteral("Invalid task time: %1").arg(scheduledTimeKey));
+  if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
+    updateConnection(
+        m_online,
+        QStringLiteral("Invalid scheduled date or time: %1 %2").arg(scheduledDateKey, scheduledTimeKey));
     return false;
   }
   RecurrenceRule recurrence;
@@ -365,6 +397,10 @@ bool WaypointController::editTask(const QString &taskId, const QString &title,
   if (!m_client.editTask(taskId, title, scheduledTime, recurrence,
                          taskReminderMinutesBefore(reminderMinutesBefore), emoji, categoryId,
                          &error)) {
+    updateConnection(false, error);
+    return false;
+  }
+  if (!m_client.rescheduleTask(taskId, scheduledDate, scheduledTime, &error)) {
     updateConnection(false, error);
     return false;
   }

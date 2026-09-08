@@ -13,6 +13,11 @@
 #include <QTime>
 #include <utility>
 
+#ifdef Q_OS_ANDROID
+#include <QJniObject>
+#include <QtCore/private/qandroidextras_p.h>
+#endif
+
 namespace waypoint {
 namespace {
 
@@ -67,6 +72,21 @@ QVariantList occurrenceValues(const QList<TaskOccurrence> &occurrences,
   for (const TaskOccurrence &occurrence : occurrences) {
     QVariantMap value = occurrence.toJson().toVariantMap();
     value.insert(QStringLiteral("scheduledDate"), scheduledDates.value(occurrence.taskId));
+    result.append(value);
+  }
+  return result;
+}
+
+QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
+  QVariantList result;
+  result.reserve(tasks.size());
+  for (const TaskRecord &task : tasks) {
+    QVariantMap value = task.toJson().toVariantMap();
+    value.insert(QStringLiteral("taskId"), task.id);
+    value.insert(QStringLiteral("categoryName"), task.categoryName);
+    value.insert(QStringLiteral("categoryColor"), task.categoryColor);
+    value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
+    value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
     result.append(value);
   }
   return result;
@@ -161,6 +181,7 @@ QVariantList MobileController::selectedTasks() const { return m_selectedTasks; }
 QVariantList MobileController::todayHabits() const { return m_todayHabits; }
 QVariantList MobileController::monthOccurrences() const { return m_monthOccurrences; }
 QVariantList MobileController::taskCategories() const { return m_taskCategories; }
+QVariantList MobileController::allTasks() const { return m_allTasks; }
 QString MobileController::taskVisibility() const { return taskVisibilityModeName(m_taskVisibility); }
 QVariantList MobileController::monthHolidays() const { return m_monthHolidays; }
 QVariantList MobileController::allHabits() const { return m_allHabits; }
@@ -307,6 +328,7 @@ void MobileController::refresh() {
   m_todayHabits = habitValues(habits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
   m_taskCategories = categoryValues(categories);
+  m_allTasks = taskDefinitionValues(activeTasks);
   m_allHabits = habitRecordValues(activeHabits);
   m_monthHolidays = holidays.toVariantList();
   if (m_taskVisibility != visibility) {
@@ -322,6 +344,7 @@ void MobileController::refresh() {
   refreshWidgetSnapshot(today);
   publishError({});
   emit dataChanged();
+  consumeLaunchRequest();
 }
 
 void MobileController::moveMonth(const int delta) {
@@ -629,6 +652,38 @@ void MobileController::refreshWidgetSnapshot(const QDate &today) {
   }
   m_widgetSnapshotDate = today;
   m_widgetSnapshotDirty = false;
+}
+
+void MobileController::consumeLaunchRequest() {
+#ifdef Q_OS_ANDROID
+  const QJniObject activity = QNativeInterface::QAndroidApplication::context();
+  if (!activity.isValid()) {
+    return;
+  }
+  const QJniObject intent =
+      activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
+  if (!intent.isValid()) {
+    return;
+  }
+
+  const QJniObject pageKey = QJniObject::fromString(QStringLiteral("waypoint.openPage"));
+  const QJniObject pageValue =
+      intent.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;",
+                              pageKey.object<jstring>());
+  if (!pageValue.isValid() || pageValue.toString() != QStringLiteral("tasks")) {
+    return;
+  }
+
+  const QJniObject taskKey = QJniObject::fromString(QStringLiteral("waypoint.taskId"));
+  const QJniObject taskValue =
+      intent.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;",
+                              taskKey.object<jstring>());
+  intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",
+                          pageKey.object<jstring>());
+  intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",
+                          taskKey.object<jstring>());
+  emit taskEditorRequested(taskValue.isValid() ? taskValue.toString() : QString{});
+#endif
 }
 
 void MobileController::refreshNotificationSchedule() {

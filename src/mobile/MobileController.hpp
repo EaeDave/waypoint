@@ -27,6 +27,7 @@ class MobileController final : public QObject {
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthOccurrences READ monthOccurrences NOTIFY dataChanged)
   Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY dataChanged)
+  Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY dataChanged)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(QVariantList allHabits READ allHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthHolidays READ monthHolidays NOTIFY dataChanged)
@@ -62,6 +63,7 @@ public:
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList monthOccurrences() const;
   [[nodiscard]] QVariantList taskCategories() const;
+  [[nodiscard]] QVariantList allTasks() const;
   [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QVariantList monthHolidays() const;
   [[nodiscard]] QVariantList allHabits() const;
@@ -129,6 +131,7 @@ signals:
   void municipalitiesChanged();
   void syncConfigurationChanged();
   void syncStatusChanged();
+  void taskEditorRequested(const QString &taskId);
   void updateStatusChanged();
 
 private:
@@ -139,6 +142,7 @@ private:
   void refreshUpdateProperties();
   void refreshNotificationSchedule();
   void refreshWidgetSnapshot(const QDate &today);
+  void consumeLaunchRequest();
 
   TaskStore m_store;
   SyncEngine m_syncEngine;
@@ -154,6 +158,7 @@ private:
   QVariantList m_todayHabits;
   QVariantList m_monthOccurrences;
   QVariantList m_taskCategories;
+  QVariantList m_allTasks;
   QVariantList m_allHabits;
   QVariantList m_monthHolidays;
   TaskVisibilityMode m_taskVisibility = TaskVisibilityMode::All;

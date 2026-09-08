@@ -25,13 +25,15 @@ Rectangle {
     required property var reminderMinutesBefore
     required property var controller
     property int weekdayMask: 0
+    property bool definitionMode: false
 
     readonly property date scheduledDateValue: {
         const parts = scheduledDateKey.split("-");
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: root.skipped || root.overdue || root.recurring || root.categoryName !== "" ? 62 : 50
+    implicitHeight: root.definitionMode || root.skipped || root.overdue || root.recurring
+                    || root.categoryName !== "" ? 62 : 50
     radius: WaypointTheme.radius
     color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
     Rectangle {
@@ -52,6 +54,7 @@ Rectangle {
         spacing: 10
 
         Rectangle {
+            visible: !root.definitionMode
             Layout.preferredWidth: 18
             Layout.preferredHeight: 18
             radius: WaypointTheme.radius
@@ -110,17 +113,22 @@ Rectangle {
             }
 
             Text {
-                visible: root.skipped || root.overdue || root.recurring
+                visible: root.definitionMode || root.skipped || root.overdue || root.recurring
                          || root.categoryName !== ""
                 text: {
                     const parts = [];
                     if (root.categoryName !== "")
                         parts.push(root.categoryName.toUpperCase());
-                    if (root.skipped)
+                    if (root.definitionMode) {
+                        if (root.completed)
+                            parts.push("CONCLUÍDA");
+                        parts.push(root.recurring ? root.recurrenceLabel : "ÚNICA");
+                    } else if (root.skipped) {
                         parts.push("NÃO FEITA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
-                    else if (root.overdue)
+                    } else if (root.overdue) {
                         parts.push("ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
-                    if (root.recurring)
+                    }
+                    if (!root.definitionMode && root.recurring)
                         parts.push(root.recurrenceLabel);
                     return parts.join(" · ");
                 }
@@ -136,7 +144,9 @@ Rectangle {
         Text {
             readonly property int reminderCount:
                 (root.reminderMinutesBefore || []).length
-            text: root.scheduledTimeKey
+            text: (root.definitionMode
+                   ? Qt.formatDate(root.scheduledDateValue, "dd MMM") + " · " : "")
+                  + root.scheduledTimeKey
                   + (reminderCount > 0 ? " · 󰂚 " + reminderCount : "")
             color: root.completed ? WaypointTheme.disabledText
                  : root.skipped ? WaypointTheme.urgent : WaypointTheme.subduedText
@@ -153,7 +163,8 @@ Rectangle {
             text: "⋯"
             onClicked: root.openActionsMenuFromButton()
             ToolTip.visible: hovered
-            ToolTip.text: "Editar, marcar status ou excluir tarefa"
+            ToolTip.text: root.definitionMode ? "Editar ou excluir tarefa"
+                                                  : "Editar, marcar status ou excluir tarefa"
 
             Menu {
                 id: actionsMenu
@@ -179,28 +190,34 @@ Rectangle {
                     }
                 }
                 AppMenuItem {
-                    visible: !root.recurring
+                    visible: root.definitionMode || !root.recurring
                     destructive: true
                     text: "Excluir tarefa"
-                    onTriggered: root.controller.deleteOccurrence(root.taskId,
-                                                                  root.scheduledDateKey,
-                                                                  "series")
+                    onTriggered: {
+                        if (root.definitionMode)
+                            root.controller.deleteTask(root.taskId);
+                        else
+                            root.controller.deleteOccurrence(root.taskId,
+                                                             root.scheduledDateKey,
+                                                             "series");
+                    }
                 }
                 AppMenuItem {
-                    visible: root.recurring && !root.completed && !root.skipped
+                    visible: !root.definitionMode && root.recurring
+                             && !root.completed && !root.skipped
                     text: "Marcar como não feita"
                     onTriggered: root.controller.skipOccurrence(root.taskId,
                                                                 root.scheduledDateKey)
                 }
                 AppMenuItem {
-                    visible: root.skipped
+                    visible: !root.definitionMode && root.skipped
                     text: "Reabrir ocorrência"
                     onTriggered: root.controller.setOccurrenceCompleted(root.taskId,
                                                                         root.scheduledDateKey,
                                                                         false)
                 }
                 AppMenuItem {
-                    visible: root.recurring
+                    visible: !root.definitionMode && root.recurring
                     destructive: true
                     text: "Excluir esta e as seguintes"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
@@ -208,7 +225,7 @@ Rectangle {
                                                                   "following")
                 }
                 AppMenuItem {
-                    visible: root.recurring
+                    visible: !root.definitionMode && root.recurring
                     destructive: true
                     text: "Excluir toda a série"
                     onTriggered: root.controller.deleteOccurrence(root.taskId,
@@ -284,6 +301,7 @@ Rectangle {
 
     function openEditor() {
         editTitle.text = root.title;
+        editDate.text = root.scheduledDateKey;
         editTime.text = root.scheduledTimeKey;
         editEmoji.emoji = root.emoji;
         editReminders.setMinutesBefore(root.reminderMinutesBefore || [0]);
@@ -317,9 +335,9 @@ Rectangle {
         const frequency = root.selectedFrequency();
         const endMode = custom ? customEnding.currentValue : "never";
         if (root.controller.editTask(
-                root.taskId, normalizedTitle, normalizedTime, frequency,
-                custom ? customInterval.value : 1, root.selectedWeekdays(), endMode,
-                endMode === "onDate" ? customUntilDate.text.trim() : "",
+                root.taskId, editDate.text.trim(), normalizedTitle, normalizedTime,
+                frequency, custom ? customInterval.value : 1, root.selectedWeekdays(),
+                endMode, endMode === "onDate" ? customUntilDate.text.trim() : "",
                 endMode === "afterCount" ? customOccurrenceCount.value : 0,
                 editReminders.minutesBefore, editEmoji.emoji,
                 editCategory.currentValue))
@@ -370,6 +388,15 @@ Rectangle {
                     Layout.fillWidth: true
                     placeholderText: "Título"
                     onAccepted: editTime.forceActiveFocus()
+                }
+            }
+
+            AppTextField {
+                id: editDate
+                Layout.fillWidth: true
+                placeholderText: "AAAA-MM-DD"
+                validator: RegularExpressionValidator {
+                    regularExpression: /\d{4}-\d{2}-\d{2}/
                 }
             }
 
@@ -546,7 +573,8 @@ Rectangle {
                 AppButton {
                     text: "Salvar"
                     selected: true
-                    enabled: editTitle.text.trim() !== "" && editTime.acceptableInput
+                    enabled: editTitle.text.trim() !== "" && editDate.acceptableInput
+                             && editTime.acceptableInput
                     onClicked: root.saveEdit()
                 }
             }

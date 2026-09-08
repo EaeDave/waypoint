@@ -53,13 +53,45 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   QCOMPARE(task.value(QStringLiteral("categoryId")).toString(), categoryId);
   QCOMPARE(task.value(QStringLiteral("categoryName")).toString(), QStringLiteral("Trabalho"));
   QCOMPARE(task.value(QStringLiteral("categoryColor")).toString(), QStringLiteral("#3B82F6"));
+  QCOMPARE(controller.allTasks().size(), 1);
+  QVariantMap recurringDefinition = controller.allTasks().first().toMap();
+  QCOMPARE(recurringDefinition.value(QStringLiteral("taskId")).toString(),
+           task.value(QStringLiteral("taskId")).toString());
+  QVERIFY(recurringDefinition.value(QStringLiteral("recurring")).toBool());
+  QVERIFY(recurringDefinition.value(QStringLiteral("recurrenceLabel"))
+              .toString()
+              .startsWith(QStringLiteral("A CADA 2 SEMANAS")));
+  QCOMPARE(recurringDefinition.value(QStringLiteral("categoryName")).toString(),
+           QStringLiteral("Trabalho"));
+
+  const QDate tomorrow = today.addDays(1);
+  QVERIFY(controller.saveTask({}, QStringLiteral("Comprar café"), tomorrow.toString(Qt::ISODate),
+                              QStringLiteral("18:00"), QStringLiteral("none"), 1, {},
+                              QStringLiteral("never"), {}, 0, {}, {}, {}));
+  QCOMPARE(controller.allTasks().size(), 2);
+  const QVariantMap oneOffDefinition = controller.allTasks().at(1).toMap();
+  QVERIFY(!oneOffDefinition.value(QStringLiteral("recurring")).toBool());
+  QCOMPARE(oneOffDefinition.value(QStringLiteral("scheduledDate")).toString(),
+           tomorrow.toString(Qt::ISODate));
+  QVERIFY(controller.saveTask(oneOffDefinition.value(QStringLiteral("taskId")).toString(),
+                              QStringLiteral("Comprar chá"), tomorrow.addDays(1).toString(Qt::ISODate),
+                              QStringLiteral("17:30"), QStringLiteral("none"), 1, {},
+                              QStringLiteral("never"), {}, 0, {}, {}, {}));
+  QCOMPARE(controller.allTasks().at(1).toMap().value(QStringLiteral("title")).toString(),
+           QStringLiteral("Comprar chá"));
+  QVERIFY(controller.deleteTask(oneOffDefinition.value(QStringLiteral("taskId")).toString()));
+  QCOMPARE(controller.allTasks().size(), 1);
   QVERIFY(controller.saveTaskCategory(categoryId, QStringLiteral("Projetos"),
                                       QStringLiteral("#8B5CF6")));
   QCOMPARE(controller.todayTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
            QStringLiteral("Projetos"));
+  QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
+           QStringLiteral("Projetos"));
   QVERIFY(controller.deleteTaskCategory(categoryId));
   QCOMPARE(controller.taskCategories().size(), 0);
   QCOMPARE(controller.todayTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
+           QString());
+  QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
            QString());
 
   QVERIFY(controller.setTaskCompleted(task.value(QStringLiteral("taskId")).toString(),

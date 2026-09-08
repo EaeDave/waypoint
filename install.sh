@@ -87,6 +87,7 @@ if [[ -d "${plugin_source}" ]] && command -v omarchy >/dev/null 2>&1; then
   if command -v omarchy-shell >/dev/null 2>&1; then
     omarchy-shell shell rescanPlugins || true
     omarchy plugin enable io.waypoint.bar || true
+    omarchy restart shell || true
   fi
 fi
 

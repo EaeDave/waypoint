@@ -29,6 +29,7 @@ if command -v omarchy-shell >/dev/null 2>&1; then
   omarchy-shell shell rescanPlugins
   omarchy plugin enable io.waypoint.bar
   omarchy bar move io.waypoint.bar --section center
+  omarchy restart shell
 fi
 
 printf 'Waypoint is built and installed in %s\n' "${install_prefix}"

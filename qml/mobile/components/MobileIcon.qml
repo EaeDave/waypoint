@@ -45,6 +45,20 @@ Item {
                 return;
             }
 
+            if (root.name === "list") {
+                for (let row = 0; row < 3; ++row) {
+                    const rowY = y + size * (0.28 + row * 0.22);
+                    context.beginPath();
+                    context.arc(x + size * 0.24, rowY, size * 0.035, 0, Math.PI * 2);
+                    context.fill();
+                    context.beginPath();
+                    context.moveTo(x + size * 0.36, rowY);
+                    context.lineTo(x + size * 0.78, rowY);
+                    context.stroke();
+                }
+                return;
+            }
+
             if (root.name === "calendar") {
                 context.strokeRect(x + size * 0.16, y + size * 0.23, size * 0.68, size * 0.61);
                 context.beginPath();

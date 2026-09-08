@@ -89,6 +89,8 @@ target_link_libraries(waypoint_mobile_core PUBLIC waypoint_core waypoint_sync wa
 target_compile_options(waypoint_mobile_core PRIVATE -Wall -Wextra -Wpedantic)
 
 if(ANDROID)
+    target_link_libraries(waypoint_mobile_core PRIVATE Qt6::CorePrivate)
+
     include(FetchContent)
     FetchContent_Declare(
         android_openssl
@@ -127,6 +129,7 @@ if(ANDROID)
             qml/mobile/views/HabitsPage.qml
             qml/mobile/views/SettingsPage.qml
             qml/mobile/views/TodayPage.qml
+            qml/mobile/views/TasksPage.qml
             qml/data/TaskCategoryOptions.js
     )
     target_include_directories(waypoint_android PRIVATE src)
@@ -230,6 +233,7 @@ else()
             qml/components/TaskVisibilityChip.qml
             qml/views/MonthView.qml
             qml/views/TodayView.qml
+            qml/views/TasksView.qml
             qml/views/SettingsView.qml
             qml/data/EmojiCatalog.js
             qml/data/TaskCategoryOptions.js

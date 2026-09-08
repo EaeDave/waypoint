@@ -35,6 +35,18 @@ ApplicationWindow {
 
     Component.onCompleted: root.controller.start()
 
+    Connections {
+        target: root.controller
+
+        function onTaskEditorRequested(taskId) {
+            root.currentPage = 1;
+            if (taskId === "")
+                tasksPage.createTask();
+            else
+                tasksPage.openTask(taskId);
+        }
+    }
+
     StackLayout {
         anchors.top: parent.top
         anchors.left: parent.left
@@ -43,6 +55,10 @@ ApplicationWindow {
         currentIndex: root.currentPage
 
         TodayPage {
+            controller: root.controller
+        }
+        TasksPage {
+            id: tasksPage
             controller: root.controller
         }
         CalendarPage {
@@ -121,6 +137,11 @@ ApplicationWindow {
                         label: "HOJE"
                     },
                     {
+                        id: "tasks",
+                        icon: "list",
+                        label: "TAREFAS"
+                    },
+                    {
                         id: "calendar",
                         icon: "calendar",
                         label: "MÊS"
@@ -141,7 +162,7 @@ ApplicationWindow {
                     id: navButton
                     required property int index
                     required property var modelData
-                    width: (navigationRow.width - navigationRow.spacing * 3) / 4
+                    width: (navigationRow.width - navigationRow.spacing * 4) / 5
                     height: navigationRow.height
                     Accessible.id: "navigation-" + navButton.modelData.id
                     Accessible.name: navButton.modelData.label

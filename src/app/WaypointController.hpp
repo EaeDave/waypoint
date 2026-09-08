@@ -18,6 +18,7 @@ class WaypointController final : public QObject {
   Q_PROPERTY(TaskListModel *selectedDateTasks READ selectedDateTasks CONSTANT)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY habitsChanged)
   Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY categoriesChanged)
+  Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY tasksChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(
@@ -54,6 +55,7 @@ public:
   [[nodiscard]] TaskListModel *selectedDateTasks();
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList taskCategories() const;
+  [[nodiscard]] QVariantList allTasks() const;
   [[nodiscard]] CalendarModel *calendar();
   [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QString selectedDateKey() const;
@@ -98,10 +100,10 @@ public:
                                     const QString &scope);
   Q_INVOKABLE bool rescheduleTask(const QString &taskId, const QString &scheduledDateKey,
                                   const QString &scheduledTimeKey);
-  Q_INVOKABLE bool editTask(const QString &taskId, const QString &title,
-                            const QString &scheduledTimeKey, const QString &frequency, int interval,
-                            const QVariantList &weekdays, const QString &endMode,
-                            const QString &untilDateKey, int occurrenceCount,
+  Q_INVOKABLE bool editTask(const QString &taskId, const QString &scheduledDateKey,
+                            const QString &title, const QString &scheduledTimeKey,
+                            const QString &frequency, int interval, const QVariantList &weekdays,
+                            const QString &endMode, const QString &untilDateKey, int occurrenceCount,
                             const QVariantList &reminderMinutesBefore, const QString &emoji,
                             const QString &categoryId);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
@@ -131,6 +133,7 @@ signals:
   void selectedDateKeyChanged();
   void habitsChanged();
   void categoriesChanged();
+  void tasksChanged();
   void taskVisibilityChanged();
   void connectionChanged();
   void errorMessageChanged();
@@ -158,12 +161,14 @@ private:
   CalendarModel m_calendar;
   QVariantList m_todayHabits;
   QVariantList m_taskCategories;
+  QVariantList m_allTasks;
   QTimer m_refreshTimer;
   QDate m_selectedDate;
   QByteArray m_snapshotSignature;
   QByteArray m_holidaySignature;
   QByteArray m_municipalitySignature;
   QByteArray m_categorySignature;
+  QByteArray m_taskSignature;
   QJsonArray m_holidays;
   QVariantList m_municipalities;
   bool m_online = false;
