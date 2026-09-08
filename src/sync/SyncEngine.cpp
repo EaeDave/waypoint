@@ -232,8 +232,8 @@ void SyncEngine::finishSync() {
       m_categorySyncAvailable ? m_endpoint : QUrl{};
   if (m_categorySyncAvailable && !m_lastRequestIncludedCategoryMutations) {
     QString pendingError;
-    const QJsonArray pendingCategories =
-        m_taskStore->pendingMutations({QStringLiteral("category")}, &pendingError);
+    const QJsonArray pendingCategories = m_taskStore->pendingMutations(
+        {QStringLiteral("category")}, 1, &pendingError);
     if (!pendingError.isEmpty()) {
       setStatus(QStringLiteral("error"), pendingError);
       log(QStringLiteral("error"), pendingError);

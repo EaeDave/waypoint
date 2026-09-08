@@ -46,6 +46,7 @@ private slots:
   void preserveExistingTokenWhenRequested();
   void synchronizeTaskVisibilityCompatibly();
   void negotiateCategorySyncCapabilities();
+  void limitSyncMutationBatchSize();
   void renegotiateBeforeUploadingCategories();
   void discardSyncReplyAfterEndpointChange();
   void syncsImmediatelyWhenEventArrives();
@@ -353,6 +354,26 @@ void SyncEngineTest::negotiateCategorySyncCapabilities() {
            QStringLiteral("category"));
 }
 
+void SyncEngineTest::limitSyncMutationBatchSize() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  for (int categoryIndex = 0; categoryIndex < 501; ++categoryIndex) {
+    QVERIFY2(
+        store.createTaskCategory(
+            QStringLiteral("Category %1").arg(categoryIndex),
+            QStringLiteral("#3B82F6"), nullptr, &error),
+        qPrintable(error));
+  }
+
+  const QJsonObject request =
+      waypoint::buildSyncRequest(store, QStringLiteral("test-device"), true, &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(request.value(QStringLiteral("mutations")).toArray().size(), 500);
+  QCOMPARE(store.pendingMutations(&error).size(), 501);
+}
+
 void SyncEngineTest::renegotiateBeforeUploadingCategories() {
   QTcpServer server;
   QVERIFY(server.listen(QHostAddress::LocalHost));
@@ -517,6 +538,20 @@ void SyncEngineTest::discardSyncReplyAfterEndpointChange() {
            newSyncRequest.constData());
   QVERIFY2(!newSyncRequest.contains("\"entityType\":\"category\""),
            newSyncRequest.constData());
+
+  QSignalSpy additionalConnectionSpy(&newServer, &QTcpServer::newConnection);
+  if (!newServer.hasPendingConnections()) {
+    additionalConnectionSpy.wait(500);
+  }
+  while (newServer.hasPendingConnections()) {
+    QTcpSocket *additionalSocket = newServer.nextPendingConnection();
+    QVERIFY(additionalSocket != nullptr);
+    QByteArray additionalRequest;
+    QTRY_VERIFY_WITH_TIMEOUT(
+        appendCompleteHttpRequest(additionalSocket, &additionalRequest), 2000);
+    QVERIFY2(!additionalRequest.contains("\"entityType\":\"category\""),
+             additionalRequest.constData());
+  }
 }
 
 

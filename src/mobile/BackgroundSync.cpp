@@ -71,7 +71,7 @@ bool applyBackgroundSync(TaskStore &store, const QJsonObject &response, Backgrou
   }
   const QJsonArray pendingCategories =
       categorySyncAvailable
-          ? store.pendingMutations({QStringLiteral("category")}, &error)
+          ? store.pendingMutations({QStringLiteral("category")}, 1, &error)
           : QJsonArray{};
   if (!error.isEmpty()) {
     setError(errorMessage, error);

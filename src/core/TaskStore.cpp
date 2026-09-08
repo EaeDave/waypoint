@@ -11,6 +11,7 @@
 #include <QStandardPaths>
 #include <QTextBoundaryFinder>
 #include <QUuid>
+#include <limits>
 
 namespace waypoint {
 namespace {
@@ -1742,10 +1743,16 @@ bool TaskStore::enqueueMutation(const QString &mutationId, const QString &entity
 }
 
 QJsonArray TaskStore::pendingMutations(QString *errorMessage) const {
-  return pendingMutations({}, errorMessage);
+  return pendingMutations({}, std::numeric_limits<qsizetype>::max(), errorMessage);
 }
 
-QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes, QString *errorMessage) const {
+QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes,
+                                       const qsizetype maximumCount,
+                                       QString *errorMessage) const {
+  if (maximumCount < 1) {
+    setError(errorMessage, QStringLiteral("Mutation batch size must be positive"));
+    return {};
+  }
   QSet<QString> allowedEntityTypes;
   for (const QString &entityType : entityTypes) {
     allowedEntityTypes.insert(entityType);
@@ -1758,7 +1765,7 @@ QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes, QString *
     setError(errorMessage, queryFailure(QStringLiteral("Cannot list sync outbox"), query));
     return mutations;
   }
-  while (query.next()) {
+  while (mutations.size() < maximumCount && query.next()) {
     if (!allowedEntityTypes.isEmpty() &&
         !allowedEntityTypes.contains(query.value(1).toString())) {
       continue;

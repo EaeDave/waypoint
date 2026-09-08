@@ -14,6 +14,7 @@ void setError(QString *destination, const QString &message) {
     *destination = message;
   }
 }
+constexpr qsizetype maximumMutationBatchSize = 500;
 QStringList legacyEntityTypes() {
   return {
       QStringLiteral("task"),
@@ -61,7 +62,8 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId,
   QString error;
   const QStringList uploadTypes =
       includeCategoryMutations ? supportedEntityTypes() : legacyEntityTypes();
-  const QJsonArray mutations = store.pendingMutations(uploadTypes, &error);
+  const QJsonArray mutations =
+      store.pendingMutations(uploadTypes, maximumMutationBatchSize, &error);
   const QString cursor = store.syncCursor(&error);
   const QJsonObject preferenceMutation = store.pendingUserPreferencesMutation(&error);
   if (!error.isEmpty()) {

@@ -47,6 +47,7 @@ public:
                                              int reminderMinutesBefore, QString *errorMessage = nullptr);
   [[nodiscard]] QJsonArray pendingMutations(QString *errorMessage = nullptr) const;
   [[nodiscard]] QJsonArray pendingMutations(const QStringList &entityTypes,
+                                            qsizetype maximumCount,
                                             QString *errorMessage = nullptr) const;
   [[nodiscard]] QStringList serverSupportedEntityTypes(QString *errorMessage = nullptr) const;
   [[nodiscard]] bool saveServerSupportedEntityTypes(const QStringList &entityTypes,

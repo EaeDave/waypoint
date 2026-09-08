@@ -20,7 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public final class WaypointBackgroundSyncWorker extends Worker {
   private static final String TAG = "WaypointSyncWorker";
-  private static final long SYNC_TIMEOUT_SECONDS = 75;
+  private static final long SYNC_TIMEOUT_SECONDS = 120;
   static final String OPERATION_KEY = "operation";
   static final String OPERATION_LOCAL_WIDGET_REFRESH = "local-widget-refresh";
 
