@@ -40,8 +40,20 @@ waypoint::TaskOccurrence occurrence(QString id, const QDate &date, bool complete
 void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
   waypoint::CalendarModel model;
   const QDate today = QDate::currentDate();
-  model.setSourceOccurrences(
-      {occurrence(QStringLiteral("pending"), today, false), occurrence(QStringLiteral("done"), today, true)});
+  waypoint::TaskOccurrence finance = occurrence(QStringLiteral("finance"), today, false);
+  finance.categoryId = QStringLiteral("finance-id");
+  finance.categoryName = QStringLiteral("Financeiro");
+  finance.categoryColor = QStringLiteral("#22C55E");
+  waypoint::TaskOccurrence work = occurrence(QStringLiteral("work"), today, true);
+  work.categoryId = QStringLiteral("work-id");
+  work.categoryName = QStringLiteral("Trabalho");
+  work.categoryColor = QStringLiteral("#3B82F6");
+  waypoint::TaskOccurrence health = occurrence(QStringLiteral("health"), today, false);
+  health.categoryId = QStringLiteral("health-id");
+  health.categoryName = QStringLiteral("Saúde");
+  health.categoryColor = QStringLiteral("#EF4444");
+  waypoint::TaskOccurrence uncategorized = occurrence(QStringLiteral("uncategorized"), today, false);
+  model.setSourceOccurrences({finance, work, health, uncategorized});
 
   bool foundToday = false;
   for (int row = 0; row < model.rowCount(); ++row) {
@@ -50,8 +62,16 @@ void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
       continue;
     }
     foundToday = true;
-    QCOMPARE(model.data(index, waypoint::CalendarModel::PendingCountRole).toInt(), 1);
+    QCOMPARE(model.data(index, waypoint::CalendarModel::PendingCountRole).toInt(), 3);
     QCOMPARE(model.data(index, waypoint::CalendarModel::CompletedCountRole).toInt(), 1);
+    const QVariantList markers =
+        model.data(index, waypoint::CalendarModel::CategoryMarkersRole).toList();
+    QCOMPARE(markers.size(), 3);
+    QCOMPARE(markers.first().toMap().value(QStringLiteral("id")).toString(),
+             QStringLiteral("finance-id"));
+    QCOMPARE(markers.first().toMap().value(QStringLiteral("color")).toString(),
+             QStringLiteral("#22C55E"));
+    QCOMPARE(model.data(index, waypoint::CalendarModel::CategoryOverflowRole).toInt(), 1);
   }
   QVERIFY(foundToday);
 }
@@ -212,6 +232,9 @@ void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
   waypoint::TaskOccurrence decorated = occurrence(QStringLiteral("decorated"), today, false);
   decorated.emoji = QStringLiteral("👨‍💻");
   decorated.reminderMinutesBefore = {60, 30, 0};
+  decorated.categoryId = QStringLiteral("work-id");
+  decorated.categoryName = QStringLiteral("Trabalho");
+  decorated.categoryColor = QStringLiteral("#3B82F6");
   waypoint::TaskListModel model;
   model.setSourceOccurrences(
       {decorated, occurrence(QStringLiteral("legacy"), today, false, false, QTime(10, 0))});
@@ -220,6 +243,12 @@ void AppModelsTest::exposeEmojiRoleWithoutBreakingLegacyTasks() {
            QStringLiteral("👨‍💻"));
   QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::EmojiRole).toString(), QString());
   QCOMPARE(model.roleNames().value(waypoint::TaskListModel::EmojiRole), QByteArrayLiteral("emoji"));
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::CategoryIdRole).toString(),
+           QStringLiteral("work-id"));
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::CategoryNameRole).toString(),
+           QStringLiteral("Trabalho"));
+  QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::CategoryColorRole).toString(),
+           QStringLiteral("#3B82F6"));
   QCOMPARE(model.data(model.index(0, 0), waypoint::TaskListModel::ReminderMinutesBeforeRole).toList(),
            QVariantList({60, 30, 0}));
   QCOMPARE(model.data(model.index(1, 0), waypoint::TaskListModel::ReminderMinutesBeforeRole).toList(),

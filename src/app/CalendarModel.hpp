@@ -30,6 +30,8 @@ public:
     HolidayCountRole,
     HolidayKindRole,
     HolidayNamesRole,
+    CategoryMarkersRole,
+    CategoryOverflowRole,
   };
   Q_ENUM(Role)
 
@@ -54,6 +56,14 @@ signals:
   void visibleMonthChanged();
 
 private:
+  struct CategoryMarker final {
+    QString id;
+    QString name;
+    QString color;
+    int taskCount = 0;
+    bool overdue = false;
+  };
+
   struct CalendarCell final {
     QDate date;
     bool inVisibleMonth = false;
@@ -64,6 +74,7 @@ private:
     int holidayCount = 0;
     QString holidayKind;
     QStringList holidayNames;
+    QList<CategoryMarker> categoryMarkers;
   };
 
   void setVisibleMonth(const QDate &month);

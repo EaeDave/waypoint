@@ -42,6 +42,17 @@ bool isValidTaskEmoji(const QString &emoji) {
 QString encodeJson(const QJsonObject &json) {
   return QString::fromUtf8(QJsonDocument(json).toJson(QJsonDocument::Compact));
 }
+TaskCategory taskCategoryFromQuery(const QSqlQuery &query) {
+  TaskCategory category;
+  category.id = query.value(0).toString();
+  category.name = query.value(1).toString();
+  category.color = query.value(2).toString();
+  category.createdAt = QDateTime::fromString(query.value(3).toString(), Qt::ISODateWithMs);
+  category.updatedAt = QDateTime::fromString(query.value(4).toString(), Qt::ISODateWithMs);
+  category.version = query.value(5).toLongLong();
+  return category;
+}
+
 
 TaskRecord taskFromQuery(const QSqlQuery &query) {
   TaskRecord task;
@@ -57,6 +68,9 @@ TaskRecord taskFromQuery(const QSqlQuery &query) {
   const QJsonDocument reminderDocument = QJsonDocument::fromJson(query.value(15).toByteArray());
   task.reminderMinutesBefore = taskReminderMinutesBeforeFromJson(
       reminderDocument.isArray() ? QJsonValue(reminderDocument.array()) : QJsonValue(QJsonValue::Undefined));
+  task.categoryId = query.value(16).toString();
+  task.categoryName = query.value(17).toString();
+  task.categoryColor = query.value(18).toString();
 
   QJsonArray weekdays;
   const QJsonDocument weekdayDocument = QJsonDocument::fromJson(query.value(9).toByteArray());
@@ -224,9 +238,17 @@ bool TaskStore::migrate(QString *errorMessage) {
           "recurrence_weekdays TEXT NOT NULL DEFAULT '[]', "
           "recurrence_end_mode TEXT NOT NULL DEFAULT 'never', recurrence_until TEXT, "
           "recurrence_count INTEGER NOT NULL DEFAULT 0, scheduled_time TEXT, "
-          "emoji TEXT NOT NULL DEFAULT '', reminder_minutes_before TEXT NOT NULL DEFAULT '[0]')"),
+          "emoji TEXT NOT NULL DEFAULT '', reminder_minutes_before TEXT NOT NULL DEFAULT '[0]', "
+          "category_id TEXT)"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS tasks_schedule_idx "
                      "ON tasks(scheduled_date, completed) WHERE deleted_at IS NULL"),
+      QStringLiteral(
+          "CREATE TABLE IF NOT EXISTS task_categories ("
+          "id TEXT PRIMARY KEY, name TEXT NOT NULL CHECK(length(trim(name)) > 0 AND length(name) <= 80), "
+          "color TEXT NOT NULL CHECK(length(color) = 7), created_at TEXT NOT NULL, "
+          "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)"),
+      QStringLiteral("CREATE INDEX IF NOT EXISTS task_categories_active_idx "
+                     "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"),
       QStringLiteral("CREATE TABLE IF NOT EXISTS outbox ("
                      "mutation_id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, "
                      "entity_id TEXT NOT NULL, operation TEXT NOT NULL, "
@@ -329,6 +351,7 @@ bool TaskStore::migrate(QString *errorMessage) {
       {QStringLiteral("scheduled_time"), QStringLiteral("TEXT")},
       {QStringLiteral("emoji"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
       {QStringLiteral("reminder_minutes_before"), QStringLiteral("TEXT NOT NULL DEFAULT '[0]'")},
+      {QStringLiteral("category_id"), QStringLiteral("TEXT")},
   };
   for (const auto &[name, definition] : recurrenceColumns) {
     if (taskColumns.contains(name)) {
@@ -451,11 +474,14 @@ QList<TaskRecord> TaskStore::listActiveTasks(QString *errorMessage) const {
   QList<TaskRecord> tasks;
   QSqlQuery query(m_database);
   query.prepare(
-      QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
-                     "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-                     "reminder_minutes_before FROM tasks WHERE deleted_at IS NULL "
-                     "ORDER BY scheduled_date IS NULL, scheduled_date, completed, created_at"));
+      QStringLiteral("SELECT t.id, t.title, t.scheduled_date, t.completed, t.created_at, t.updated_at, "
+                     "t.version, t.recurrence_frequency, t.recurrence_interval, "
+                     "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
+                     "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
+                     "t.category_id, c.name, c.color FROM tasks t "
+                     "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
+                     "WHERE t.deleted_at IS NULL "
+                     "ORDER BY t.scheduled_date IS NULL, t.scheduled_date, t.completed, t.created_at"));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot list active tasks"), query));
     return tasks;
@@ -464,6 +490,22 @@ QList<TaskRecord> TaskStore::listActiveTasks(QString *errorMessage) const {
     tasks.append(taskFromQuery(query));
   }
   return tasks;
+}
+
+QList<TaskCategory> TaskStore::listActiveTaskCategories(QString *errorMessage) const {
+  QList<TaskCategory> categories;
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral("SELECT id, name, color, created_at, updated_at, version "
+                               "FROM task_categories WHERE deleted_at IS NULL "
+                               "ORDER BY name COLLATE NOCASE, id"));
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot list task categories"), query));
+    return categories;
+  }
+  while (query.next()) {
+    categories.append(taskCategoryFromQuery(query));
+  }
+  return categories;
 }
 
 QList<HabitRecord> TaskStore::listActiveHabits(QString *errorMessage) const {
@@ -1021,10 +1063,206 @@ bool TaskStore::undoLastHabitEntry(const QString &habitId, const QDate &date, QS
   emit habitsChanged();
   return true;
 }
+bool TaskStore::createTaskCategory(const QString &name, const QString &color,
+                                   TaskCategory *createdCategory, QString *errorMessage) {
+  TaskCategory category;
+  category.id = newIdentifier();
+  category.name = name.trimmed();
+  category.color = color.toUpper();
+  category.createdAt = QDateTime::currentDateTimeUtc();
+  category.updatedAt = category.createdAt;
+  category.version = 1;
 
-bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
-                           const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
-                           const QString &emoji, TaskRecord *createdTask, QString *errorMessage) {
+  QString validationError;
+  if (!validateTaskCategoryName(category.name, &validationError) ||
+      !validateTaskCategoryColor(category.color, &validationError)) {
+    setError(errorMessage, validationError);
+    return false;
+  }
+  QSqlQuery duplicate(m_database);
+  duplicate.prepare(QStringLiteral("SELECT 1 FROM task_categories "
+                                   "WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL"));
+  duplicate.addBindValue(category.name);
+  if (!duplicate.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot validate task category name"), duplicate));
+    return false;
+  }
+  if (duplicate.next()) {
+    setError(errorMessage, QStringLiteral("An active task category already uses this name"));
+    return false;
+  }
+
+  if (!beginTransaction(errorMessage)) {
+    return false;
+  }
+  QSqlQuery insert(m_database);
+  insert.prepare(QStringLiteral("INSERT INTO task_categories "
+                                "(id, name, color, created_at, updated_at, version) "
+                                "VALUES (?, ?, ?, ?, ?, ?)"));
+  insert.addBindValue(category.id);
+  insert.addBindValue(category.name);
+  insert.addBindValue(category.color);
+  insert.addBindValue(category.createdAt.toString(Qt::ISODateWithMs));
+  insert.addBindValue(category.updatedAt.toString(Qt::ISODateWithMs));
+  insert.addBindValue(category.version);
+  if (!insert.exec() ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id,
+                       QStringLiteral("upsert"), category.toJson(), errorMessage) ||
+      !commitTransaction(errorMessage)) {
+    if (insert.lastError().isValid()) {
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot create task category '%1'").arg(category.name),
+                            insert));
+    }
+    rollbackTransaction();
+    return false;
+  }
+  if (createdCategory != nullptr) {
+    *createdCategory = category;
+  }
+  emit categoriesChanged();
+  return true;
+}
+
+bool TaskStore::editTaskCategory(const QString &categoryId, const QString &name,
+                                 const QString &color, QString *errorMessage) {
+  QSqlQuery select(m_database);
+  select.prepare(QStringLiteral("SELECT id, name, color, created_at, updated_at, version "
+                                "FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
+  select.addBindValue(categoryId);
+  if (!select.exec() || !select.next()) {
+    setError(errorMessage,
+             select.lastError().isValid()
+                 ? queryFailure(QStringLiteral("Cannot read task category %1").arg(categoryId), select)
+                 : QStringLiteral("Cannot edit missing task category: %1").arg(categoryId));
+    return false;
+  }
+  TaskCategory category = taskCategoryFromQuery(select);
+  category.name = name.trimmed();
+  category.color = color.toUpper();
+  category.updatedAt = QDateTime::currentDateTimeUtc();
+  ++category.version;
+
+  QString validationError;
+  if (!validateTaskCategoryName(category.name, &validationError) ||
+      !validateTaskCategoryColor(category.color, &validationError)) {
+    setError(errorMessage, validationError);
+    return false;
+  }
+  QSqlQuery duplicate(m_database);
+  duplicate.prepare(QStringLiteral("SELECT 1 FROM task_categories "
+                                   "WHERE id <> ? AND name = ? COLLATE NOCASE "
+                                   "AND deleted_at IS NULL"));
+  duplicate.addBindValue(category.id);
+  duplicate.addBindValue(category.name);
+  if (!duplicate.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot validate task category name"), duplicate));
+    return false;
+  }
+  if (duplicate.next()) {
+    setError(errorMessage, QStringLiteral("An active task category already uses this name"));
+    return false;
+  }
+
+  if (!beginTransaction(errorMessage)) {
+    return false;
+  }
+  QSqlQuery update(m_database);
+  update.prepare(QStringLiteral("UPDATE task_categories "
+                                "SET name = ?, color = ?, updated_at = ?, version = ? "
+                                "WHERE id = ? AND deleted_at IS NULL"));
+  update.addBindValue(category.name);
+  update.addBindValue(category.color);
+  update.addBindValue(category.updatedAt.toString(Qt::ISODateWithMs));
+  update.addBindValue(category.version);
+  update.addBindValue(category.id);
+  if (!update.exec() ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id,
+                       QStringLiteral("upsert"), category.toJson(), errorMessage) ||
+      !commitTransaction(errorMessage)) {
+    if (update.lastError().isValid()) {
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot update task category %1").arg(categoryId), update));
+    }
+    rollbackTransaction();
+    return false;
+  }
+  emit categoriesChanged();
+  emit tasksChanged();
+  return true;
+}
+
+bool TaskStore::deleteTaskCategory(const QString &categoryId, QString *errorMessage) {
+  const QDateTime deletedAt = QDateTime::currentDateTimeUtc();
+  QSqlQuery selectVersion(m_database);
+  selectVersion.prepare(
+      QStringLiteral("SELECT version FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
+  selectVersion.addBindValue(categoryId);
+  if (!selectVersion.exec() || !selectVersion.next()) {
+    setError(errorMessage,
+             selectVersion.lastError().isValid()
+                 ? queryFailure(QStringLiteral("Cannot read task category %1").arg(categoryId),
+                                selectVersion)
+                 : QStringLiteral("Cannot delete missing task category: %1").arg(categoryId));
+    return false;
+  }
+  const qint64 tombstoneVersion = selectVersion.value(0).toLongLong() + 1;
+  if (!beginTransaction(errorMessage)) {
+    return false;
+  }
+  QSqlQuery update(m_database);
+  update.prepare(QStringLiteral("UPDATE task_categories "
+                                "SET deleted_at = ?, updated_at = ?, version = version + 1 "
+                                "WHERE id = ? AND deleted_at IS NULL"));
+  update.addBindValue(deletedAt.toString(Qt::ISODateWithMs));
+  update.addBindValue(deletedAt.toString(Qt::ISODateWithMs));
+  update.addBindValue(categoryId);
+  QJsonObject tombstone{
+      {QStringLiteral("id"), categoryId},
+      {QStringLiteral("deletedAt"), deletedAt.toString(Qt::ISODateWithMs)},
+      {QStringLiteral("version"), tombstoneVersion},
+  };
+  if (!update.exec() || update.numRowsAffected() != 1 ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), categoryId,
+                       QStringLiteral("delete"), tombstone, errorMessage) ||
+      !commitTransaction(errorMessage)) {
+    if (update.lastError().isValid()) {
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot delete task category %1").arg(categoryId), update));
+    }
+    rollbackTransaction();
+    return false;
+  }
+  emit categoriesChanged();
+  emit tasksChanged();
+  return true;
+}
+bool TaskStore::validateTaskCategoryId(const QString &categoryId, QString *errorMessage) const {
+  if (categoryId.isEmpty()) {
+    return true;
+  }
+  QSqlQuery query(m_database);
+  query.prepare(
+      QStringLiteral("SELECT 1 FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
+  query.addBindValue(categoryId);
+  if (!query.exec()) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot validate task category"), query));
+    return false;
+  }
+  if (!query.next()) {
+    setError(errorMessage, QStringLiteral("Task category does not exist: %1").arg(categoryId));
+    return false;
+  }
+  return true;
+}
+
+
+
+bool TaskStore::createTask(const QString &title, const QDate &scheduledDate,
+                           const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                           const QList<int> &reminderMinutesBefore, const QString &emoji,
+                           const QString &categoryId, TaskRecord *createdTask,
+                           QString *errorMessage) {
   const QString normalizedTitle = title.trimmed();
   if (normalizedTitle.isEmpty()) {
     setError(errorMessage, QStringLiteral("Task title must contain at least one visible character"));
@@ -1047,6 +1285,10 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
                                : recurrenceError);
     return false;
   }
+  const QString normalizedCategoryId = categoryId.trimmed();
+  if (!validateTaskCategoryId(normalizedCategoryId, errorMessage)) {
+    return false;
+  }
 
   TaskRecord task;
   task.id = newIdentifier();
@@ -1057,6 +1299,7 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
                                                : QTime(now.hour(), now.minute());
   task.reminderMinutesBefore = reminderMinutesBefore;
   task.emoji = emoji.isNull() ? QStringLiteral("") : emoji;
+  task.categoryId = normalizedCategoryId;
   task.recurrence = recurrence;
   task.createdAt = QDateTime::currentDateTimeUtc();
   task.updatedAt = task.createdAt;
@@ -1071,8 +1314,8 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
                                "(id, title, scheduled_date, completed, created_at, updated_at, version, "
                                "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
                                "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, "
-                               "emoji, reminder_minutes_before) "
-                               "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
+                               "emoji, reminder_minutes_before, category_id) "
+                               "VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"));
   query.addBindValue(task.id);
   query.addBindValue(task.title);
   query.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
@@ -1083,6 +1326,7 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
   query.addBindValue(task.scheduledTime.toString(QStringLiteral("HH:mm")));
   query.addBindValue(task.emoji);
   query.addBindValue(reminderMinutesBeforeJson(task.reminderMinutesBefore));
+  query.addBindValue(task.categoryId.isEmpty() ? QVariant() : task.categoryId);
   if (!query.exec()) {
     rollbackTransaction();
     setError(errorMessage,
@@ -1130,10 +1374,13 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
 
   QSqlQuery selectTask(m_database);
   selectTask.prepare(
-      QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
-                     "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-                     "reminder_minutes_before FROM tasks WHERE id = ? AND deleted_at IS NULL"));
+      QStringLiteral("SELECT t.id, t.title, t.scheduled_date, t.completed, t.created_at, "
+                     "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
+                     "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
+                     "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
+                     "t.category_id, c.name, c.color FROM tasks t "
+                     "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
+                     "WHERE t.id = ? AND t.deleted_at IS NULL"));
   selectTask.addBindValue(taskId);
   if (!selectTask.exec() || !selectTask.next()) {
     setError(errorMessage, selectTask.lastError().isValid()
@@ -1231,9 +1478,10 @@ bool TaskStore::rescheduleTask(const QString &taskId, const QDate &scheduledDate
                      {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))}},
                     errorMessage);
 }
-bool TaskStore::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
-                         const RecurrenceRule &recurrence,
-                         const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
+bool TaskStore::editTask(const QString &taskId, const QString &title,
+                         const QTime &scheduledTime, const RecurrenceRule &recurrence,
+                         const std::optional<QList<int>> &reminderMinutesBefore,
+                         const QString &emoji, const std::optional<QString> &categoryId,
                          QString *errorMessage) {
   QJsonObject fields{
       {QStringLiteral("title"), title},
@@ -1241,6 +1489,10 @@ bool TaskStore::editTask(const QString &taskId, const QString &title, const QTim
       {QStringLiteral("recurrence"), recurrence.toJson()},
       {QStringLiteral("emoji"), emoji},
   };
+  if (categoryId.has_value()) {
+    fields.insert(QStringLiteral("categoryId"),
+                  categoryId->isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(*categoryId));
+  }
   if (reminderMinutesBefore.has_value()) {
     fields.insert(QStringLiteral("reminderMinutesBefore"),
                   taskReminderMinutesBeforeToJson(*reminderMinutesBefore));
@@ -1252,10 +1504,13 @@ bool TaskStore::deleteOccurrence(const QString &taskId, const QDate &occurrenceD
                                  const RecurrenceEditScope scope, QString *errorMessage) {
   QSqlQuery select(m_database);
   select.prepare(
-      QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
-                     "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-                     "reminder_minutes_before FROM tasks WHERE id = ? AND deleted_at IS NULL"));
+      QStringLiteral("SELECT t.id, t.title, t.scheduled_date, t.completed, t.created_at, "
+                     "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
+                     "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
+                     "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
+                     "t.category_id, c.name, c.color FROM tasks t "
+                     "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
+                     "WHERE t.id = ? AND t.deleted_at IS NULL"));
   select.addBindValue(taskId);
   if (!select.exec() || !select.next()) {
     setError(errorMessage, select.lastError().isValid()
@@ -1292,10 +1547,13 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
                            QString *errorMessage) {
   QSqlQuery select(m_database);
   select.prepare(
-      QStringLiteral("SELECT id, title, scheduled_date, completed, created_at, updated_at, version, "
-                     "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
-                     "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-                     "reminder_minutes_before FROM tasks WHERE id = ? AND deleted_at IS NULL"));
+      QStringLiteral("SELECT t.id, t.title, t.scheduled_date, t.completed, t.created_at, "
+                     "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
+                     "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
+                     "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
+                     "t.category_id, c.name, c.color FROM tasks t "
+                     "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
+                     "WHERE t.id = ? AND t.deleted_at IS NULL"));
   select.addBindValue(taskId);
   if (!select.exec() || !select.next()) {
     setError(errorMessage, select.lastError().isValid()
@@ -1335,6 +1593,12 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   if (fields.contains(QStringLiteral("emoji"))) {
     task.emoji = fields.value(QStringLiteral("emoji")).toString(QStringLiteral(""));
   }
+  if (fields.contains(QStringLiteral("categoryId"))) {
+    task.categoryId = fields.value(QStringLiteral("categoryId")).toString().trimmed();
+    if (!validateTaskCategoryId(task.categoryId, errorMessage)) {
+      return false;
+    }
+  }
   if (!isValidTaskEmoji(task.emoji)) {
     setError(errorMessage, QStringLiteral("Task emoji must be empty or contain one grapheme"));
     return false;
@@ -1364,8 +1628,8 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
       QStringLiteral("UPDATE tasks SET title = ?, scheduled_date = ?, completed = ?, updated_at = ?, "
                      "version = ?, recurrence_frequency = ?, recurrence_interval = ?, "
                      "recurrence_weekdays = ?, recurrence_end_mode = ?, recurrence_until = ?, "
-                     "recurrence_count = ?, scheduled_time = ?, emoji = ?, reminder_minutes_before = ? "
-                     "WHERE id = ? AND deleted_at IS NULL"));
+                     "recurrence_count = ?, scheduled_time = ?, emoji = ?, reminder_minutes_before = ?, "
+                     "category_id = ? WHERE id = ? AND deleted_at IS NULL"));
   update.addBindValue(task.title);
   update.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
   update.addBindValue(task.completed);
@@ -1375,6 +1639,7 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   update.addBindValue(task.scheduledTime.toString(QStringLiteral("HH:mm")));
   update.addBindValue(task.emoji);
   update.addBindValue(reminderMinutesBeforeJson(task.reminderMinutesBefore));
+  update.addBindValue(task.categoryId.isEmpty() ? QVariant() : task.categoryId);
   update.addBindValue(task.id);
   if (!update.exec()) {
     rollbackTransaction();
@@ -1444,6 +1709,14 @@ bool TaskStore::enqueueMutation(const QString &mutationId, const QString &entity
 }
 
 QJsonArray TaskStore::pendingMutations(QString *errorMessage) const {
+  return pendingMutations({}, errorMessage);
+}
+
+QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes, QString *errorMessage) const {
+  QSet<QString> allowedEntityTypes;
+  for (const QString &entityType : entityTypes) {
+    allowedEntityTypes.insert(entityType);
+  }
   QJsonArray mutations;
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral("SELECT mutation_id, entity_type, entity_id, operation, payload_json "
@@ -1453,6 +1726,10 @@ QJsonArray TaskStore::pendingMutations(QString *errorMessage) const {
     return mutations;
   }
   while (query.next()) {
+    if (!allowedEntityTypes.isEmpty() &&
+        !allowedEntityTypes.contains(query.value(1).toString())) {
+      continue;
+    }
     QJsonParseError parseError;
     const QJsonDocument payload = QJsonDocument::fromJson(query.value(4).toByteArray(), &parseError);
     if (parseError.error != QJsonParseError::NoError || !payload.isObject()) {
@@ -1470,6 +1747,61 @@ QJsonArray TaskStore::pendingMutations(QString *errorMessage) const {
   }
   return mutations;
 }
+QStringList TaskStore::serverSupportedEntityTypes(QString *errorMessage) const {
+  QSqlQuery query(m_database);
+  query.prepare(
+      QStringLiteral("SELECT value FROM sync_state WHERE key = 'server-supported-entity-types'"));
+  if (!query.exec()) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot read server sync capabilities"), query));
+    return {};
+  }
+  if (!query.next()) {
+    return {};
+  }
+  QJsonParseError parseError;
+  const QJsonDocument document = QJsonDocument::fromJson(query.value(0).toByteArray(), &parseError);
+  if (parseError.error != QJsonParseError::NoError || !document.isArray()) {
+    setError(errorMessage, QStringLiteral("Stored server sync capabilities are invalid"));
+    return {};
+  }
+  QStringList entityTypes;
+  for (const QJsonValue &value : document.array()) {
+    const QString entityType = value.toString();
+    if (entityType.isEmpty()) {
+      setError(errorMessage, QStringLiteral("Stored server sync capabilities are invalid"));
+      return {};
+    }
+    entityTypes.append(entityType);
+  }
+  return entityTypes;
+}
+
+bool TaskStore::saveServerSupportedEntityTypes(const QStringList &entityTypes,
+                                               QString *errorMessage) {
+  QJsonArray values;
+  QSet<QString> unique;
+  for (const QString &entityType : entityTypes) {
+    if (entityType.isEmpty() || unique.contains(entityType)) {
+      setError(errorMessage, QStringLiteral("Server sync capabilities are invalid"));
+      return false;
+    }
+    unique.insert(entityType);
+    values.append(entityType);
+  }
+  QSqlQuery query(m_database);
+  query.prepare(QStringLiteral(
+      "INSERT INTO sync_state(key, value) VALUES('server-supported-entity-types', ?) "
+      "ON CONFLICT(key) DO UPDATE SET value=excluded.value"));
+  query.addBindValue(QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact)));
+  if (!query.exec()) {
+    setError(errorMessage,
+             queryFailure(QStringLiteral("Cannot save server sync capabilities"), query));
+    return false;
+  }
+  return true;
+}
+
 
 QString TaskStore::syncCursor(QString *errorMessage) const {
   QSqlQuery query(m_database);
@@ -1501,6 +1833,13 @@ SyncConfiguration TaskStore::syncConfiguration(QString *errorMessage) const {
 }
 
 bool TaskStore::saveSyncConfiguration(const SyncConfiguration &configuration, QString *errorMessage) {
+  QString currentError;
+  const SyncConfiguration currentConfiguration = syncConfiguration(&currentError);
+  if (!currentError.isEmpty()) {
+    setError(errorMessage, currentError);
+    return false;
+  }
+  const bool endpointChanged = currentConfiguration.endpoint != configuration.endpoint;
   if (!beginTransaction(errorMessage)) {
     return false;
   }
@@ -1524,6 +1863,17 @@ bool TaskStore::saveSyncConfiguration(const SyncConfiguration &configuration, QS
       rollbackTransaction();
       setError(errorMessage,
                queryFailure(QStringLiteral("Cannot save synchronization setting '%1'").arg(key), query));
+      return false;
+    }
+  }
+  if (endpointChanged) {
+    QSqlQuery clearCapabilities(m_database);
+    if (!clearCapabilities.exec(
+            QStringLiteral("DELETE FROM sync_state WHERE key = 'server-supported-entity-types'"))) {
+      rollbackTransaction();
+      setError(errorMessage,
+               queryFailure(QStringLiteral("Cannot reset server sync capabilities"),
+                            clearCapabilities));
       return false;
     }
   }
@@ -1952,14 +2302,16 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
 
   bool tasksWereChanged = false;
   bool habitsWereChanged = false;
+  bool categoriesWereChanged = false;
   for (const QJsonValue &value : changes) {
     const QJsonObject change = value.toObject();
     const QString entityType = change.value(QStringLiteral("entityType")).toString();
     const QString entityId = change.value(QStringLiteral("entityId")).toString();
     const QString operation = change.value(QStringLiteral("operation")).toString();
-    const QJsonObject payload = change.value(QStringLiteral("payload")).toObject();
+    QJsonObject payload = change.value(QStringLiteral("payload")).toObject();
     if ((entityType != QStringLiteral("task") && entityType != QStringLiteral("occurrence") &&
-         entityType != QStringLiteral("habit") && entityType != QStringLiteral("habit-entry")) ||
+         entityType != QStringLiteral("habit") && entityType != QStringLiteral("habit-entry") &&
+         entityType != QStringLiteral("category")) ||
         entityId.isEmpty()) {
       rollbackTransaction();
       setError(errorMessage,
@@ -1970,6 +2322,8 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
                        entityType == QStringLiteral("occurrence");
     habitsWereChanged = habitsWereChanged || entityType == QStringLiteral("habit") ||
                         entityType == QStringLiteral("habit-entry");
+    categoriesWereChanged = categoriesWereChanged || entityType == QStringLiteral("category");
+    tasksWereChanged = tasksWereChanged || entityType == QStringLiteral("category");
 
     QSqlQuery apply(m_database);
     if (entityType == QStringLiteral("task")) {
@@ -1991,6 +2345,22 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         apply.addBindValue(taskId);
         apply.addBindValue(version);
       } else {
+        if (!payload.contains(QStringLiteral("categoryId"))) {
+          QSqlQuery currentCategory(m_database);
+          currentCategory.prepare(QStringLiteral("SELECT category_id FROM tasks WHERE id = ?"));
+          currentCategory.addBindValue(taskId);
+          if (!currentCategory.exec()) {
+            rollbackTransaction();
+            setError(errorMessage,
+                     queryFailure(QStringLiteral("Cannot preserve task category"), currentCategory));
+            return false;
+          }
+          payload.insert(
+              QStringLiteral("categoryId"),
+              currentCategory.next() && !currentCategory.value(0).isNull()
+                  ? QJsonValue(currentCategory.value(0).toString())
+                  : QJsonValue(QJsonValue::Null));
+        }
         const TaskRecord task = TaskRecord::fromJson(payload);
         if (!isValidTaskEmoji(task.emoji)) {
           rollbackTransaction();
@@ -2008,13 +2378,13 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
             "(id, title, scheduled_date, completed, created_at, updated_at, version, deleted_at, "
             "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
             "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-            "reminder_minutes_before) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "reminder_minutes_before, category_id) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET title=excluded.title, "
             "scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, "
             "emoji=excluded.emoji, reminder_minutes_before=excluded.reminder_minutes_before, "
-            "completed=excluded.completed, updated_at=excluded.updated_at, "
-            "version=excluded.version, deleted_at=NULL, "
+            "category_id=excluded.category_id, completed=excluded.completed, "
+            "updated_at=excluded.updated_at, version=excluded.version, deleted_at=NULL, "
             "recurrence_frequency=excluded.recurrence_frequency, "
             "recurrence_interval=excluded.recurrence_interval, "
             "recurrence_weekdays=excluded.recurrence_weekdays, "
@@ -2035,6 +2405,55 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
                                                         : QVariant());
         apply.addBindValue(task.emoji);
         apply.addBindValue(reminderMinutesBeforeJson(task.reminderMinutesBefore));
+        apply.addBindValue(task.categoryId.isEmpty() ? QVariant() : task.categoryId);
+      }
+    } else if (entityType == QStringLiteral("category")) {
+      const QString categoryId = payload.value(QStringLiteral("id")).toString();
+      if (categoryId != entityId) {
+        rollbackTransaction();
+        setError(errorMessage,
+                 QStringLiteral("Remote category identity does not match entityId %1").arg(entityId));
+        return false;
+      }
+      if (operation == QStringLiteral("delete")) {
+        const QString deletedAt = payload.value(QStringLiteral("deletedAt")).toString();
+        const qint64 version = payload.value(QStringLiteral("version")).toInteger();
+        apply.prepare(
+            QStringLiteral("UPDATE task_categories "
+                           "SET deleted_at = ?, updated_at = ?, version = ? "
+                           "WHERE id = ? AND version <= ?"));
+        apply.addBindValue(deletedAt);
+        apply.addBindValue(deletedAt);
+        apply.addBindValue(version);
+        apply.addBindValue(categoryId);
+        apply.addBindValue(version);
+      } else {
+        const TaskCategory category = TaskCategory::fromJson(payload);
+        QString validationError;
+        if (!validateTaskCategoryName(category.name, &validationError) ||
+            !validateTaskCategoryColor(category.color, &validationError) ||
+            !category.createdAt.isValid() || !category.updatedAt.isValid() ||
+            category.version < 1) {
+          rollbackTransaction();
+          setError(errorMessage,
+                   QStringLiteral("Remote task category is invalid: %1")
+                       .arg(validationError.isEmpty() ? QStringLiteral("invalid metadata")
+                                                      : validationError));
+          return false;
+        }
+        apply.prepare(
+            QStringLiteral("INSERT INTO task_categories "
+                           "(id, name, color, created_at, updated_at, version, deleted_at) "
+                           "VALUES (?, ?, ?, ?, ?, ?, NULL) "
+                           "ON CONFLICT(id) DO UPDATE SET name=excluded.name, color=excluded.color, "
+                           "updated_at=excluded.updated_at, version=excluded.version, deleted_at=NULL "
+                           "WHERE excluded.version >= task_categories.version"));
+        apply.addBindValue(category.id);
+        apply.addBindValue(category.name);
+        apply.addBindValue(category.color);
+        apply.addBindValue(category.createdAt.toUTC().toString(Qt::ISODateWithMs));
+        apply.addBindValue(category.updatedAt.toUTC().toString(Qt::ISODateWithMs));
+        apply.addBindValue(category.version);
       }
     } else if (entityType == QStringLiteral("occurrence")) {
       const TaskOccurrenceState state = TaskOccurrenceState::fromJson(payload);
@@ -2202,6 +2621,9 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
   }
   if (habitsWereChanged) {
     emit habitsChanged();
+  }
+  if (categoriesWereChanged) {
+    emit categoriesChanged();
   }
   return true;
 }

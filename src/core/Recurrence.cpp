@@ -169,6 +169,9 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.scheduledTime = task.scheduledTime;
   occurrence.reminderMinutesBefore = task.reminderMinutesBefore;
   occurrence.emoji = task.emoji;
+  occurrence.categoryId = task.categoryName.isEmpty() ? QString{} : task.categoryId;
+  occurrence.categoryName = task.categoryName;
+  occurrence.categoryColor = task.categoryColor;
   occurrence.completed = state != nullptr && state->status == OccurrenceStatus::Completed;
   occurrence.skipped = state != nullptr && state->status == OccurrenceStatus::Skipped;
   occurrence.recurring = task.recurrence.isRecurring();
@@ -315,6 +318,10 @@ QJsonObject TaskOccurrence::toJson() const {
        scheduledTime.isValid() ? scheduledTime.toString(QStringLiteral("HH:mm")) : QString()},
       {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       {QStringLiteral("emoji"), emoji},
+      {QStringLiteral("categoryId"),
+       categoryId.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(categoryId)},
+      {QStringLiteral("categoryName"), categoryName},
+      {QStringLiteral("categoryColor"), categoryColor},
       {QStringLiteral("completed"), completed},
       {QStringLiteral("skipped"), skipped},
       {QStringLiteral("recurring"), recurring},

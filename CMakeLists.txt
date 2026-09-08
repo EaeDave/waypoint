@@ -24,6 +24,8 @@ find_package(Qt6 6.8 REQUIRED COMPONENTS ${waypoint_qt_components})
 qt_standard_project_setup(REQUIRES 6.8)
 
 add_library(waypoint_core STATIC
+    src/core/TaskCategory.cpp
+    src/core/TaskCategory.hpp
     src/core/HabitRecord.cpp
     src/core/HabitRecord.hpp
     src/core/Recurrence.cpp

@@ -32,6 +32,27 @@ Popup {
         return Math.max(0, values.indexOf(value));
     }
 
+    function categoryIndex(categoryId) {
+        if (!categoryId)
+            return 0;
+        for (let index = 1; index < categoryField.count; ++index) {
+            if (categoryField.valueAt(index) === categoryId)
+                return index;
+        }
+        return 0;
+    }
+
+    function categoryOptions() {
+        const options = [{
+            id: "",
+            name: "Sem categoria",
+            color: ""
+        }];
+        for (const category of controller.taskCategories)
+            options.push(category);
+        return options;
+    }
+
     function toggleWeekday(day) {
         let next = selectedWeekdays.slice();
         const index = next.indexOf(day);
@@ -67,6 +88,7 @@ Popup {
         untilField.text = dateKey;
         countField.value = 10;
         selectedReminders = [0];
+        categoryField.currentIndex = 0;
         open();
         titleField.forceActiveFocus();
     }
@@ -85,6 +107,7 @@ Popup {
         untilField.text = recurrence.untilDate || dateField.text;
         countField.value = recurrence.occurrenceCount || 10;
         selectedReminders = task.reminderMinutesBefore || [];
+        categoryField.currentIndex = categoryIndex(task.categoryId || "");
         open();
         titleField.forceActiveFocus();
     }
@@ -92,7 +115,7 @@ Popup {
     function save() {
         const frequencies = ["none", "daily", "weekly", "monthly", "yearly"];
         const ends = ["never", "onDate", "afterCount"];
-        const succeeded = controller.saveTask(editingTask.taskId || "", titleField.text, dateField.text, timeField.text, frequencies[frequencyField.currentIndex], intervalField.value, selectedWeekdays, ends[endField.currentIndex], untilField.text, countField.value, selectedReminders, emojiField.text);
+        const succeeded = controller.saveTask(editingTask.taskId || "", titleField.text, dateField.text, timeField.text, frequencies[frequencyField.currentIndex], intervalField.value, selectedWeekdays, ends[endField.currentIndex], untilField.text, countField.value, selectedReminders, emojiField.text, categoryField.currentValue || "");
         if (succeeded)
             close();
     }
@@ -191,6 +214,26 @@ Popup {
                         Accessible.name: "Título da tarefa"
                         onAccepted: root.save()
                     }
+                }
+
+                Text {
+                    text: "CATEGORIA"
+                    color: MobileTheme.subdued
+                    font.family: MobileTheme.fontFamily
+                    font.pixelSize: MobileTheme.captionSize
+                    font.bold: true
+                    font.letterSpacing: 1
+                }
+
+                MobileComboBox {
+                    id: categoryField
+                    Layout.fillWidth: true
+                    model: root.categoryOptions()
+                    textRole: "name"
+                    valueRole: "id"
+                    colorRole: "color"
+                    Accessible.id: "task-editor-category"
+                    Accessible.name: "Categoria da tarefa"
                 }
 
                 Text {

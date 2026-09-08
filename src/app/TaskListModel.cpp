@@ -36,6 +36,12 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
   }
   case EmojiRole:
     return occurrence.emoji;
+  case CategoryIdRole:
+    return occurrence.categoryId;
+  case CategoryNameRole:
+    return occurrence.categoryName;
+  case CategoryColorRole:
+    return occurrence.categoryColor;
   case CompletedRole:
     return occurrence.completed;
   case SkippedRole:
@@ -62,6 +68,9 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
       {ScheduledTimeRole, "scheduledTimeKey"},
       {ReminderMinutesBeforeRole, "reminderMinutesBefore"},
       {EmojiRole, "emoji"},
+      {CategoryIdRole, "categoryId"},
+      {CategoryNameRole, "categoryName"},
+      {CategoryColorRole, "categoryColor"},
       {CompletedRole, "completed"},
       {SkippedRole, "skipped"},
       {OverdueRole, "overdue"},

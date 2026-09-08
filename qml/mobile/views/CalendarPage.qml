@@ -34,13 +34,42 @@ Item {
         return Qt.formatDate(date, "yyyy-MM-dd");
     }
 
-    function occurrenceCount(key) {
-        let count = 0;
+    function taskMarkerSummary(key) {
+        const markersById = {};
+        const order = [];
         for (const occurrence of controller.monthOccurrences) {
-            if (occurrence.occurrenceDate === key && occurrence.calendarMarker)
-                ++count;
+            if (occurrence.occurrenceDate !== key || !occurrence.calendarMarker)
+                continue;
+            const markerId = occurrence.categoryId || "__uncategorized";
+            if (!markersById[markerId]) {
+                markersById[markerId] = {
+                    id: markerId,
+                    name: occurrence.categoryName || "Sem categoria",
+                    color: occurrence.categoryColor || MobileTheme.accent,
+                    overdue: false
+                };
+                order.push(markerId);
+            }
+            if (occurrence.skipped
+                    || (!occurrence.completed && key < controller.todayKey))
+                markersById[markerId].overdue = true;
         }
-        return count;
+        const markers = [];
+        for (let index = 0; index < Math.min(3, order.length); ++index)
+            markers.push(markersById[order[index]]);
+        return {
+            markers: markers,
+            overflow: Math.max(0, order.length - markers.length)
+        };
+    }
+
+    function taskMarkerLabel(summary) {
+        const labels = [];
+        for (const marker of summary.markers)
+            labels.push(marker.name);
+        if (summary.overflow > 0)
+            labels.push("mais " + summary.overflow);
+        return labels.join(", ");
     }
 
     function skippedOccurrenceCount(key) {
@@ -254,7 +283,7 @@ Item {
                     readonly property date calendarDate: root.dateAt(dayCell.index)
                     readonly property string key: root.dateKey(dayCell.calendarDate)
                     readonly property bool inMonth: dayCell.calendarDate.getMonth() + 1 === root.controller.visibleMonth
-                    readonly property int tasks: root.occurrenceCount(dayCell.key)
+                    readonly property var taskSummary: root.taskMarkerSummary(dayCell.key)
                     readonly property int skippedTasks: root.skippedOccurrenceCount(dayCell.key)
                     readonly property int holidays: root.holidayCount(dayCell.key)
                     readonly property bool selected: dayCell.key === root.controller.selectedDateKey
@@ -265,6 +294,9 @@ Item {
                     color: dayCell.selected ? MobileTheme.surfaceSelected : "transparent"
                     border.width: dayCell.selected || dayCell.today ? 1 : 0
                     border.color: dayCell.selected ? MobileTheme.activeBorder : MobileTheme.divider
+                    Accessible.name: Qt.formatDate(dayCell.calendarDate, "dd/MM/yyyy")
+                                     + (dayCell.taskSummary.markers.length > 0
+                                        ? ", tarefas: " + root.taskMarkerLabel(dayCell.taskSummary) : "")
 
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -283,12 +315,27 @@ Item {
                         anchors.bottomMargin: 6
                         spacing: 3
 
-                        Rectangle {
-                            visible: dayCell.tasks > 0
-                            width: 5
-                            height: 5
-                            radius: 2
-                            color: dayCell.skippedTasks > 0 ? MobileTheme.urgent : MobileTheme.accent
+                        Repeater {
+                            model: dayCell.taskSummary.markers
+
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: 6
+                                height: 6
+                                radius: 3
+                                color: modelData.color
+                                border.width: modelData.overdue ? 1 : 0
+                                border.color: MobileTheme.urgent
+                            }
+                        }
+
+                        Text {
+                            visible: dayCell.taskSummary.overflow > 0
+                            text: "+" + dayCell.taskSummary.overflow
+                            color: dayCell.skippedTasks > 0 ? MobileTheme.urgent : MobileTheme.subdued
+                            font.family: MobileTheme.fontFamily
+                            font.pixelSize: 8
+                            font.bold: true
                         }
 
                         Rectangle {
@@ -389,6 +436,16 @@ Item {
                             color: MobileTheme.divider
                         }
 
+                        Rectangle {
+                            visible: taskRow.modelData.categoryName !== ""
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 3
+                            radius: 1
+                            color: taskRow.modelData.categoryColor
+                        }
+
                         RowLayout {
                             id: selectedTaskContent
                             anchors.fill: parent
@@ -448,6 +505,17 @@ Item {
                                     font.pixelSize: MobileTheme.bodySize
                                     font.strikeout: taskRow.modelData.completed
                                     wrapMode: Text.Wrap
+                                }
+
+                                Text {
+                                    visible: taskRow.modelData.categoryName !== ""
+                                    text: taskRow.modelData.categoryName.toUpperCase()
+                                    color: taskRow.modelData.completed
+                                           ? MobileTheme.disabled : taskRow.modelData.categoryColor
+                                    font.family: MobileTheme.fontFamily
+                                    font.pixelSize: MobileTheme.captionSize
+                                    font.bold: true
+                                    font.letterSpacing: 0.6
                                 }
 
                                 Text {

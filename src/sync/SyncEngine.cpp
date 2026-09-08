@@ -32,6 +32,7 @@ SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent, const int transfer
   connect(m_taskStore, &TaskStore::tasksChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::habitsChanged, this, &SyncEngine::scheduleSoon);
   connect(m_taskStore, &TaskStore::taskVisibilityChanged, this, &SyncEngine::scheduleSoon);
+  connect(m_taskStore, &TaskStore::categoriesChanged, this, &SyncEngine::scheduleSoon);
 }
 
 bool SyncEngine::enabled() const {
@@ -51,6 +52,7 @@ QJsonObject SyncEngine::status() const {
       {QStringLiteral("state"), m_state},
       {QStringLiteral("configured"), enabled()},
       {QStringLiteral("lastError"), m_lastError},
+      {QStringLiteral("categorySyncAvailable"), m_categorySyncAvailable},
       {QStringLiteral("lastSuccessfulSync"),
        m_lastSuccessfulSync.isValid() ? m_lastSuccessfulSync.toUTC().toString(Qt::ISODateWithMs) : QString()},
   };
@@ -77,6 +79,7 @@ bool SyncEngine::updateConfiguration(const QString &endpointInput, const QByteAr
   }
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
+  m_categorySyncAvailable = false;
   m_debounceTimer.stop();
   closeEventStream();
   if (!enabled()) {
@@ -104,6 +107,13 @@ void SyncEngine::start() {
   }
   m_endpoint = configuration.endpoint;
   m_token = configuration.token;
+  m_categorySyncAvailable =
+      m_taskStore->serverSupportedEntityTypes(&error).contains(QStringLiteral("category"));
+  if (!error.isEmpty()) {
+    setStatus(QStringLiteral("error"), error);
+    log(QStringLiteral("error"), error);
+    return;
+  }
   if (!enabled()) {
     setStatus(QStringLiteral("local-only"));
     log(QStringLiteral("info"), QStringLiteral("Remote synchronization is disabled"));
@@ -183,6 +193,8 @@ void SyncEngine::finishSync() {
     finishRequest();
     return;
   }
+  m_categorySyncAvailable =
+      m_taskStore->serverSupportedEntityTypes().contains(QStringLiteral("category"));
 
   m_lastSuccessfulSync = QDateTime::currentDateTimeUtc();
   setStatus(QStringLiteral("ready"));

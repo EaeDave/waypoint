@@ -14,6 +14,29 @@ void setError(QString *destination, const QString &message) {
     *destination = message;
   }
 }
+QStringList legacyEntityTypes() {
+  return {
+      QStringLiteral("task"),
+      QStringLiteral("occurrence"),
+      QStringLiteral("habit"),
+      QStringLiteral("habit-entry"),
+  };
+}
+
+QStringList supportedEntityTypes() {
+  QStringList types = legacyEntityTypes();
+  types.append(QStringLiteral("category"));
+  return types;
+}
+
+QJsonArray jsonStringArray(const QStringList &values) {
+  QJsonArray array;
+  for (const QString &value : values) {
+    array.append(value);
+  }
+  return array;
+}
+
 
 } // namespace
 
@@ -35,7 +58,11 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString 
     return {};
   }
   QString error;
-  const QJsonArray mutations = store.pendingMutations(&error);
+  const QStringList serverTypes = store.serverSupportedEntityTypes(&error);
+  const QStringList uploadTypes = serverTypes.contains(QStringLiteral("category"))
+                                      ? supportedEntityTypes()
+                                      : legacyEntityTypes();
+  const QJsonArray mutations = store.pendingMutations(uploadTypes, &error);
   const QString cursor = store.syncCursor(&error);
   const QJsonObject preferenceMutation = store.pendingUserPreferencesMutation(&error);
   if (!error.isEmpty()) {
@@ -46,6 +73,7 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString 
       {QStringLiteral("deviceId"), deviceId},
       {QStringLiteral("cursor"), cursor.toLongLong()},
       {QStringLiteral("mutations"), mutations},
+      {QStringLiteral("supportedEntityTypes"), jsonStringArray(supportedEntityTypes())},
   };
   if (!preferenceMutation.isEmpty()) {
     request.insert(QStringLiteral("preferenceMutation"), preferenceMutation);
@@ -55,11 +83,29 @@ QJsonObject buildSyncRequest(TaskStore &store, const QString &deviceId, QString 
 }
 
 bool applySyncResponse(TaskStore &store, const QJsonObject &response, QString *errorMessage) {
+  QStringList serverTypes = legacyEntityTypes();
+  if (response.contains(QStringLiteral("supportedEntityTypes"))) {
+    serverTypes.clear();
+    const QJsonArray values = response.value(QStringLiteral("supportedEntityTypes")).toArray();
+    for (const QJsonValue &value : values) {
+      const QString entityType = value.toString();
+      if (entityType.isEmpty() || serverTypes.contains(entityType)) {
+        setError(errorMessage, QStringLiteral("Synchronization response capabilities are invalid"));
+        return false;
+      }
+      serverTypes.append(entityType);
+    }
+  }
+
+  QString error;
+  if (!store.saveServerSupportedEntityTypes(serverTypes, &error)) {
+    setError(errorMessage, error);
+    return false;
+  }
   QStringList acceptedMutationIds;
   for (const QJsonValue &value : response.value(QStringLiteral("acceptedMutationIds")).toArray()) {
     acceptedMutationIds.append(value.toString());
   }
-  QString error;
   if (!store.applyRemoteChanges(response.value(QStringLiteral("changes")).toArray(),
                                 QString::number(response.value(QStringLiteral("nextCursor")).toInteger()),
                                 acceptedMutationIds, &error)) {

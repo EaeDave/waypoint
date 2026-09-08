@@ -10,9 +10,11 @@ import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.text.SpannableStringBuilder;
 import android.text.SpannableString;
 import android.text.Spanned;
 import android.text.style.StrikethroughSpan;
+import android.text.style.ForegroundColorSpan;
 import android.view.View;
 import android.widget.RemoteViews;
 import java.time.DayOfWeek;
@@ -22,6 +24,10 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.time.temporal.TemporalAdjusters;
 import java.util.Locale;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -177,18 +183,68 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       LocalDate date = firstCell.plusDays(index);
       JSONObject dateData = dates.optJSONObject(date.toString());
       JSONArray dateTasks = dateData == null ? null : dateData.optJSONArray("tasks");
-      boolean hasTasks = dateTasks != null && dateTasks.length() > 0;
+      LinkedHashMap<String, Integer> categoryColors = new LinkedHashMap<>();
+      LinkedHashMap<String, String> categoryNames = new LinkedHashMap<>();
+      Set<String> urgentCategories = new HashSet<>();
       boolean hasSkippedTasks = false;
       for (int taskIndex = 0; dateTasks != null && taskIndex < dateTasks.length(); ++taskIndex) {
         JSONObject task = dateTasks.optJSONObject(taskIndex);
-        hasSkippedTasks = hasSkippedTasks || task != null && task.optBoolean("skipped", false);
+        if (task == null) {
+          continue;
+        }
+        hasSkippedTasks = hasSkippedTasks || task.optBoolean("skipped", false);
+        String categoryId = task.optString("categoryId", "");
+        String markerId = categoryId.isEmpty() ? "__uncategorized" : categoryId;
+        categoryColors.putIfAbsent(
+            markerId, colorValue(task.optString("categoryColor", ""), COLOR_ACCENT));
+        categoryNames.putIfAbsent(
+            markerId, task.optString("categoryName", "").isEmpty()
+                          ? "Sem categoria"
+                          : task.optString("categoryName", ""));
+        if (task.optBoolean("skipped", false) || task.optBoolean("overdue", false)) {
+          urgentCategories.add(markerId);
+        }
       }
+      boolean hasTasks = !categoryColors.isEmpty();
       boolean hasHolidays = dateData != null && dateData.optJSONArray("holidays") != null &&
                             dateData.optJSONArray("holidays").length() > 0;
-      String markers = (hasSkippedTasks ? "×" : hasTasks ? "•" : "") + (hasHolidays ? "◆" : "");
-      String label = Integer.toString(date.getDayOfMonth());
-      if (!markers.isEmpty()) {
-        label += "\n" + markers;
+      SpannableStringBuilder label = new SpannableStringBuilder(Integer.toString(date.getDayOfMonth()));
+      StringBuilder description = new StringBuilder(date.toString());
+      if (hasTasks || hasHolidays || hasSkippedTasks) {
+        label.append('\n');
+      }
+      if (hasSkippedTasks) {
+        int start = label.length();
+        label.append('×');
+        label.setSpan(new ForegroundColorSpan(COLOR_URGENT), start, label.length(),
+                      Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+      }
+      int shownCategories = 0;
+      for (Map.Entry<String, Integer> category : categoryColors.entrySet()) {
+        if (shownCategories == 3) {
+          break;
+        }
+        int start = label.length();
+        label.append('•');
+        label.setSpan(
+            new ForegroundColorSpan(urgentCategories.contains(category.getKey())
+                                        ? COLOR_URGENT
+                                        : category.getValue()),
+            start, label.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        description.append(shownCategories == 0 ? ", tarefas: " : ", ")
+            .append(categoryNames.get(category.getKey()));
+        ++shownCategories;
+      }
+      int categoryOverflow = categoryColors.size() - shownCategories;
+      if (categoryOverflow > 0) {
+        label.append('+').append(Integer.toString(categoryOverflow));
+        description.append(", mais ").append(categoryOverflow);
+      }
+      if (hasHolidays) {
+        int start = label.length();
+        label.append('◆');
+        label.setSpan(new ForegroundColorSpan(COLOR_HOLIDAY), start, label.length(),
+                      Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
       }
 
       int dayId = DAY_IDS[index];
@@ -205,10 +261,11 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       }
       views.setTextViewText(dayId, label);
       views.setTextColor(dayId, color);
+      views.setContentDescription(dayId, description.toString());
       views.setInt(dayId, "setBackgroundResource",
                    selected ? R.drawable.waypoint_widget_selected_day : android.R.color.transparent);
       views.setOnClickPendingIntent(dayId, selectDateIntent(context, appWidgetId, date, index));
-    }
+  }
   }
 
   private static int[] detailLimits(Context context, AppWidgetManager manager, int appWidgetId,
@@ -313,6 +370,12 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       } else if (overdue) {
         time = time.isEmpty() ? "ATRASADA" : time + " · ATRASADA";
       }
+      String categoryName = task.optString("categoryName", "").trim();
+      int categoryColor = colorValue(task.optString("categoryColor", ""), COLOR_ACCENT);
+      if (!categoryName.isEmpty()) {
+        time = time.isEmpty() ? categoryName.toUpperCase(PORTUGUESE)
+                              : time + " · " + categoryName.toUpperCase(PORTUGUESE);
+      }
 
       views.setViewVisibility(TASK_ROW_IDS[index], View.VISIBLE);
       int statusResource = completed ? R.drawable.waypoint_widget_task_completed
@@ -324,11 +387,23 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                                 : skipped ? COLOR_URGENT
                                                           : COLOR_FOREGROUND);
       views.setTextViewText(TASK_TIME_IDS[index], time);
-      views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT : COLOR_SUBDUED);
+      views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT
+                                                : completed ? COLOR_DISABLED : categoryColor);
       views.setOnClickPendingIntent(TASK_ROW_IDS[index], openApp);
       views.setOnClickPendingIntent(
           TASK_STATUS_IDS[index],
           taskCompletionIntent(context, appWidgetId, task, index, !completed && !skipped));
+    }
+  }
+
+  private static int colorValue(String value, int fallback) {
+    if (value == null || value.isEmpty()) {
+      return fallback;
+    }
+    try {
+      return Color.parseColor(value);
+    } catch (IllegalArgumentException error) {
+      return fallback;
     }
   }
 

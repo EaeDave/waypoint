@@ -247,6 +247,16 @@ Item {
                             color: MobileTheme.divider
                         }
 
+                        Rectangle {
+                            visible: taskRow.modelData.categoryName !== ""
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: 3
+                            radius: 1
+                            color: taskRow.modelData.categoryColor
+                        }
+
                         RowLayout {
                             id: taskContent
                             anchors.fill: parent
@@ -314,6 +324,17 @@ Item {
                                     font.pixelSize: MobileTheme.bodySize
                                     font.strikeout: taskRow.modelData.completed
                                     wrapMode: Text.Wrap
+                                }
+
+                                Text {
+                                    visible: taskRow.modelData.categoryName !== ""
+                                    text: taskRow.modelData.categoryName.toUpperCase()
+                                    color: taskRow.modelData.completed
+                                           ? MobileTheme.disabled : taskRow.modelData.categoryColor
+                                    font.family: MobileTheme.fontFamily
+                                    font.pixelSize: MobileTheme.captionSize
+                                    font.bold: true
+                                    font.letterSpacing: 0.6
                                 }
 
                                 Text {

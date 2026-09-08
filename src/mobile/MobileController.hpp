@@ -26,6 +26,7 @@ class MobileController final : public QObject {
   Q_PROPERTY(QVariantList selectedTasks READ selectedTasks NOTIFY dataChanged)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthOccurrences READ monthOccurrences NOTIFY dataChanged)
+  Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY dataChanged)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
   Q_PROPERTY(QVariantList allHabits READ allHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthHolidays READ monthHolidays NOTIFY dataChanged)
@@ -37,6 +38,7 @@ class MobileController final : public QObject {
   Q_PROPERTY(QString syncState READ syncState NOTIFY syncStatusChanged)
   Q_PROPERTY(QString syncLastError READ syncLastError NOTIFY syncStatusChanged)
   Q_PROPERTY(QString lastSuccessfulSync READ lastSuccessfulSync NOTIFY syncStatusChanged)
+  Q_PROPERTY(bool categorySyncAvailable READ categorySyncAvailable NOTIFY syncStatusChanged)
   Q_PROPERTY(QString currentVersion READ currentVersion CONSTANT)
   Q_PROPERTY(QString updateState READ updateState NOTIFY updateStatusChanged)
   Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY updateStatusChanged)
@@ -59,6 +61,7 @@ public:
   [[nodiscard]] QVariantList selectedTasks() const;
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList monthOccurrences() const;
+  [[nodiscard]] QVariantList taskCategories() const;
   [[nodiscard]] QString taskVisibility() const;
   [[nodiscard]] QVariantList monthHolidays() const;
   [[nodiscard]] QVariantList allHabits() const;
@@ -70,6 +73,7 @@ public:
   [[nodiscard]] QString syncState() const;
   [[nodiscard]] QString syncLastError() const;
   [[nodiscard]] QString lastSuccessfulSync() const;
+  [[nodiscard]] bool categorySyncAvailable() const;
   [[nodiscard]] QString currentVersion() const;
   [[nodiscard]] QString updateState() const;
   [[nodiscard]] QString latestVersion() const;
@@ -86,12 +90,15 @@ public:
                             const QString &scheduledTimeKey, const QString &frequency, int interval,
                             const QVariantList &weekdays, const QString &endMode, const QString &untilDateKey,
                             int occurrenceCount, const QVariantList &reminderMinutesBefore,
-                            const QString &emoji);
+                            const QString &emoji, const QString &categoryId);
   Q_INVOKABLE bool setTaskCompleted(const QString &taskId, const QString &occurrenceDateKey, bool recurring,
                                     bool completed);
   Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
+  Q_INVOKABLE bool saveTaskCategory(const QString &categoryId, const QString &name,
+                                    const QString &color);
+  Q_INVOKABLE bool deleteTaskCategory(const QString &categoryId);
 
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
                              const QString &unit, const QString &checkInMode, qint64 incrementAmount,
@@ -146,6 +153,7 @@ private:
   QVariantList m_selectedTasks;
   QVariantList m_todayHabits;
   QVariantList m_monthOccurrences;
+  QVariantList m_taskCategories;
   QVariantList m_allHabits;
   QVariantList m_monthHolidays;
   TaskVisibilityMode m_taskVisibility = TaskVisibilityMode::All;
@@ -158,6 +166,7 @@ private:
   QString m_syncState = QStringLiteral("local-only");
   QString m_syncLastError;
   QString m_lastSuccessfulSync;
+  bool m_categorySyncAvailable = false;
   QString m_updateState = QStringLiteral("idle");
   QString m_latestVersion;
   QString m_updateError;

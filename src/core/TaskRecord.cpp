@@ -76,6 +76,8 @@ QJsonObject TaskRecord::toJson() const {
       {QStringLiteral("scheduledTime"),
        scheduledTime.isValid() ? scheduledTime.toString(QStringLiteral("HH:mm")) : QString()},
       {QStringLiteral("emoji"), emoji},
+      {QStringLiteral("categoryId"),
+       categoryId.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(categoryId)},
       {QStringLiteral("completed"), completed},
       {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       {QStringLiteral("recurrence"), recurrence.toJson()},
@@ -93,6 +95,7 @@ TaskRecord TaskRecord::fromJson(const QJsonObject &json) {
   task.scheduledTime =
       QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
   task.emoji = json.value(QStringLiteral("emoji")).toString(QStringLiteral(""));
+  task.categoryId = json.value(QStringLiteral("categoryId")).toString();
   task.completed = json.value(QStringLiteral("completed")).toBool();
   task.reminderMinutesBefore =
       taskReminderMinutesBeforeFromJson(json.value(QStringLiteral("reminderMinutesBefore")));

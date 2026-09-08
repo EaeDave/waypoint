@@ -33,6 +33,7 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 
 - Month calendar with focused-day details, pending/completed markers, overdue work, and week numbers.
 - Date-based tasks with an optional local time, emoji, and up to five advance reminders.
+- Optional color-coded categories carried across recurring task series and shown on task rows and calendar days in the desktop app, Android app, home-screen widget, and Omarchy panel.
 - Recurrence by interval and weekday, with end-by-date and end-after-count rules.
 - Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
 - Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.

@@ -17,6 +17,7 @@ private slots:
   void rejectUnsafeServerUrl();
   void preserveExistingTokenWhenRequested();
   void synchronizeTaskVisibilityCompatibly();
+  void negotiateCategorySyncCapabilities();
   void syncsImmediatelyWhenEventArrives();
   void recoversWhenSyncRequestStopsTransferring();
   void preserveHolidayPreferencesWithoutServer();
@@ -271,6 +272,46 @@ void SyncEngineTest::synchronizeTaskVisibilityCompatibly() {
   QVERIFY2(waypoint::applySyncResponse(store, synchronizedResponse, &error), qPrintable(error));
   QVERIFY(store.pendingUserPreferencesMutation(&error).isEmpty());
   QCOMPARE(store.taskVisibilityMode(&error), waypoint::TaskVisibilityMode::Pending);
+}
+
+void SyncEngineTest::negotiateCategorySyncCapabilities() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Work"), QStringLiteral("#3B82F6"), nullptr, &error),
+           qPrintable(error));
+
+  QJsonObject request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(request.value(QStringLiteral("supportedEntityTypes")).toArray().last().toString(),
+           QStringLiteral("category"));
+  QVERIFY(request.value(QStringLiteral("mutations")).toArray().isEmpty());
+
+  const QJsonObject legacyResponse{
+      {QStringLiteral("nextCursor"), 0},
+      {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+      {QStringLiteral("changes"), QJsonArray{}},
+  };
+  QVERIFY2(waypoint::applySyncResponse(store, legacyResponse, &error), qPrintable(error));
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  QVERIFY(request.value(QStringLiteral("mutations")).toArray().isEmpty());
+
+  QJsonArray supported{
+      QStringLiteral("task"),
+      QStringLiteral("occurrence"),
+      QStringLiteral("habit"),
+      QStringLiteral("habit-entry"),
+      QStringLiteral("category"),
+  };
+  QJsonObject currentResponse = legacyResponse;
+  currentResponse.insert(QStringLiteral("supportedEntityTypes"), supported);
+  QVERIFY2(waypoint::applySyncResponse(store, currentResponse, &error), qPrintable(error));
+  request = waypoint::buildSyncRequest(store, QStringLiteral("test-device"), &error);
+  const QJsonArray mutations = request.value(QStringLiteral("mutations")).toArray();
+  QCOMPARE(mutations.size(), 1);
+  QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
+           QStringLiteral("category"));
 }
 
 QTEST_MAIN(SyncEngineTest)

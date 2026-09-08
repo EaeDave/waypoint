@@ -63,6 +63,7 @@ private:
   QString m_lastError;
   bool m_inFlight = false;
   bool m_syncRequested = false;
+  bool m_categorySyncAvailable = false;
   int m_eventReconnectSeconds = 1;
 };
 

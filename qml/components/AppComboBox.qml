@@ -5,6 +5,15 @@ import QtQuick.Controls
 
 ComboBox {
     id: control
+    property string colorRole: ""
+
+    function colorAt(index) {
+        if (colorRole === "" || index < 0 || !model)
+            return "";
+        const item = model[index];
+        return item && item[colorRole] ? String(item[colorRole]) : "";
+    }
+
 
     implicitHeight: WaypointTheme.controlHeight
     leftPadding: 10
@@ -13,15 +22,28 @@ ComboBox {
     bottomPadding: 6
     hoverEnabled: true
 
-    contentItem: Text {
-        leftPadding: 0
-        rightPadding: 0
-        text: control.displayText
-        color: control.enabled ? WaypointTheme.foreground : WaypointTheme.disabledText
-        font.family: WaypointTheme.fontFamily
-        font.pixelSize: WaypointTheme.bodySize
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+    contentItem: Row {
+        spacing: 7
+
+        Rectangle {
+            id: selectedColorDot
+            anchors.verticalCenter: parent.verticalCenter
+            visible: control.colorAt(control.currentIndex) !== ""
+            width: 8
+            height: 8
+            radius: 4
+            color: control.colorAt(control.currentIndex)
+        }
+
+        Text {
+            width: parent.width - (selectedColorDot.visible ? 15 : 0)
+            text: control.displayText
+            color: control.enabled ? WaypointTheme.foreground : WaypointTheme.disabledText
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.bodySize
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
     }
 
     indicator: Text {
@@ -54,13 +76,29 @@ ComboBox {
         height: WaypointTheme.controlHeight
         highlighted: control.highlightedIndex === option.index
 
-        contentItem: Text {
-            text: control.textRole ? option.model[control.textRole] : option.model.modelData
-            color: WaypointTheme.foreground
-            font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.bodySize
-            verticalAlignment: Text.AlignVCenter
-            elide: Text.ElideRight
+        contentItem: Row {
+            spacing: 7
+
+            Rectangle {
+                id: optionColorDot
+                anchors.verticalCenter: parent.verticalCenter
+                visible: control.colorRole !== ""
+                         && option.model[control.colorRole] !== ""
+                width: 8
+                height: 8
+                radius: 4
+                color: option.model[control.colorRole] || "transparent"
+            }
+
+            Text {
+                width: parent.width - (optionColorDot.visible ? 15 : 0)
+                text: control.textRole ? option.model[control.textRole] : option.model.modelData
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySize
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
         }
         background: Rectangle {
             color: option.highlighted ? WaypointTheme.controlSelectedFill : "transparent"

@@ -11,6 +11,18 @@ Item {
     required property var controller
     property string feedback: ""
     property bool feedbackError: false
+    property string editingCategoryId: ""
+    property string categoryColor: "#979FEC"
+    readonly property var categoryPalette: [
+        "#979FEC",
+        "#9EC49F",
+        "#E9C98D",
+        "#B37580",
+        "#80B9C7",
+        "#C79BCB",
+        "#D59A6F",
+        "#A8A8A8"
+    ]
     readonly property var brazilianStates: [
         {
             code: "",
@@ -182,6 +194,18 @@ Item {
         loadHolidayConfiguration();
     }
 
+    function editCategory(category) {
+        editingCategoryId = category.id;
+        categoryNameField.text = category.name;
+        categoryColor = category.color;
+    }
+
+    function resetCategoryEditor() {
+        editingCategoryId = "";
+        categoryNameField.text = "";
+        categoryColor = categoryPalette[0];
+    }
+
     Component.onCompleted: loadConfiguration()
 
     Connections {
@@ -347,6 +371,156 @@ Item {
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.captionSize
                 wrapMode: Text.Wrap
+            }
+
+            Text {
+                text: "CATEGORIAS DE TAREFAS"
+                color: MobileTheme.subdued
+                font.family: MobileTheme.fontFamily
+                font.pixelSize: MobileTheme.captionSize
+                font.bold: true
+                font.letterSpacing: 1
+                Layout.topMargin: 8
+            }
+
+            Text {
+                Layout.fillWidth: true
+                visible: root.controller.syncConfigured
+                         && !root.controller.categorySyncAvailable
+                text: "Este servidor ainda não sincroniza categorias. Elas permanecem somente neste aparelho."
+                color: MobileTheme.warning
+                font.family: MobileTheme.fontFamily
+                font.pixelSize: MobileTheme.captionSize
+                wrapMode: Text.Wrap
+            }
+
+            SectionCard {
+                Layout.fillWidth: true
+                contentSpacing: 10
+
+                MobileField {
+                    id: categoryNameField
+                    Layout.fillWidth: true
+                    placeholderText: "Nome da categoria"
+                    maximumLength: 80
+                    Accessible.id: "category-name"
+                    Accessible.name: "Nome da categoria"
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Repeater {
+                        model: root.categoryPalette
+
+                        delegate: Button {
+                            id: categoryColorButton
+                            required property string modelData
+                            width: 42
+                            height: 42
+                            Accessible.name: "Cor " + categoryColorButton.modelData
+                            onClicked: root.categoryColor = categoryColorButton.modelData
+                            background: Rectangle {
+                                radius: MobileTheme.radius
+                                color: categoryColorButton.modelData
+                                border.width: root.categoryColor === categoryColorButton.modelData ? 3 : 1
+                                border.color: root.categoryColor === categoryColorButton.modelData
+                                              ? MobileTheme.foreground : MobileTheme.border
+                            }
+                            contentItem: Item {}
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    MobileButton {
+                        Layout.fillWidth: true
+                        text: root.editingCategoryId === "" ? "ADICIONAR" : "SALVAR"
+                        accent: true
+                        enabled: categoryNameField.text.trim().length > 0
+                        Accessible.id: "save-category"
+                        onClicked: {
+                            const succeeded = root.controller.saveTaskCategory(
+                                                root.editingCategoryId,
+                                                categoryNameField.text,
+                                                root.categoryColor);
+                            root.feedbackError = !succeeded;
+                            root.feedback = succeeded ? "Categoria salva." : root.controller.errorMessage;
+                            if (succeeded)
+                                root.resetCategoryEditor();
+                        }
+                    }
+
+                    MobileButton {
+                        visible: root.editingCategoryId !== ""
+                        text: "CANCELAR"
+                        quiet: true
+                        onClicked: root.resetCategoryEditor()
+                    }
+                }
+            }
+
+            Repeater {
+                model: root.controller.taskCategories
+
+                delegate: Rectangle {
+                    id: categoryRow
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: 52
+                    color: MobileTheme.surface
+                    radius: MobileTheme.radius
+                    border.width: 1
+                    border.color: MobileTheme.divider
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        spacing: 8
+
+                        Rectangle {
+                            Layout.preferredWidth: 10
+                            Layout.preferredHeight: 32
+                            radius: 3
+                            color: categoryRow.modelData.color
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: categoryRow.modelData.name
+                            color: MobileTheme.foreground
+                            font.family: MobileTheme.fontFamily
+                            font.pixelSize: MobileTheme.bodySize
+                            elide: Text.ElideRight
+                        }
+
+                        MobileButton {
+                            Layout.preferredWidth: 80
+                            text: "EDITAR"
+                            quiet: true
+                            onClicked: root.editCategory(categoryRow.modelData)
+                        }
+
+                        MobileButton {
+                            Layout.preferredWidth: 86
+                            text: "EXCLUIR"
+                            quiet: true
+                            onClicked: {
+                                const succeeded = root.controller.deleteTaskCategory(
+                                                    categoryRow.modelData.id);
+                                root.feedbackError = !succeeded;
+                                root.feedback = succeeded ? "Categoria excluída. As tarefas foram mantidas."
+                                                          : root.controller.errorMessage;
+                                if (succeeded
+                                        && root.editingCategoryId === categoryRow.modelData.id)
+                                    root.resetCategoryEditor();
+                            }
+                        }
+                    }
+                }
             }
 
             Text {

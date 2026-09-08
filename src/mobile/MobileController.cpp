@@ -102,6 +102,15 @@ QVariantList habitRecordValues(const QList<HabitRecord> &habits) {
   return result;
 }
 
+QVariantList categoryValues(const QList<TaskCategory> &categories) {
+  QVariantList result;
+  result.reserve(categories.size());
+  for (const TaskCategory &category : categories) {
+    result.append(category.toJson().toVariantMap());
+  }
+  return result;
+}
+
 } // namespace
 
 MobileController::MobileController(QObject *parent)
@@ -119,6 +128,10 @@ MobileController::MobileController(QString databasePath, QObject *parent)
     scheduleRefresh();
   });
   connect(&m_store, &TaskStore::taskVisibilityChanged, this, [this] {
+    m_widgetSnapshotDirty = true;
+    scheduleRefresh();
+  });
+  connect(&m_store, &TaskStore::categoriesChanged, this, [this] {
     m_widgetSnapshotDirty = true;
     scheduleRefresh();
   });
@@ -147,6 +160,7 @@ QVariantList MobileController::todayTasks() const { return m_todayTasks; }
 QVariantList MobileController::selectedTasks() const { return m_selectedTasks; }
 QVariantList MobileController::todayHabits() const { return m_todayHabits; }
 QVariantList MobileController::monthOccurrences() const { return m_monthOccurrences; }
+QVariantList MobileController::taskCategories() const { return m_taskCategories; }
 QString MobileController::taskVisibility() const { return taskVisibilityModeName(m_taskVisibility); }
 QVariantList MobileController::monthHolidays() const { return m_monthHolidays; }
 QVariantList MobileController::allHabits() const { return m_allHabits; }
@@ -155,6 +169,7 @@ bool MobileController::syncConfigured() const { return m_syncConfigured; }
 QString MobileController::syncState() const { return m_syncState; }
 QString MobileController::syncLastError() const { return m_syncLastError; }
 QString MobileController::lastSuccessfulSync() const { return m_lastSuccessfulSync; }
+bool MobileController::categorySyncAvailable() const { return m_categorySyncAvailable; }
 QString MobileController::currentVersion() const { return QCoreApplication::applicationVersion(); }
 QString MobileController::updateState() const { return m_updateState; }
 QString MobileController::latestVersion() const { return m_latestVersion; }
@@ -244,6 +259,11 @@ void MobileController::refresh() {
     publishError(error);
     return;
   }
+  const QList<TaskCategory> categories = m_store.listActiveTaskCategories(&error);
+  if (!error.isEmpty()) {
+    publishError(error);
+    return;
+  }
   const QList<HabitProgress> habits = m_store.listHabitProgress(today, &error);
   if (!error.isEmpty()) {
     publishError(error);
@@ -286,6 +306,7 @@ void MobileController::refresh() {
   m_selectedTasks = occurrenceValues(selected, scheduledDates);
   m_todayHabits = habitValues(habits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
+  m_taskCategories = categoryValues(categories);
   m_allHabits = habitRecordValues(activeHabits);
   m_monthHolidays = holidays.toVariantList();
   if (m_taskVisibility != visibility) {
@@ -328,7 +349,8 @@ bool MobileController::saveTask(const QString &taskId, const QString &title, con
                                 const QString &scheduledTimeKey, const QString &frequency, const int interval,
                                 const QVariantList &weekdays, const QString &endMode,
                                 const QString &untilDateKey, const int occurrenceCount,
-                                const QVariantList &reminderMinutesBefore, const QString &emoji) {
+                                const QVariantList &reminderMinutesBefore, const QString &emoji,
+                                const QString &categoryId) {
   const QDate date = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime time = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!date.isValid() || !time.isValid()) {
@@ -347,10 +369,10 @@ bool MobileController::saveTask(const QString &taskId, const QString &title, con
   bool succeeded = false;
   if (taskId.isEmpty()) {
     succeeded = m_store.createTask(title, date, time, recurrence, integerValues(reminderMinutesBefore), emoji,
-                                   nullptr, &error);
+                                   categoryId, nullptr, &error);
   } else {
     succeeded = m_store.editTask(taskId, title, time, recurrence, integerValues(reminderMinutesBefore), emoji,
-                                 &error);
+                                 categoryId, &error);
     if (succeeded) {
       succeeded = m_store.rescheduleTask(taskId, date, time, &error);
     }
@@ -389,6 +411,20 @@ bool MobileController::setTaskVisibility(const QString &taskVisibility) {
   }
   QString error;
   return finishMutation(m_store.setTaskVisibilityMode(*mode, &error), error);
+}
+
+bool MobileController::saveTaskCategory(const QString &categoryId, const QString &name,
+                                        const QString &color) {
+  QString error;
+  const bool succeeded = categoryId.isEmpty()
+                             ? m_store.createTaskCategory(name, color, nullptr, &error)
+                             : m_store.editTaskCategory(categoryId, name, color, &error);
+  return finishMutation(succeeded, error);
+}
+
+bool MobileController::deleteTaskCategory(const QString &categoryId) {
+  QString error;
+  return finishMutation(m_store.deleteTaskCategory(categoryId, &error), error);
 }
 
 bool MobileController::saveHabit(const QString &habitId, const QString &title, const qint64 targetAmount,
@@ -565,10 +601,13 @@ void MobileController::refreshSyncProperties() {
   const QString state = status.value(QStringLiteral("state")).toString();
   const QString lastError = status.value(QStringLiteral("lastError")).toString();
   const QString lastSuccessful = status.value(QStringLiteral("lastSuccessfulSync")).toString();
-  if (state != m_syncState || lastError != m_syncLastError || lastSuccessful != m_lastSuccessfulSync) {
+  const bool categorySyncAvailable = status.value(QStringLiteral("categorySyncAvailable")).toBool();
+  if (state != m_syncState || lastError != m_syncLastError || lastSuccessful != m_lastSuccessfulSync ||
+      categorySyncAvailable != m_categorySyncAvailable) {
     m_syncState = state;
     m_syncLastError = lastError;
     m_lastSuccessfulSync = lastSuccessful;
+    m_categorySyncAvailable = categorySyncAvailable;
     emit syncStatusChanged();
   }
 }

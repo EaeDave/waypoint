@@ -120,9 +120,23 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
       return protocol::errorResponse(error);
     }
     for (const TaskRecord &task : records) {
-      tasks.append(task.toJson());
+      QJsonObject value = task.toJson();
+      value.insert(QStringLiteral("categoryName"), task.categoryName);
+      value.insert(QStringLiteral("categoryColor"), task.categoryColor);
+      tasks.append(value);
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("tasks"), tasks}};
+  }
+  if (command == QStringLiteral("categories")) {
+    QJsonArray categories;
+    const QList<TaskCategory> records = m_taskStore->listActiveTaskCategories(&error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    for (const TaskCategory &category : records) {
+      categories.append(category.toJson());
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("categories"), categories}};
   }
   if (command == QStringLiteral("occurrences")) {
     const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
@@ -235,10 +249,36 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     return {{QStringLiteral("ok"), true}};
   }
+  if (command == QStringLiteral("add-category")) {
+    TaskCategory category;
+    if (!m_taskStore->createTaskCategory(request.value(QStringLiteral("name")).toString(),
+                                         request.value(QStringLiteral("color")).toString(),
+                                         &category, &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("category"), category.toJson()}};
+  }
+  if (command == QStringLiteral("edit-category")) {
+    if (!m_taskStore->editTaskCategory(
+            request.value(QStringLiteral("categoryId")).toString(),
+            request.value(QStringLiteral("name")).toString(),
+            request.value(QStringLiteral("color")).toString(), &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
+  if (command == QStringLiteral("delete-category")) {
+    if (!m_taskStore->deleteTaskCategory(
+            request.value(QStringLiteral("categoryId")).toString(), &error)) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}};
+  }
   if (command == QStringLiteral("add")) {
     TaskRecord task;
     const QString title = request.value(QStringLiteral("title")).toString();
     const QString emoji = request.value(QStringLiteral("emoji")).toString();
+    const QString categoryId = request.value(QStringLiteral("categoryId")).toString();
     const QDate date =
         QDate::fromString(request.value(QStringLiteral("scheduledDate")).toString(), Qt::ISODate);
     const QTime time =
@@ -247,8 +287,8 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
         RecurrenceRule::fromJson(request.value(QStringLiteral("recurrence")).toObject());
     const QList<int> reminderMinutesBefore =
         taskReminderMinutesBeforeFromJson(request.value(QStringLiteral("reminderMinutesBefore")));
-    if (!m_taskStore->createTask(title, date, time, recurrence, reminderMinutesBefore, emoji, &task,
-                                 &error)) {
+    if (!m_taskStore->createTask(title, date, time, recurrence, reminderMinutesBefore, emoji,
+                                 categoryId, &task, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("task"), task.toJson()}};
@@ -301,6 +341,10 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const QString title = request.value(QStringLiteral("title")).toString();
     const QString emoji = request.value(QStringLiteral("emoji")).toString();
+    const std::optional<QString> categoryId =
+        request.contains(QStringLiteral("categoryId"))
+            ? std::optional<QString>(request.value(QStringLiteral("categoryId")).toString())
+            : std::nullopt;
     const QTime time =
         QTime::fromString(request.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
     const RecurrenceRule recurrence =
@@ -310,7 +354,8 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
       reminderMinutesBefore =
           taskReminderMinutesBeforeFromJson(request.value(QStringLiteral("reminderMinutesBefore")));
     }
-    if (!m_taskStore->editTask(taskId, title, time, recurrence, reminderMinutesBefore, emoji, &error)) {
+    if (!m_taskStore->editTask(taskId, title, time, recurrence, reminderMinutesBefore, emoji,
+                               categoryId, &error)) {
       return protocol::errorResponse(error);
     }
     return {{QStringLiteral("ok"), true}};

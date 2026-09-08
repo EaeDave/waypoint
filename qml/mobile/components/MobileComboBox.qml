@@ -3,20 +3,42 @@ import QtQuick.Controls
 
 ComboBox {
     id: root
+    property string colorRole: ""
+
+    function colorAt(index) {
+        if (colorRole === "" || index < 0 || !model)
+            return "";
+        const item = model[index];
+        return item && item[colorRole] ? String(item[colorRole]) : "";
+    }
+
 
     implicitHeight: MobileTheme.touchHeight
     leftPadding: 14
     rightPadding: 42
 
-    contentItem: Text {
-        leftPadding: root.leftPadding
-        rightPadding: root.rightPadding
-        text: root.displayText
-        color: root.enabled ? MobileTheme.foreground : MobileTheme.disabled
-        font.family: MobileTheme.fontFamily
-        font.pixelSize: MobileTheme.bodySize
-        verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+    contentItem: Row {
+        spacing: 7
+
+        Rectangle {
+            id: selectedColor
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.colorAt(root.currentIndex) !== ""
+            width: 8
+            height: 8
+            radius: 4
+            color: root.colorAt(root.currentIndex)
+        }
+
+        Text {
+            width: parent.width - (selectedColor.visible ? 15 : 0)
+            text: root.displayText
+            color: root.enabled ? MobileTheme.foreground : MobileTheme.disabled
+            font.family: MobileTheme.fontFamily
+            font.pixelSize: MobileTheme.bodySize
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
     }
 
     indicator: Item {
@@ -43,6 +65,44 @@ ComboBox {
                 context.lineTo(width * 0.78, height * 0.38);
                 context.stroke();
             }
+        }
+    }
+
+    delegate: ItemDelegate {
+        id: option
+        required property int index
+        required property var model
+        width: ListView.view ? ListView.view.width : root.width
+        height: MobileTheme.touchHeight
+        highlighted: root.highlightedIndex === option.index
+
+        contentItem: Row {
+            spacing: 7
+
+            Rectangle {
+                id: optionColor
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.colorRole !== ""
+                         && option.model[root.colorRole] !== ""
+                width: 8
+                height: 8
+                radius: 4
+                color: option.model[root.colorRole] || "transparent"
+            }
+
+            Text {
+                width: parent.width - (optionColor.visible ? 15 : 0)
+                text: root.textRole ? option.model[root.textRole] : option.model.modelData
+                color: MobileTheme.foreground
+                font.family: MobileTheme.fontFamily
+                font.pixelSize: MobileTheme.bodySize
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
+
+        background: Rectangle {
+            color: option.highlighted ? MobileTheme.surfaceSelected : "transparent"
         }
     }
 

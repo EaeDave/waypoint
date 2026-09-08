@@ -122,7 +122,7 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 4},
+      {QStringLiteral("schemaVersion"), 5},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},
