@@ -18,6 +18,7 @@ private slots:
   void preserveExistingTokenWhenRequested();
   void synchronizeTaskVisibilityCompatibly();
   void syncsImmediatelyWhenEventArrives();
+  void recoversWhenSyncRequestStopsTransferring();
   void preserveHolidayPreferencesWithoutServer();
   void downloadNewerHolidayPreferences();
 };
@@ -134,6 +135,45 @@ void SyncEngineTest::syncsImmediatelyWhenEventArrives() {
   QVERIFY2(triggeredRequest.startsWith("POST /v1/sync "), triggeredRequest.constData());
   QCOMPARE(triggeredSocket->write(syncResponse), syncResponse.size());
   QVERIFY(triggeredSocket->flush());
+}
+
+void SyncEngineTest::recoversWhenSyncRequestStopsTransferring() {
+  QTcpServer server;
+  QVERIFY(server.listen(QHostAddress::LocalHost));
+
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const waypoint::SyncConfiguration configuration{
+      QUrl(QStringLiteral("http://127.0.0.1:%1/v1/sync").arg(server.serverPort())),
+      QByteArrayLiteral("token"),
+  };
+  QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
+
+  waypoint::SyncEngine engine(&store, nullptr, 100);
+  engine.start();
+
+  QList<QTcpSocket *> sockets;
+  for (int requestIndex = 0; requestIndex < 2; ++requestIndex) {
+    QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+    QTcpSocket *socket = server.nextPendingConnection();
+    QVERIFY(socket != nullptr);
+    sockets.append(socket);
+    QTRY_VERIFY_WITH_TIMEOUT(socket->bytesAvailable() > 0, 2000);
+  }
+
+  QTRY_COMPARE_WITH_TIMEOUT(engine.status().value(QStringLiteral("state")).toString(),
+                            QStringLiteral("error"), 2000);
+  QVERIFY(!engine.status().value(QStringLiteral("lastError")).toString().isEmpty());
+
+  engine.syncNow();
+  QTRY_VERIFY_WITH_TIMEOUT(server.hasPendingConnections(), 2000);
+  QTcpSocket *retrySocket = server.nextPendingConnection();
+  QVERIFY(retrySocket != nullptr);
+  sockets.append(retrySocket);
+  QTRY_VERIFY_WITH_TIMEOUT(retrySocket->bytesAvailable() > 0, 2000);
+  QVERIFY2(retrySocket->readAll().startsWith("POST /v1/sync "), "Synchronization did not retry");
 }
 
 void SyncEngineTest::preserveHolidayPreferencesWithoutServer() {

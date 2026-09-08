@@ -12,12 +12,12 @@ namespace waypoint {
 
 class TaskStore;
 
-
 class SyncEngine final : public QObject {
   Q_OBJECT
 
 public:
-  explicit SyncEngine(TaskStore *taskStore, QObject *parent = nullptr);
+  explicit SyncEngine(TaskStore *taskStore, QObject *parent = nullptr,
+                      int transferTimeoutMilliseconds = QNetworkRequest::DefaultTransferTimeoutConstant);
 
   [[nodiscard]] bool enabled() const;
   [[nodiscard]] QJsonObject publicConfiguration() const;
@@ -58,6 +58,7 @@ private:
   QUrl m_endpoint;
   QByteArray m_token;
   QDateTime m_lastSuccessfulSync;
+  int m_transferTimeoutMilliseconds;
   QString m_state = QStringLiteral("local-only");
   QString m_lastError;
   bool m_inFlight = false;

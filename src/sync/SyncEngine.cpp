@@ -20,7 +20,8 @@ void assignError(QString *destination, const QString &message) {
 
 } // namespace
 
-SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent) : QObject(parent), m_taskStore(taskStore) {
+SyncEngine::SyncEngine(TaskStore *taskStore, QObject *parent, const int transferTimeoutMilliseconds)
+    : QObject(parent), m_taskStore(taskStore), m_transferTimeoutMilliseconds(transferTimeoutMilliseconds) {
   m_periodicTimer.setInterval(15000);
   m_debounceTimer.setInterval(150);
   m_debounceTimer.setSingleShot(true);
@@ -131,6 +132,7 @@ void SyncEngine::syncNow() {
     return;
   }
   QNetworkRequest request(m_endpoint);
+  request.setTransferTimeout(m_transferTimeoutMilliseconds);
   request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
   request.setRawHeader("Authorization", QByteArrayLiteral("Bearer ") + m_token);
 
@@ -152,7 +154,6 @@ void SyncEngine::finishSync() {
     reply->deleteLater();
     continuePendingSync();
   };
-  const QByteArray responseBytes = reply->readAll();
   if (reply->error() != QNetworkReply::NoError) {
     const QString message = QStringLiteral("HTTP %1: %2")
                                 .arg(reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt())
@@ -162,6 +163,7 @@ void SyncEngine::finishSync() {
     finishRequest();
     return;
   }
+  const QByteArray responseBytes = reply->readAll();
 
   QJsonParseError parseError;
   const QJsonDocument document = QJsonDocument::fromJson(responseBytes, &parseError);
