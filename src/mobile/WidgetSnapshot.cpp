@@ -40,6 +40,14 @@ QJsonArray habitValues(const QList<HabitProgress> &progress) {
   }
   return values;
 }
+QJsonArray categoryValues(const QList<TaskCategory> &categories) {
+  QJsonArray values;
+  for (const TaskCategory &category : categories) {
+    values.append(category.toJson());
+  }
+  return values;
+}
+
 
 void setTasksForDate(QJsonObject *dates, const QString &dateKey, const QJsonArray &tasks) {
   QJsonObject date = dates->value(dateKey).toObject();
@@ -92,6 +100,11 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
     setError(errorMessage, error);
     return {};
   }
+  const QList<TaskCategory> categories = store.listActiveTaskCategories(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
   const QList<HabitProgress> habitProgress = store.listHabitProgress(today, &error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
@@ -122,11 +135,12 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 5},
+      {QStringLiteral("schemaVersion"), 6},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},
       {QStringLiteral("taskVisibility"), taskVisibilityModeName(visibility)},
+      {QStringLiteral("categories"), categoryValues(categories)},
       {QStringLiteral("dates"), dates},
       {QStringLiteral("habits"), habitValues(habitProgress)},
   };

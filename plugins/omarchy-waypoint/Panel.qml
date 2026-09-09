@@ -48,6 +48,7 @@ Panel {
     property string pendingQuickTime: ""
     property string editingEmoji: ""
     property string quickCategoryId: ""
+    property string taskCategoryFilterId: "__all"
     property string editingCategoryId: ""
     property string emojiPickerTarget: ""
     property int pickerHour: 0
@@ -72,8 +73,9 @@ Panel {
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
     readonly property bool selectedDateIsToday:
         Model.dateKey(selectedDate) === Model.dateKey(today)
-    readonly property var selectedTasks: selectedDateIsToday
+    readonly property var selectedDateTasks: selectedDateIsToday
         ? todayTasks : Model.occurrencesForDate(occurrences, selectedDate)
+    readonly property var selectedTasks: filterTasksByCategory(selectedDateTasks)
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
@@ -122,6 +124,26 @@ Panel {
         }
         return options;
     }
+    function categoryFilterOptions() {
+        return [{ label: "Todas as categorias", value: "__all", color: Color.accent }]
+            .concat(categoryOptions());
+    }
+
+    function filterTasksByCategory(tasks) {
+        if (taskCategoryFilterId === "__all")
+            return tasks;
+        const filtered = [];
+        for (const task of tasks || []) {
+            if (taskCategoryFilterId === "__uncategorized") {
+                if (String(task.categoryId || "") === "")
+                    filtered.push(task);
+            } else if (String(task.categoryId || "") === taskCategoryFilterId) {
+                filtered.push(task);
+            }
+        }
+        return filtered;
+    }
+
 
 
     function open() {
@@ -980,6 +1002,19 @@ Panel {
                             }
 
 
+                            Dropdown {
+                                Layout.preferredWidth: Style.space(150)
+                                showLabel: false
+                                foreground: root.foreground
+                                background: Style.hoverFillFor(root.foreground, Color.accent)
+                                accent: Color.accent
+                                options: root.categoryOptions()
+                                value: root.quickCategoryId
+                                onChanged: function(value) {
+                                    root.quickCategoryId = String(value || "");
+                                }
+                            }
+
                             TextField {
                                 id: quickAdd
                                 Layout.fillWidth: true
@@ -998,7 +1033,7 @@ Panel {
                         spacing: Style.space(4)
 
                         Text {
-                            text: "CATEGORIA"
+                            text: "FILTRAR POR CATEGORIA"
                             color: Qt.darker(root.foreground, 1.5)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -1011,21 +1046,26 @@ Panel {
                             spacing: Style.space(4)
 
                             Repeater {
-                                model: root.categoryOptions()
+                                model: root.categoryFilterOptions()
 
                                 Button {
                                     required property var modelData
-                                    text: modelData.value === ""
-                                          ? "SEM CATEGORIA"
-                                          : "●  " + String(modelData.label || "").toUpperCase()
-                                    foreground: modelData.value === ""
+                                    text: modelData.value === "__all"
+                                          ? "TODAS AS CATEGORIAS"
+                                          : modelData.value === ""
+                                            ? "SEM CATEGORIA"
+                                            : "●  " + String(modelData.label || "").toUpperCase()
+                                    foreground: modelData.value === "__all" || modelData.value === ""
                                                 ? root.foreground : modelData.color
                                     accent: modelData.color
                                     bordered: true
-                                    selected: root.quickCategoryId === modelData.value
+                                    selected: root.taskCategoryFilterId
+                                              === (modelData.value === ""
+                                                   ? "__uncategorized" : modelData.value)
                                     horizontalPadding: Style.space(7)
                                     verticalPadding: Style.space(3)
-                                    onClicked: root.quickCategoryId = modelData.value
+                                    onClicked: root.taskCategoryFilterId = modelData.value === ""
+                                               ? "__uncategorized" : modelData.value
                                 }
                             }
                         }

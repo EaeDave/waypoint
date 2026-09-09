@@ -34,6 +34,7 @@ import org.json.JSONObject;
 
 public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static final String ACTION_MOVE_MONTH = "org.eaedave.waypoint.widget.MOVE_MONTH";
+  private static final String ACTION_CYCLE_CATEGORY = "org.eaedave.waypoint.widget.CYCLE_CATEGORY";
   private static final String ACTION_SELECT_DATE = "org.eaedave.waypoint.widget.SELECT_DATE";
   private static final String EXTRA_MONTH_DELTA = "monthDelta";
   private static final String EXTRA_DATE = "date";
@@ -42,6 +43,9 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static final String STATE_PREFERENCES = "waypoint_widget_state";
   private static final String SELECTED_DATE_PREFIX = "selectedDate:";
   private static final String SELECTED_ON_PREFIX = "selectedOn:";
+  private static final String CATEGORY_FILTER_PREFIX = "categoryFilter:";
+  private static final String CATEGORY_ALL = "__all";
+  private static final String CATEGORY_UNCATEGORIZED = "__uncategorized";
   private static final Locale PORTUGUESE = Locale.forLanguageTag("pt-BR");
   private static final DateTimeFormatter DATE_LABEL =
       DateTimeFormatter.ofPattern("EEE, d 'de' MMM", PORTUGUESE);
@@ -106,6 +110,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     for (int appWidgetId : appWidgetIds) {
       editor.remove(SELECTED_DATE_PREFIX + appWidgetId);
       editor.remove(SELECTED_ON_PREFIX + appWidgetId);
+      editor.remove(CATEGORY_FILTER_PREFIX + appWidgetId);
     }
     editor.apply();
   }
@@ -118,6 +123,12 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
           intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
       int delta = intent.getIntExtra(EXTRA_MONTH_DELTA, 0);
       moveMonth(context, appWidgetId, delta);
+      return;
+    }
+    if (ACTION_CYCLE_CATEGORY.equals(action)) {
+      int appWidgetId =
+          intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+      cycleCategoryFilter(context, appWidgetId);
       return;
     }
     if (ACTION_SELECT_DATE.equals(action)) {
@@ -152,6 +163,11 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     if (dates == null) {
       dates = new JSONObject();
     }
+    JSONArray categories = snapshot.optJSONArray("categories");
+    if (categories == null) {
+      categories = new JSONArray();
+    }
+    String categoryFilter = categoryFilter(context, appWidgetId, categories);
     boolean snapshotCurrent = today.toString().equals(snapshot.optString("today", ""));
     JSONArray habits = snapshotCurrent ? snapshot.optJSONArray("habits") : null;
     String taskVisibility = snapshot.optString("taskVisibility", "all");
@@ -159,9 +175,9 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     int[] detailLimits =
         detailLimits(context, manager, appWidgetId, selectedDate.equals(today) && habits != null);
 
-    renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
-    renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility, snapshotCurrent,
-                detailLimits[0]);
+    renderCalendar(context, views, appWidgetId, selectedDate, today, dates, categoryFilter);
+    renderTasks(context, views, appWidgetId, selectedDate, dates, categories, categoryFilter,
+                taskVisibility, snapshotCurrent, detailLimits[0]);
     renderHabits(context, views, appWidgetId, habits, detailLimits[1]);
 
     PendingIntent openApp = openAppIntent(context, appWidgetId);
@@ -175,7 +191,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   }
 
   private static void renderCalendar(Context context, RemoteViews views, int appWidgetId,
-                                     LocalDate selectedDate, LocalDate today, JSONObject dates) {
+                                     LocalDate selectedDate, LocalDate today, JSONObject dates,
+                                     String categoryFilter) {
     YearMonth displayedMonth = YearMonth.from(selectedDate);
     String monthName =
         displayedMonth.getMonth().getDisplayName(TextStyle.FULL, PORTUGUESE).toUpperCase(PORTUGUESE);
@@ -193,6 +210,9 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       for (int taskIndex = 0; dateTasks != null && taskIndex < dateTasks.length(); ++taskIndex) {
         JSONObject task = dateTasks.optJSONObject(taskIndex);
         if (task == null) {
+          continue;
+        }
+        if (!matchesCategory(task, categoryFilter)) {
           continue;
         }
         hasSkippedTasks = hasSkippedTasks || task.optBoolean("skipped", false);
@@ -308,8 +328,9 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return new int[] {0, 0};
   }
 
-  private static void renderTasks(Context context, RemoteViews views, int appWidgetId, LocalDate selectedDate,
-                                  JSONObject dates, String taskVisibility, boolean snapshotCurrent,
+  private static void renderTasks(Context context, RemoteViews views, int appWidgetId,
+                                  LocalDate selectedDate, JSONObject dates, JSONArray categories,
+                                  String categoryFilter, String taskVisibility, boolean snapshotCurrent,
                                   int taskLimit) {
     String dateLabel = selectedDate.format(DATE_LABEL);
     views.setTextViewText(R.id.widget_selected_date,
@@ -331,13 +352,31 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     views.setOnClickPendingIntent(
         R.id.widget_task_visibility,
         taskVisibilityIntent(context, appWidgetId, pendingOnly ? "all" : "pending"));
+    views.setViewVisibility(R.id.widget_category_filter, showDetails ? View.VISIBLE : View.GONE);
+    views.setTextViewText(R.id.widget_category_filter,
+                          categoryFilterLabel(categories, categoryFilter));
+    views.setTextColor(R.id.widget_category_filter,
+                       CATEGORY_ALL.equals(categoryFilter)
+                           ? COLOR_SUBDUED
+                           : categoryFilterColor(categories, categoryFilter));
+    views.setContentDescription(
+        R.id.widget_category_filter,
+        "Filtro de categoria: " + categoryFilterLabel(categories, categoryFilter)
+            + ". Toque para exibir a próxima categoria.");
+    views.setOnClickPendingIntent(R.id.widget_category_filter,
+                                  categoryFilterIntent(context, appWidgetId));
 
-    JSONArray tasks = dateData == null ? null : dateData.optJSONArray("tasks");
-    int taskCount = tasks == null ? 0 : tasks.length();
-    boolean hasSnapshot = hasSnapshot(context);
-    String emptyText = !hasSnapshot      ? "Abra o Waypoint para carregar suas tarefas."
-                       : snapshotCurrent ? "Nada marcado para este dia."
-                                         : "Atualizando…";
+    JSONArray tasks =
+        filteredTasks(dateData == null ? null : dateData.optJSONArray("tasks"), categoryFilter);
+    int taskCount = tasks.length();
+    String emptyText = "Atualizando…";
+    if (!hasSnapshot(context)) {
+      emptyText = "Abra o Waypoint para carregar suas tarefas.";
+    } else if (snapshotCurrent) {
+      emptyText = CATEGORY_ALL.equals(categoryFilter)
+          ? "Nada marcado para este dia."
+          : "Nenhuma tarefa nesta categoria.";
+    }
     views.setTextViewText(R.id.widget_empty_tasks, emptyText);
     views.setViewVisibility(R.id.widget_empty_tasks,
                             showDetails && taskCount == 0 && holidayCount == 0 ? View.VISIBLE : View.GONE);
@@ -398,7 +437,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       views.setTextViewText(TASK_TITLE_IDS[index], titleText);
       views.setTextColor(TASK_TITLE_IDS[index], completed ? COLOR_DISABLED
                                                 : skipped ? COLOR_URGENT
-                                                          : COLOR_FOREGROUND);
+                                                : categoryName.isEmpty() ? COLOR_FOREGROUND
+                                                                         : categoryColor);
       views.setTextViewText(TASK_TIME_IDS[index], timeText);
       views.setContentDescription(TASK_ROW_IDS[index], taskDescription);
       views.setTextColor(TASK_TIME_IDS[index], skipped || overdue ? COLOR_URGENT
@@ -411,6 +451,98 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
           taskCompletionIntent(context, appWidgetId, task, index, !completed && !skipped));
     }
   }
+  private static boolean matchesCategory(JSONObject task, String categoryFilter) {
+    if (CATEGORY_ALL.equals(categoryFilter)) {
+      return true;
+    }
+    String categoryId = task.optString("categoryId", "");
+    return CATEGORY_UNCATEGORIZED.equals(categoryFilter) ? categoryId.isEmpty()
+                                                          : categoryFilter.equals(categoryId);
+  }
+
+  private static JSONArray filteredTasks(JSONArray tasks, String categoryFilter) {
+    JSONArray filtered = new JSONArray();
+    for (int index = 0; tasks != null && index < tasks.length(); ++index) {
+      JSONObject task = tasks.optJSONObject(index);
+      if (task != null && matchesCategory(task, categoryFilter)) {
+        filtered.put(task);
+      }
+    }
+    return filtered;
+  }
+
+  private static String categoryFilter(Context context, int appWidgetId, JSONArray categories) {
+    String selected =
+        state(context).getString(CATEGORY_FILTER_PREFIX + appWidgetId, CATEGORY_ALL);
+    if (CATEGORY_ALL.equals(selected) || CATEGORY_UNCATEGORIZED.equals(selected)) {
+      return selected;
+    }
+    for (int index = 0; index < categories.length(); ++index) {
+      JSONObject category = categories.optJSONObject(index);
+      if (category != null && selected.equals(category.optString("id", ""))) {
+        return selected;
+      }
+    }
+    state(context).edit().remove(CATEGORY_FILTER_PREFIX + appWidgetId).apply();
+    return CATEGORY_ALL;
+  }
+
+  private static String categoryFilterLabel(JSONArray categories, String categoryFilter) {
+    if (CATEGORY_ALL.equals(categoryFilter)) {
+      return "TODAS CAT.";
+    }
+    if (CATEGORY_UNCATEGORIZED.equals(categoryFilter)) {
+      return "SEM CAT.";
+    }
+    for (int index = 0; index < categories.length(); ++index) {
+      JSONObject category = categories.optJSONObject(index);
+      if (category != null && categoryFilter.equals(category.optString("id", ""))) {
+        return category.optString("name", "CATEG.").toUpperCase(PORTUGUESE);
+      }
+    }
+    return "TODAS CAT.";
+  }
+
+  private static int categoryFilterColor(JSONArray categories, String categoryFilter) {
+    for (int index = 0; index < categories.length(); ++index) {
+      JSONObject category = categories.optJSONObject(index);
+      if (category != null && categoryFilter.equals(category.optString("id", ""))) {
+        return colorValue(category.optString("color", ""), COLOR_ACCENT);
+      }
+    }
+    return COLOR_ACCENT;
+  }
+
+  private static void cycleCategoryFilter(Context context, int appWidgetId) {
+    if (appWidgetId == AppWidgetManager.INVALID_APPWIDGET_ID) {
+      return;
+    }
+    JSONArray categories = snapshot(context).optJSONArray("categories");
+    if (categories == null) {
+      categories = new JSONArray();
+    }
+    String current = categoryFilter(context, appWidgetId, categories);
+    String next = CATEGORY_ALL;
+    if (CATEGORY_ALL.equals(current)) {
+      JSONObject first = categories.optJSONObject(0);
+      next = first == null ? CATEGORY_UNCATEGORIZED : first.optString("id", CATEGORY_UNCATEGORIZED);
+    } else if (!CATEGORY_UNCATEGORIZED.equals(current)) {
+      next = CATEGORY_UNCATEGORIZED;
+      for (int index = 0; index < categories.length(); ++index) {
+        JSONObject category = categories.optJSONObject(index);
+        if (category != null && current.equals(category.optString("id", ""))) {
+          JSONObject following = categories.optJSONObject(index + 1);
+          if (following != null) {
+            next = following.optString("id", CATEGORY_UNCATEGORIZED);
+          }
+          break;
+        }
+      }
+    }
+    state(context).edit().putString(CATEGORY_FILTER_PREFIX + appWidgetId, next).apply();
+    updateWidget(context, AppWidgetManager.getInstance(context), appWidgetId);
+  }
+
 
   private static int colorValue(String value, int fallback) {
     if (value == null || value.isEmpty()) {
@@ -632,6 +764,15 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     return PendingIntent.getBroadcast(context, appWidgetId * 100 + 10 + requestOffset, intent,
                                       PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
   }
+  private static PendingIntent categoryFilterIntent(Context context, int appWidgetId) {
+    Intent intent = new Intent(context, WaypointWidgetProvider.class)
+                        .setAction(ACTION_CYCLE_CATEGORY)
+                        .setData(Uri.parse("waypoint://widget/" + appWidgetId + "/category-filter"))
+                        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+    return PendingIntent.getBroadcast(context, appWidgetId * 100 + 58, intent,
+                                      PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+  }
+
 
   private static PendingIntent taskCompletionIntent(Context context, int appWidgetId, JSONObject task,
                                                     int requestOffset, boolean completed) {

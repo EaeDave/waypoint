@@ -12,6 +12,20 @@ Item {
     readonly property date now: new Date()
     readonly property int elapsedDays: Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1
     readonly property int daysInYear: new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365
+    property string categoryFilterId: "__all"
+    readonly property var filteredTodayTasks: {
+        if (categoryFilterId === "__all")
+            return controller.todayTasks;
+        const values = [];
+        for (const task of controller.todayTasks) {
+            const taskCategoryId = String(task.categoryId || "");
+            if ((categoryFilterId === "__uncategorized" && taskCategoryId === "")
+                    || taskCategoryId === categoryFilterId)
+                values.push(task);
+        }
+        return values;
+    }
+
 
     function recordHabit(habit) {
         if (habit.checkInMode === "manual") {
@@ -218,7 +232,7 @@ Item {
                     }
 
                     Text {
-                        text: root.controller.todayTasks.length
+                        text: root.filteredTodayTasks.length
                         color: MobileTheme.disabled
                         font.family: MobileTheme.fontFamily
                         font.pixelSize: MobileTheme.captionSize
@@ -228,9 +242,16 @@ Item {
                         controller: root.controller
                     }
                 }
+                TaskCategoryFilter {
+                    Layout.fillWidth: true
+                    categories: root.controller.taskCategories
+                    selectedCategoryId: root.categoryFilterId
+                    onCategorySelected: categoryId => root.categoryFilterId = categoryId
+                }
+
 
                 Repeater {
-                    model: root.controller.todayTasks
+                    model: root.filteredTodayTasks
 
                     delegate: Rectangle {
                         id: taskRow
@@ -292,7 +313,10 @@ Item {
                                     border.color: taskRow.modelData.completed ? MobileTheme.success
                                                 : taskRow.modelData.skipped
                                                   || taskRow.modelData.occurrenceDate < root.controller.todayKey
-                                                  ? MobileTheme.urgent : MobileTheme.border
+                                                  ? MobileTheme.urgent
+                                                  : taskRow.modelData.categoryName !== ""
+                                                    ? taskRow.modelData.categoryColor
+                                                    : MobileTheme.border
                                 }
                                 contentItem: Text {
                                     text: completionButton.text
@@ -319,7 +343,9 @@ Item {
                                     Accessible.name: text
                                     color: taskRow.modelData.completed ? MobileTheme.disabled
                                          : taskRow.modelData.skipped ? MobileTheme.urgent
-                                                                      : MobileTheme.foreground
+                                         : taskRow.modelData.categoryName !== ""
+                                           ? taskRow.modelData.categoryColor
+                                           : MobileTheme.foreground
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.bodySize
                                     font.strikeout: taskRow.modelData.completed
@@ -369,9 +395,11 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: root.controller.todayTasks.length === 0
-                    text: root.controller.taskVisibility === "pending"
-                        ? "Nenhuma tarefa pendente." : "Nenhuma tarefa para hoje."
+                    visible: root.filteredTodayTasks.length === 0
+                    text: root.categoryFilterId !== "__all"
+                        ? "Nenhuma tarefa nesta categoria."
+                        : root.controller.taskVisibility === "pending"
+                          ? "Nenhuma tarefa pendente." : "Nenhuma tarefa para hoje."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySize

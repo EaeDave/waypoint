@@ -10,6 +10,7 @@ Item {
 
     required property var controller
     property string filter: "all"
+    property string categoryFilterId: "__all"
     readonly property var filteredTasks: {
         const query = searchField.text.trim().toLocaleLowerCase();
         const values = [];
@@ -18,6 +19,12 @@ Item {
             if (filter === "recurring" && !recurring)
                 continue;
             if (filter === "single" && recurring)
+                continue;
+            const taskCategoryId = String(task.categoryId || "");
+            if ((categoryFilterId === "__uncategorized" && taskCategoryId !== "")
+                    || (categoryFilterId !== "__all"
+                        && categoryFilterId !== "__uncategorized"
+                        && taskCategoryId !== categoryFilterId))
                 continue;
             const searchable = String(task.title || "") + " "
                              + String(task.categoryName || "");
@@ -126,6 +133,13 @@ Item {
                 onClicked: root.filter = "single"
             }
         }
+        TaskCategoryFilter {
+            Layout.fillWidth: true
+            categories: root.controller.taskCategories
+            selectedCategoryId: root.categoryFilterId
+            onCategorySelected: categoryId => root.categoryFilterId = categoryId
+        }
+
 
         ScrollView {
             Layout.fillWidth: true
@@ -189,7 +203,9 @@ Item {
                                     Layout.fillWidth: true
                                     text: taskRow.modelData.title
                                     color: taskRow.modelData.completed ? MobileTheme.disabled
-                                                                       : MobileTheme.foreground
+                                         : taskRow.modelData.categoryName !== ""
+                                           ? taskRow.modelData.categoryColor || MobileTheme.accent
+                                           : MobileTheme.foreground
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.bodySize
                                     font.bold: true

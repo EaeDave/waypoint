@@ -683,6 +683,23 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/widget_category_filter"
+            android:layout_width="84dp"
+            android:layout_height="32dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/waypoint_widget_task_visibility"
+            android:contentDescription="Filtro de categoria"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingHorizontal="4dp"
+            android:text="TODAS CAT."
+            android:textColor="#B3FFFFFF"
+            android:textSize="8sp"
+            android:textStyle="bold" />
+
+        <TextView
             android:id="@+id/widget_task_visibility"
             android:layout_width="64dp"
             android:layout_height="32dp"
