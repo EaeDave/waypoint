@@ -986,7 +986,7 @@ Panel {
                                 Layout.preferredWidth: Style.space(150)
                                 showLabel: false
                                 foreground: root.foreground
-                                background: Style.hoverFillFor(root.foreground, Color.accent)
+                                background: Color.popups.background
                                 accent: Color.accent
                                 options: root.categoryOptions()
                                 value: root.quickCategoryId
