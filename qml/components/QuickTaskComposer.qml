@@ -27,6 +27,19 @@ Rectangle {
     function currentTimeKey() {
         return Qt.formatTime(new Date(), "HH:mm");
     }
+    function categoryIndex(categoryId) {
+        const options = TaskCategoryOptions.fromCategories(root.controller.taskCategories);
+        for (let index = 0; index < options.length; ++index) {
+            if (String(options[index].id) === categoryId)
+                return index;
+        }
+        return 0;
+    }
+
+    function selectList(categoryId) {
+        categoryInput.currentIndex = categoryIndex(categoryId);
+        input.forceActiveFocus();
+    }
 
 
     function anchorWeekdayIndex() {
@@ -95,6 +108,15 @@ Rectangle {
         }
     }
 
+    TaskListManager {
+        id: listManager
+        controller: root.controller
+        selectedListId: categoryInput.currentValue || ""
+        onListSelected: function(listId) {
+            root.selectList(listId);
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 12
@@ -121,7 +143,15 @@ Rectangle {
             colorRole: "color"
             model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
             ToolTip.visible: hovered
-            ToolTip.text: "Categoria da tarefa"
+            ToolTip.text: "Lista da tarefa"
+        }
+        AppButton {
+            Layout.preferredWidth: 34
+            text: "…"
+            square: true
+            ToolTip.visible: hovered
+            ToolTip.text: "Criar ou gerenciar listas"
+            onClicked: listManager.openManager()
         }
 
 

@@ -59,7 +59,7 @@ function monthCells(year, month, occurrences, holidays) {
             if (!categoryMarkersById[categoryId]) {
                 categoryMarkersById[categoryId] = {
                     id: categoryId,
-                    name: String(occurrence.categoryName || "Sem categoria"),
+                    name: String(occurrence.categoryName || "Entrada"),
                     color: String(occurrence.categoryColor || "#979FEC"),
                     overdue: false
                 }

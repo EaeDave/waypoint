@@ -221,18 +221,11 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
 
   const QJsonObject snapshot = waypoint::buildWidgetSnapshot(store, today, 1, 1, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 6);
+  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 7);
   QCOMPARE(snapshot.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("all"));
   QCOMPARE(snapshot.value(QStringLiteral("today")).toString(), QStringLiteral("2026-09-02"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeStart")).toString(), QStringLiteral("2026-08-01"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeEnd")).toString(), QStringLiteral("2026-10-31"));
-  const QJsonArray snapshotCategories = snapshot.value(QStringLiteral("categories")).toArray();
-  QCOMPARE(snapshotCategories.size(), 1);
-  QCOMPARE(snapshotCategories.first().toObject().value(QStringLiteral("id")).toString(), category.id);
-  QCOMPARE(snapshotCategories.first().toObject().value(QStringLiteral("name")).toString(),
-           QStringLiteral("Financeiro"));
-  QCOMPARE(snapshotCategories.first().toObject().value(QStringLiteral("color")).toString(),
-           QStringLiteral("#22C55E"));
 
 
   const QJsonObject dates = snapshot.value(QStringLiteral("dates")).toObject();
@@ -562,7 +555,7 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
   QVERIFY2(waypoint::applyBackgroundSync(store, appliedResponse, &result, &error),
            qPrintable(error));
   QVERIFY(!result.categoryFollowUpRequired);
-  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 6);
+  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 7);
   QVERIFY(result.notificationSchedule.isEmpty());
 }
 

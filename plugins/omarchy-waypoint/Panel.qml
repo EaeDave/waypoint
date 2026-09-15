@@ -48,7 +48,6 @@ Panel {
     property string pendingQuickTime: ""
     property string editingEmoji: ""
     property string quickCategoryId: ""
-    property string taskCategoryFilterId: "__all"
     property string editingCategoryId: ""
     property string emojiPickerTarget: ""
     property int pickerHour: 0
@@ -75,7 +74,7 @@ Panel {
         Model.dateKey(selectedDate) === Model.dateKey(today)
     readonly property var selectedDateTasks: selectedDateIsToday
         ? todayTasks : Model.occurrencesForDate(occurrences, selectedDate)
-    readonly property var selectedTasks: filterTasksByCategory(selectedDateTasks)
+    readonly property var selectedTasks: selectedDateTasks
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
@@ -114,7 +113,7 @@ Panel {
     }
 
     function categoryOptions() {
-        const options = [{ label: "Sem categoria", value: "", color: Color.accent }];
+        const options = [{ label: "Entrada", value: "", color: Color.accent }];
         for (const category of categories || []) {
             options.push({
                 label: String(category.name || ""),
@@ -123,25 +122,6 @@ Panel {
             });
         }
         return options;
-    }
-    function categoryFilterOptions() {
-        return [{ label: "Todas as categorias", value: "__all", color: Color.accent }]
-            .concat(categoryOptions());
-    }
-
-    function filterTasksByCategory(tasks) {
-        if (taskCategoryFilterId === "__all")
-            return tasks;
-        const filtered = [];
-        for (const task of tasks || []) {
-            if (taskCategoryFilterId === "__uncategorized") {
-                if (String(task.categoryId || "") === "")
-                    filtered.push(task);
-            } else if (String(task.categoryId || "") === taskCategoryFilterId) {
-                filtered.push(task);
-            }
-        }
-        return filtered;
     }
 
 
@@ -1028,48 +1008,6 @@ Panel {
                         }
                     }
 
-                    Column {
-                        width: parent.width
-                        spacing: Style.space(4)
-
-                        Text {
-                            text: "FILTRAR POR CATEGORIA"
-                            color: Qt.darker(root.foreground, 1.5)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            font.bold: true
-                            font.letterSpacing: 1
-                        }
-
-                        Flow {
-                            width: parent.width
-                            spacing: Style.space(4)
-
-                            Repeater {
-                                model: root.categoryFilterOptions()
-
-                                Button {
-                                    required property var modelData
-                                    text: modelData.value === "__all"
-                                          ? "TODAS AS CATEGORIAS"
-                                          : modelData.value === ""
-                                            ? "SEM CATEGORIA"
-                                            : "●  " + String(modelData.label || "").toUpperCase()
-                                    foreground: modelData.value === "__all" || modelData.value === ""
-                                                ? root.foreground : modelData.color
-                                    accent: modelData.color
-                                    bordered: true
-                                    selected: root.taskCategoryFilterId
-                                              === (modelData.value === ""
-                                                   ? "__uncategorized" : modelData.value)
-                                    horizontalPadding: Style.space(7)
-                                    verticalPadding: Style.space(3)
-                                    onClicked: root.taskCategoryFilterId = modelData.value === ""
-                                               ? "__uncategorized" : modelData.value
-                                }
-                            }
-                        }
-                    }
 
                     Column {
                         width: parent.width

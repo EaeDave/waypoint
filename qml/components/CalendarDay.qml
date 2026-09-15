@@ -40,11 +40,11 @@ Rectangle {
             ? root.skippedCount + " não feita" + (root.skippedCount === 1 ? "" : "s") : "";
         const categories = [];
         for (const marker of root.categoryMarkers) {
-            const label = marker.name === "" ? "Sem categoria" : marker.name;
+            const label = marker.name === "" ? "Entrada" : marker.name;
             categories.push(label + (marker.taskCount > 1 ? " (" + marker.taskCount + ")" : ""));
         }
         if (root.categoryOverflow > 0)
-            categories.push("mais " + root.categoryOverflow + " categoria"
+            categories.push("mais " + root.categoryOverflow + " lista"
                             + (root.categoryOverflow === 1 ? "" : "s"));
         const taskSummary = [pending, completed, skipped].filter(part => part !== "").join(" · ");
         const categorySummary = categories.length > 0 ? categories.join(" · ") : "";
@@ -123,7 +123,7 @@ Rectangle {
                 border.width: modelData.urgent ? 1 : 0
                 border.color: WaypointTheme.urgent
                 ToolTip.visible: markerPointer.containsMouse
-                ToolTip.text: (modelData.name === "" ? "Sem categoria" : modelData.name)
+                ToolTip.text: (modelData.name === "" ? "Entrada" : modelData.name)
                               + (modelData.taskCount > 1 ? " · " + modelData.taskCount + " tarefas" : "")
                 MouseArea {
                     id: markerPointer

@@ -344,6 +344,15 @@ Rectangle {
             editPopup.close();
     }
 
+    TaskListManager {
+        id: listManager
+        controller: root.controller
+        selectedListId: editCategory.currentValue || ""
+        onListSelected: function(listId) {
+            editCategory.currentIndex = root.categoryIndex(listId);
+        }
+    }
+
     Popup {
         id: editPopup
         parent: Overlay.overlay
@@ -409,13 +418,23 @@ Rectangle {
                 id: editReminders
                 Layout.fillWidth: true
             }
-            AppComboBox {
-                id: editCategory
+            RowLayout {
                 Layout.fillWidth: true
-                textRole: "name"
-                valueRole: "id"
-                colorRole: "color"
-                model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
+                spacing: 8
+
+                AppComboBox {
+                    id: editCategory
+                    Layout.fillWidth: true
+                    textRole: "name"
+                    valueRole: "id"
+                    colorRole: "color"
+                    model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
+                }
+
+                AppButton {
+                    text: "Listas…"
+                    onClicked: listManager.openManager()
+                }
             }
 
 

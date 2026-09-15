@@ -12,19 +12,6 @@ Item {
     readonly property date now: new Date()
     readonly property int elapsedDays: Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1
     readonly property int daysInYear: new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365
-    property string categoryFilterId: "__all"
-    readonly property var filteredTodayTasks: {
-        if (categoryFilterId === "__all")
-            return controller.todayTasks;
-        const values = [];
-        for (const task of controller.todayTasks) {
-            const taskCategoryId = String(task.categoryId || "");
-            if ((categoryFilterId === "__uncategorized" && taskCategoryId === "")
-                    || taskCategoryId === categoryFilterId)
-                values.push(task);
-        }
-        return values;
-    }
 
 
     function recordHabit(habit) {
@@ -232,7 +219,7 @@ Item {
                     }
 
                     Text {
-                        text: root.filteredTodayTasks.length
+                        text: root.controller.todayTasks.length
                         color: MobileTheme.disabled
                         font.family: MobileTheme.fontFamily
                         font.pixelSize: MobileTheme.captionSize
@@ -242,16 +229,10 @@ Item {
                         controller: root.controller
                     }
                 }
-                TaskCategoryFilter {
-                    Layout.fillWidth: true
-                    categories: root.controller.taskCategories
-                    selectedCategoryId: root.categoryFilterId
-                    onCategorySelected: categoryId => root.categoryFilterId = categoryId
-                }
 
 
                 Repeater {
-                    model: root.filteredTodayTasks
+                    model: root.controller.todayTasks
 
                     delegate: Rectangle {
                         id: taskRow
@@ -395,10 +376,8 @@ Item {
 
                 Text {
                     Layout.fillWidth: true
-                    visible: root.filteredTodayTasks.length === 0
-                    text: root.categoryFilterId !== "__all"
-                        ? "Nenhuma tarefa nesta categoria."
-                        : root.controller.taskVisibility === "pending"
+                    visible: root.controller.todayTasks.length === 0
+                    text: root.controller.taskVisibility === "pending"
                           ? "Nenhuma tarefa pendente." : "Nenhuma tarefa para hoje."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily

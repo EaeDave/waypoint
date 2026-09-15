@@ -67,7 +67,7 @@ Popup {
         selectedReminders = next;
     }
 
-    function openForCreate(dateKey) {
+    function openForCreate(dateKey, listId) {
         editingTask = ({});
         editingDefinition = false;
         emojiField.text = "";
@@ -81,7 +81,7 @@ Popup {
         untilField.text = dateKey;
         countField.value = 10;
         selectedReminders = [0];
-        categoryField.currentIndex = 0;
+        categoryField.currentIndex = categoryIndex(listId || "");
         open();
         titleField.forceActiveFocus();
     }
@@ -112,6 +112,15 @@ Popup {
         const succeeded = controller.saveTask(editingTask.taskId || "", titleField.text, dateField.text, timeField.text, frequencies[frequencyField.currentIndex], intervalField.value, selectedWeekdays, ends[endField.currentIndex], untilField.text, countField.value, selectedReminders, emojiField.text, categoryField.currentValue || "");
         if (succeeded)
             close();
+    }
+
+    TaskListManager {
+        id: listManager
+        controller: root.controller
+        selectedListId: categoryField.currentValue || ""
+        onListSelected: function(listId) {
+            categoryField.currentIndex = root.categoryIndex(listId);
+        }
     }
 
     Overlay.modal: Rectangle {
@@ -211,7 +220,7 @@ Popup {
                 }
 
                 Text {
-                    text: "CATEGORIA"
+                    text: "LISTA"
                     color: MobileTheme.subdued
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.captionSize
@@ -219,15 +228,28 @@ Popup {
                     font.letterSpacing: 1
                 }
 
-                MobileComboBox {
-                    id: categoryField
+                RowLayout {
                     Layout.fillWidth: true
-                    model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
-                    textRole: "name"
-                    valueRole: "id"
-                    colorRole: "color"
-                    Accessible.id: "task-editor-category"
-                    Accessible.name: "Categoria da tarefa"
+                    spacing: 8
+
+                    MobileComboBox {
+                        id: categoryField
+                        Layout.fillWidth: true
+                        model: TaskCategoryOptions.fromCategories(root.controller.taskCategories)
+                        textRole: "name"
+                        valueRole: "id"
+                        colorRole: "color"
+                        Accessible.id: "task-editor-category"
+                        Accessible.name: "Lista da tarefa"
+                    }
+
+                    MobileButton {
+                        Layout.preferredWidth: 92
+                        text: "LISTAS"
+                        quiet: true
+                        Accessible.id: "task-editor-manage-lists"
+                        onClicked: listManager.openManager()
+                    }
                 }
 
                 Text {

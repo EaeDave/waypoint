@@ -44,7 +44,7 @@ Item {
             if (!markersById[markerId]) {
                 markersById[markerId] = {
                     id: markerId,
-                    name: occurrence.categoryName || "Sem categoria",
+                    name: occurrence.categoryName || "Entrada",
                     color: occurrence.categoryColor || MobileTheme.accent,
                     overdue: false
                 };
