@@ -112,9 +112,14 @@ case "$1" in
   *) exit 2 ;;
 esac
 )";
+  const QByteArray omarchyShellScript = R"(#!/bin/sh
+[ "$1 $2" = "shell rescanPlugins" ] || exit 2
+printf 'rescan\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
+)";
   const QByteArray omarchyScript = R"(#!/bin/sh
+[ "$1 $2" = "restart shell" ] || exit 2
 sleep 1
-printf 'restarted\n' >"$WAYPOINT_TEST_OMARCHY_MARKER"
+printf 'restart\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
 )";
 
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("curl")), curlScript, true));
@@ -122,41 +127,47 @@ printf 'restarted\n' >"$WAYPOINT_TEST_OMARCHY_MARKER"
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("systemctl")),
                     QByteArrayLiteral("#!/bin/sh\nexit 0\n"), true));
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("omarchy")), omarchyScript, true));
+  QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("omarchy-shell")), omarchyShellScript, true));
 
   QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
   environment.insert(QStringLiteral("HOME"), home);
   environment.insert(QStringLiteral("XDG_CONFIG_HOME"), QDir(home).filePath(QStringLiteral(".config")));
   environment.insert(QStringLiteral("XDG_DATA_HOME"), QDir(home).filePath(QStringLiteral(".local/share")));
   environment.insert(QStringLiteral("WAYPOINT_INSTALL_PREFIX"), installPrefix);
-  environment.insert(QStringLiteral("WAYPOINT_TEST_ARCHIVE_SHA"),
-                     QString::fromLatin1(QCryptographicHash::hash(QByteArrayLiteral("archive"),
-                                                                  QCryptographicHash::Sha256)
-                                             .toHex()));
+  environment.insert(
+      QStringLiteral("WAYPOINT_TEST_ARCHIVE_SHA"),
+      QString::fromLatin1(
+          QCryptographicHash::hash(QByteArrayLiteral("archive"), QCryptographicHash::Sha256).toHex()));
   environment.insert(QStringLiteral("WAYPOINT_TEST_RELEASE_VERSION"), QString::fromLatin1(releaseVersion));
   environment.insert(QStringLiteral("WAYPOINT_TEST_OMARCHY_MARKER"), restartMarker);
-  environment.insert(QStringLiteral("PATH"), fakeBin + QDir::listSeparator() + environment.value(QStringLiteral("PATH")));
+  environment.insert(QStringLiteral("PATH"),
+                     fakeBin + QDir::listSeparator() + environment.value(QStringLiteral("PATH")));
 
   QProcess updater;
   updater.setProcessEnvironment(environment);
   updater.setProcessChannelMode(QProcess::MergedChannels);
-  updater.start(QStringLiteral(WAYPOINT_UPDATER_PATH),
-                {QStringLiteral("--version"), QString::fromLatin1(releaseVersion),
-                 QStringLiteral("--archive-url"),
-                 QStringLiteral("https://github.com/EaeDave/waypoint/releases/download/v9.9.9/waypoint-linux-x86_64.tar.gz"),
-                 QStringLiteral("--checksums-url"),
-                 QStringLiteral("https://github.com/EaeDave/waypoint/releases/download/v9.9.9/SHA256SUMS"),
-                 QStringLiteral("--repository"), QStringLiteral("EaeDave/waypoint")});
+  updater.start(
+      QStringLiteral(WAYPOINT_UPDATER_PATH),
+      {QStringLiteral("--version"), QString::fromLatin1(releaseVersion), QStringLiteral("--archive-url"),
+       QStringLiteral(
+           "https://github.com/EaeDave/waypoint/releases/download/v9.9.9/waypoint-linux-x86_64.tar.gz"),
+       QStringLiteral("--checksums-url"),
+       QStringLiteral("https://github.com/EaeDave/waypoint/releases/download/v9.9.9/SHA256SUMS"),
+       QStringLiteral("--repository"), QStringLiteral("EaeDave/waypoint")});
 
   QVERIFY2(updater.waitForFinished(15000), qPrintable(updater.errorString()));
   const QByteArray output = updater.readAll();
   QVERIFY2(updater.exitStatus() == QProcess::NormalExit && updater.exitCode() == 0, output.constData());
-  QVERIFY2(QFileInfo::exists(restartMarker), "The updater returned before Omarchy finished restarting");
+  QFile restartLog(restartMarker);
+  QVERIFY2(restartLog.open(QIODevice::ReadOnly), "The updater did not reload the Omarchy plugin");
+  QCOMPARE(restartLog.readAll(), QByteArrayLiteral("rescan\nrestart\n"));
   QCOMPARE(QFileInfo(currentLink).canonicalFilePath(),
            QFileInfo(QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9"))).canonicalFilePath());
 
   const QString pluginTarget = QDir(home).filePath(QStringLiteral(".config/omarchy/plugins/io.waypoint.bar"));
-  QCOMPARE(QFileInfo(pluginTarget).symLinkTarget(),
-           QDir(currentLink).filePath(QStringLiteral("usr/share/waypoint/omarchy-waypoint")));
+  QCOMPARE(
+      QFileInfo(pluginTarget).symLinkTarget(),
+      QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9/usr/share/waypoint/omarchy-waypoint")));
 }
 
 QTEST_APPLESS_MAIN(LinuxUpdaterTest)

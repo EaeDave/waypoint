@@ -123,6 +123,33 @@ void launchDesktop(const QString &installBase) {
   QProcess::startDetached(QDir(installBase).filePath(QStringLiteral("bin/waypoint")), {});
 }
 
+QString findOmarchyExecutable(const QString &program) {
+  const QString executable = QStandardPaths::findExecutable(program);
+  if (!executable.isEmpty()) {
+    return executable;
+  }
+  const QString systemExecutable = QDir(QStringLiteral("/usr/share/omarchy/bin")).filePath(program);
+  return QFileInfo(systemExecutable).isExecutable() ? systemExecutable : QString{};
+}
+
+bool reloadOmarchyPlugin(const QString &pluginTarget, QString *errorMessage) {
+  if (!QFileInfo::exists(pluginTarget)) {
+    return true;
+  }
+  const QString shell = findOmarchyExecutable(QStringLiteral("omarchy-shell"));
+  if (!shell.isEmpty()) {
+    run(shell, {QStringLiteral("shell"), QStringLiteral("rescanPlugins")}, nullptr, nullptr);
+  }
+  const QString omarchy = findOmarchyExecutable(QStringLiteral("omarchy"));
+  if (omarchy.isEmpty()) {
+    if (errorMessage != nullptr) {
+      *errorMessage = QStringLiteral("omarchy is unavailable");
+    }
+    return false;
+  }
+  return run(omarchy, {QStringLiteral("restart"), QStringLiteral("shell")}, nullptr, errorMessage);
+}
+
 } // namespace
 
 int main(int argc, char *argv[]) {
@@ -277,17 +304,9 @@ int main(int argc, char *argv[]) {
   }
 
   const QString pluginSource =
-      QDir(currentLink).filePath(QStringLiteral("usr/share/waypoint/omarchy-waypoint"));
+      QDir(installRoot).filePath(QStringLiteral("usr/share/waypoint/omarchy-waypoint"));
   const QString pluginTarget =
       QDir::home().filePath(QStringLiteral(".config/omarchy/plugins/io.waypoint.bar"));
-  if (QFileInfo(pluginSource).isDir() &&
-      QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")))) {
-    QDir().mkpath(QFileInfo(pluginTarget).absolutePath());
-    if (!replaceSymlink(pluginTarget, pluginSource, &error)) {
-      replaceSymlink(currentLink, previousRoot, nullptr);
-      return fail(error);
-    }
-  }
 
   const QString systemctl = QStandardPaths::findExecutable(QStringLiteral("systemctl"));
   if (!systemctl.isEmpty()) {
@@ -316,12 +335,23 @@ int main(int argc, char *argv[]) {
     return fail(
         QStringLiteral("The new daemon did not become ready; Waypoint restored the previous version"));
   }
+  if (QFileInfo(pluginSource).isDir() &&
+      QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")))) {
+    QDir().mkpath(QFileInfo(pluginTarget).absolutePath());
+    if (!replaceSymlink(pluginTarget, pluginSource, &error)) {
+      replaceSymlink(currentLink, previousRoot, nullptr);
+      if (!systemctl.isEmpty()) {
+        run(systemctl,
+            {QStringLiteral("--user"), QStringLiteral("restart"), QStringLiteral("waypointd.service")},
+            nullptr, nullptr);
+      }
+      return fail(error);
+    }
+  }
 
-  const QString omarchy = QStandardPaths::findExecutable(QStringLiteral("omarchy"));
-  if (!omarchy.isEmpty() && QFileInfo::exists(pluginTarget) &&
-      !run(omarchy, {QStringLiteral("restart"), QStringLiteral("shell")}, nullptr, &error)) {
-    return fail(QStringLiteral("Waypoint was updated, but the Omarchy shell could not restart: %1")
-                    .arg(error));
+  if (!reloadOmarchyPlugin(pluginTarget, &error)) {
+    return fail(
+        QStringLiteral("Waypoint was updated, but the Omarchy plugin could not reload: %1").arg(error));
   }
   writeStatus(QStringLiteral("complete"), releaseVersion);
   if (relaunchDesktop) {

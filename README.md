@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/EaeDave/waypoint/main/install.sh | 
 
 The installer verifies the release checksum, installs the application under `~/.local/lib`, creates commands in `~/.local/bin`, installs the desktop entry, and enables the `waypointd` user service. If Omarchy is installed, it also enables the Waypoint bar plugin.
 
-`waypointd` checks the latest stable GitHub release every six hours. The desktop settings page and Omarchy panel show the installed version and offer an update action when a newer release exists. Updates from this installer are downloaded with their published SHA-256 checksum, staged under `~/.local/lib`, activated atomically, and rolled back if the updated daemon does not become ready. Source builds and system-package installations are never overwritten.
+`waypointd` checks the latest stable GitHub release every six hours. The desktop settings page and Omarchy panel show the installed version and offer an update action when a newer release exists. Updates from this installer are downloaded with their published SHA-256 checksum, staged under `~/.local/lib`, activated atomically, and rolled back if the updated daemon does not become ready. When the Omarchy plugin is installed, the updater repoints it to the new release and restarts the shell so its QML is loaded immediately. Source builds and system-package installations are never overwritten.
 
 Ensure `~/.local/bin` is in `PATH`, then launch:
 
