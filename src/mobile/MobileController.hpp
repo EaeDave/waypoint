@@ -25,6 +25,7 @@ class MobileController final : public QObject {
   Q_PROPERTY(QVariantList todayTasks READ todayTasks NOTIFY dataChanged)
   Q_PROPERTY(QVariantList selectedTasks READ selectedTasks NOTIFY dataChanged)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY dataChanged)
+  Q_PROPERTY(QVariantList selectedDateHabits READ selectedDateHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthOccurrences READ monthOccurrences NOTIFY dataChanged)
   Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY dataChanged)
   Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY dataChanged)
@@ -61,6 +62,7 @@ public:
   [[nodiscard]] QVariantList todayTasks() const;
   [[nodiscard]] QVariantList selectedTasks() const;
   [[nodiscard]] QVariantList todayHabits() const;
+  [[nodiscard]] QVariantList selectedDateHabits() const;
   [[nodiscard]] QVariantList monthOccurrences() const;
   [[nodiscard]] QVariantList taskCategories() const;
   [[nodiscard]] QVariantList allTasks() const;
@@ -98,16 +100,15 @@ public:
   Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
-  Q_INVOKABLE bool saveTaskCategory(const QString &categoryId, const QString &name,
-                                    const QString &color);
+  Q_INVOKABLE bool saveTaskCategory(const QString &categoryId, const QString &name, const QString &color);
   Q_INVOKABLE bool deleteTaskCategory(const QString &categoryId);
 
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
                              const QString &unit, const QString &checkInMode, qint64 incrementAmount,
                              const QVariantList &weekdays, const QVariantList &reminderTimes,
                              const QString &emoji);
-  Q_INVOKABLE bool recordHabit(const QString &habitId, qint64 amount = 0);
-  Q_INVOKABLE bool undoHabit(const QString &habitId);
+  Q_INVOKABLE bool recordHabit(const QString &habitId, const QString &dateKey, qint64 amount = 0);
+  Q_INVOKABLE bool undoHabit(const QString &habitId, const QString &dateKey);
   Q_INVOKABLE bool deleteHabit(const QString &habitId);
 
   Q_INVOKABLE bool saveSyncConfiguration(const QString &endpoint, const QString &token);
@@ -156,6 +157,7 @@ private:
   QVariantList m_todayTasks;
   QVariantList m_selectedTasks;
   QVariantList m_todayHabits;
+  QVariantList m_selectedDateHabits;
   QVariantList m_monthOccurrences;
   QVariantList m_taskCategories;
   QVariantList m_allTasks;

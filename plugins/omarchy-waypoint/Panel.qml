@@ -18,7 +18,7 @@ Panel {
     property var occurrences: []
     property var categories: []
     property var todayTasks: []
-    property var todayHabits: []
+    property var selectedHabits: []
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -131,8 +131,10 @@ Panel {
         selectedDate = today;
         viewYear = selectedDate.getFullYear();
         viewMonth = selectedDate.getMonth();
-        if (hostWidget)
+        if (hostWidget) {
             hostWidget.refreshRange(viewYear, viewMonth);
+            hostWidget.refreshHabits(Model.dateKey(selectedDate));
+        }
         controller.show();
     }
 
@@ -157,6 +159,8 @@ Panel {
 
     function selectDay(date) {
         selectedDate = date;
+        if (hostWidget)
+            hostWidget.refreshHabits(Model.dateKey(selectedDate));
         if (date.getMonth() !== viewMonth || date.getFullYear() !== viewYear) {
             viewMonth = date.getMonth();
             viewYear = date.getFullYear();
@@ -558,7 +562,8 @@ Panel {
 
     function recordManualHabit() {
         if (hostWidget)
-            hostWidget.recordHabit(manualHabitId, habitManualAmount.value);
+            hostWidget.recordHabit(
+                manualHabitId, Model.dateKey(selectedDate), habitManualAmount.value);
         habitManualVisible = false;
     }
 
@@ -1243,7 +1248,6 @@ Panel {
                     Column {
                         width: parent.width
                         spacing: Style.space(3)
-                        visible: root.selectedDateIsToday
 
                         RowLayout {
                             width: parent.width
@@ -1269,16 +1273,16 @@ Panel {
                         }
 
                         Text {
-                            visible: root.todayHabits.length === 0
+                            visible: root.selectedHabits.length === 0
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "Nenhum hábito para hoje"
+                            text: "Nenhum hábito para este dia"
                             color: Qt.darker(root.foreground, 1.9)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
                         }
 
                         Repeater {
-                            model: root.todayHabits
+                            model: root.selectedHabits
 
                             Rectangle {
                                 id: habitRow
@@ -1367,7 +1371,8 @@ Panel {
                                         horizontalPadding: Style.space(6)
                                         verticalPadding: Style.space(3)
                                         onClicked: if (root.hostWidget)
-                                            root.hostWidget.undoHabit(habitRow.modelData.id)
+                                            root.hostWidget.undoHabit(
+                                                habitRow.modelData.id, Model.dateKey(root.selectedDate))
                                     }
                                     Button {
                                         text: "⋯"
@@ -1395,7 +1400,9 @@ Panel {
                                             if (habitRow.modelData.checkInMode === "manual")
                                                 root.openManualHabit(habitRow.modelData.id);
                                             else
-                                                root.hostWidget.recordHabit(habitRow.modelData.id, 0);
+                                                root.hostWidget.recordHabit(
+                                                    habitRow.modelData.id,
+                                                    Model.dateKey(root.selectedDate), 0);
                                         }
                                     }
                                 }

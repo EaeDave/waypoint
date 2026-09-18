@@ -13,6 +13,9 @@ BarWidget {
     property var categories: []
     property var today: ({ pendingCount: 0, overdueCount: 0, occurrences: [], habits: [] })
     property var holidays: []
+    property var selectedHabits: []
+    property string requestedHabitDate: ""
+    property string loadedHabitDate: ""
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property string taskVisibility: "all"
@@ -49,6 +52,16 @@ BarWidget {
         rangeTo = range.to;
         refresh();
     }
+    function refreshHabits(dateKey) {
+        if (requestedHabitDate !== dateKey)
+            selectedHabits = [];
+        requestedHabitDate = dateKey;
+        if (habitProcess.running)
+            return;
+        habitProcess.command = ["waypointctl", "habits", "--date", requestedHabitDate];
+        habitProcess.running = true;
+    }
+
 
     function runAction(arguments) {
         if (actionProcess.running)
@@ -117,15 +130,15 @@ BarWidget {
         runAction(arguments);
     }
 
-    function recordHabit(habitId, amount) {
-        const arguments = ["record-habit", habitId];
+    function recordHabit(habitId, dateKey, amount) {
+        const arguments = ["record-habit", habitId, "--date", dateKey];
         if (amount > 0)
             arguments.push("--amount", String(amount));
         runAction(arguments);
     }
 
-    function undoHabit(habitId) {
-        runAction(["undo-habit", habitId]);
+    function undoHabit(habitId, dateKey) {
+        runAction(["undo-habit", habitId, "--date", dateKey]);
     }
 
     function deleteHabit(habitId) {
@@ -153,7 +166,7 @@ BarWidget {
         target.occurrences = Qt.binding(() => root.occurrences);
         target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
         target.todayTasks = Qt.binding(() => root.today.occurrences || []);
-        target.todayHabits = Qt.binding(() => root.today.habits || []);
+        target.selectedHabits = Qt.binding(() => root.selectedHabits);
         target.categories = Qt.binding(() => root.categories);
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
@@ -257,11 +270,54 @@ BarWidget {
             }
         }
     }
+    Process {
+        id: habitProcess
+        running: false
+
+        onExited: {
+            if (root.loadedHabitDate !== root.requestedHabitDate)
+                Qt.callLater(() => root.refreshHabits(root.requestedHabitDate));
+        }
+
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    const response = JSON.parse(String(text || "{}"));
+                    if (!response.ok)
+                        throw new Error(response.error || "habit load failed");
+                    root.loadedHabitDate = String(response.date || "");
+                    if (root.loadedHabitDate === root.requestedHabitDate)
+                        root.selectedHabits = response.habits || [];
+                    root.loadError = "";
+                } catch (error) {
+                    root.loadedHabitDate = root.requestedHabitDate;
+                    root.loadError = String(error);
+                }
+            }
+        }
+
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                const message = String(text || "").trim();
+                if (message !== "") {
+                    root.loadedHabitDate = root.requestedHabitDate;
+                    root.loadError = message;
+                }
+            }
+        }
+    }
+
 
     Process {
         id: actionProcess
         running: false
-        onExited: root.refresh()
+        onExited: {
+            root.refresh();
+            if (root.requestedHabitDate !== "")
+                root.refreshHabits(root.requestedHabitDate);
+        }
     }
 
     Process {

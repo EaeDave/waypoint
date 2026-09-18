@@ -54,7 +54,6 @@ TaskCategory taskCategoryFromQuery(const QSqlQuery &query) {
   return category;
 }
 
-
 TaskRecord taskFromQuery(const QSqlQuery &query) {
   TaskRecord task;
   task.id = query.value(0).toString();
@@ -332,21 +331,18 @@ bool TaskStore::migrate(QString *errorMessage) {
   }
 
   QSqlQuery dropLegacyCategoryIndex(m_database);
-  if (!dropLegacyCategoryIndex.exec(
-          QStringLiteral("DROP INDEX IF EXISTS task_categories_active_idx"))) {
-    setError(errorMessage,
-             queryFailure(QStringLiteral("Cannot replace legacy category name index"),
-                          dropLegacyCategoryIndex));
+  if (!dropLegacyCategoryIndex.exec(QStringLiteral("DROP INDEX IF EXISTS task_categories_active_idx"))) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot replace legacy category name index"),
+                                        dropLegacyCategoryIndex));
     return false;
   }
 
   QSqlQuery duplicateCategoryNames(m_database);
-  if (!duplicateCategoryNames.exec(QStringLiteral(
-          "SELECT name FROM task_categories WHERE deleted_at IS NULL "
-          "GROUP BY name COLLATE NOCASE HAVING COUNT(*) > 1 LIMIT 1"))) {
-    setError(errorMessage,
-             queryFailure(QStringLiteral("Cannot inspect category names during migration"),
-                          duplicateCategoryNames));
+  if (!duplicateCategoryNames.exec(
+          QStringLiteral("SELECT name FROM task_categories WHERE deleted_at IS NULL "
+                         "GROUP BY name COLLATE NOCASE HAVING COUNT(*) > 1 LIMIT 1"))) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot inspect category names during migration"),
+                                        duplicateCategoryNames));
     return false;
   }
   if (duplicateCategoryNames.next()) {
@@ -357,12 +353,11 @@ bool TaskStore::migrate(QString *errorMessage) {
   }
 
   QSqlQuery uniqueCategoryNames(m_database);
-  if (!uniqueCategoryNames.exec(QStringLiteral(
-          "CREATE UNIQUE INDEX IF NOT EXISTS task_categories_active_name_unique_idx "
-          "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"))) {
-    setError(errorMessage,
-             queryFailure(QStringLiteral("Cannot enforce unique active category names"),
-                          uniqueCategoryNames));
+  if (!uniqueCategoryNames.exec(
+          QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS task_categories_active_name_unique_idx "
+                         "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL"))) {
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot enforce unique active category names"),
+                                        uniqueCategoryNames));
     return false;
   }
 
@@ -584,8 +579,13 @@ QList<HabitEntry> TaskStore::listHabitEntries(const QString &habitId, const QDat
 }
 
 QList<HabitProgress> TaskStore::listHabitProgress(const QDate &date, QString *errorMessage) const {
-  if (!date.isValid()) {
-    setError(errorMessage, QStringLiteral("Habit progress requires a valid calendar date"));
+  return listHabitProgress(date, date, errorMessage).value(date);
+}
+
+QMap<QDate, QList<HabitProgress>> TaskStore::listHabitProgress(const QDate &from, const QDate &to,
+                                                               QString *errorMessage) const {
+  if (!from.isValid() || !to.isValid() || from > to) {
+    setError(errorMessage, QStringLiteral("Habit progress range requires valid ordered dates"));
     return {};
   }
   QString error;
@@ -595,26 +595,35 @@ QList<HabitProgress> TaskStore::listHabitProgress(const QDate &date, QString *er
     return {};
   }
 
-  QHash<QString, qint64> amounts;
+  QHash<QString, QHash<QString, qint64>> amountsByDate;
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral("SELECT habit_id, COALESCE(SUM(amount), 0) FROM habit_entries "
-                               "WHERE entry_date = ? AND deleted_at IS NULL GROUP BY habit_id"));
-  query.addBindValue(date.toString(Qt::ISODate));
+  query.prepare(QStringLiteral("SELECT entry_date, habit_id, COALESCE(SUM(amount), 0) "
+                               "FROM habit_entries "
+                               "WHERE entry_date BETWEEN ? AND ? AND deleted_at IS NULL "
+                               "GROUP BY entry_date, habit_id"));
+  query.addBindValue(from.toString(Qt::ISODate));
+  query.addBindValue(to.toString(Qt::ISODate));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot calculate habit progress"), query));
     return {};
   }
   while (query.next()) {
-    amounts.insert(query.value(0).toString(), query.value(1).toLongLong());
+    amountsByDate[query.value(0).toString()].insert(query.value(1).toString(), query.value(2).toLongLong());
   }
 
-  QList<HabitProgress> progress;
-  for (const HabitRecord &habit : habits) {
-    if (habit.isScheduledOn(date)) {
-      progress.append({habit, date, amounts.value(habit.id)});
+  QMap<QDate, QList<HabitProgress>> progressByDate;
+  for (QDate date = from; date <= to; date = date.addDays(1)) {
+    const QHash<QString, qint64> amounts = amountsByDate.value(date.toString(Qt::ISODate));
+    QList<HabitProgress> progress;
+    progress.reserve(habits.size());
+    for (const HabitRecord &habit : habits) {
+      if (habit.isScheduledOn(date)) {
+        progress.append({habit, date, amounts.value(habit.id)});
+      }
     }
+    progressByDate.insert(date, progress);
   }
-  return progress;
+  return progressByDate;
 }
 
 bool TaskStore::claimHabitReminderDelivery(const QString &habitId, const QDate &habitDate,
@@ -1097,8 +1106,8 @@ bool TaskStore::undoLastHabitEntry(const QString &habitId, const QDate &date, QS
   emit habitsChanged();
   return true;
 }
-bool TaskStore::createTaskCategory(const QString &name, const QString &color,
-                                   TaskCategory *createdCategory, QString *errorMessage) {
+bool TaskStore::createTaskCategory(const QString &name, const QString &color, TaskCategory *createdCategory,
+                                   QString *errorMessage) {
   TaskCategory category;
   category.id = newIdentifier();
   category.name = name.trimmed();
@@ -1140,13 +1149,12 @@ bool TaskStore::createTaskCategory(const QString &name, const QString &color,
   insert.addBindValue(category.updatedAt.toString(Qt::ISODateWithMs));
   insert.addBindValue(category.version);
   if (!insert.exec() ||
-      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id,
-                       QStringLiteral("upsert"), category.toJson(), errorMessage) ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id, QStringLiteral("upsert"),
+                       category.toJson(), errorMessage) ||
       !commitTransaction(errorMessage)) {
     if (insert.lastError().isValid()) {
       setError(errorMessage,
-               queryFailure(QStringLiteral("Cannot create task category '%1'").arg(category.name),
-                            insert));
+               queryFailure(QStringLiteral("Cannot create task category '%1'").arg(category.name), insert));
     }
     rollbackTransaction();
     return false;
@@ -1158,8 +1166,8 @@ bool TaskStore::createTaskCategory(const QString &name, const QString &color,
   return true;
 }
 
-bool TaskStore::editTaskCategory(const QString &categoryId, const QString &name,
-                                 const QString &color, QString *errorMessage) {
+bool TaskStore::editTaskCategory(const QString &categoryId, const QString &name, const QString &color,
+                                 QString *errorMessage) {
   QSqlQuery select(m_database);
   select.prepare(QStringLiteral("SELECT id, name, color, created_at, updated_at, version "
                                 "FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
@@ -1211,8 +1219,8 @@ bool TaskStore::editTaskCategory(const QString &categoryId, const QString &name,
   update.addBindValue(category.version);
   update.addBindValue(category.id);
   if (!update.exec() ||
-      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id,
-                       QStringLiteral("upsert"), category.toJson(), errorMessage) ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), category.id, QStringLiteral("upsert"),
+                       category.toJson(), errorMessage) ||
       !commitTransaction(errorMessage)) {
     if (update.lastError().isValid()) {
       setError(errorMessage,
@@ -1235,8 +1243,7 @@ bool TaskStore::deleteTaskCategory(const QString &categoryId, QString *errorMess
   if (!selectVersion.exec() || !selectVersion.next()) {
     setError(errorMessage,
              selectVersion.lastError().isValid()
-                 ? queryFailure(QStringLiteral("Cannot read task category %1").arg(categoryId),
-                                selectVersion)
+                 ? queryFailure(QStringLiteral("Cannot read task category %1").arg(categoryId), selectVersion)
                  : QStringLiteral("Cannot delete missing task category: %1").arg(categoryId));
     return false;
   }
@@ -1257,8 +1264,8 @@ bool TaskStore::deleteTaskCategory(const QString &categoryId, QString *errorMess
       {QStringLiteral("version"), tombstoneVersion},
   };
   if (!update.exec() || update.numRowsAffected() != 1 ||
-      !enqueueMutation(newIdentifier(), QStringLiteral("category"), categoryId,
-                       QStringLiteral("delete"), tombstone, errorMessage) ||
+      !enqueueMutation(newIdentifier(), QStringLiteral("category"), categoryId, QStringLiteral("delete"),
+                       tombstone, errorMessage) ||
       !commitTransaction(errorMessage)) {
     if (update.lastError().isValid()) {
       setError(errorMessage,
@@ -1276,8 +1283,7 @@ bool TaskStore::validateTaskCategoryId(const QString &categoryId, QString *error
     return true;
   }
   QSqlQuery query(m_database);
-  query.prepare(
-      QStringLiteral("SELECT 1 FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
+  query.prepare(QStringLiteral("SELECT 1 FROM task_categories WHERE id = ? AND deleted_at IS NULL"));
   query.addBindValue(categoryId);
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot validate task category"), query));
@@ -1290,12 +1296,9 @@ bool TaskStore::validateTaskCategoryId(const QString &categoryId, QString *error
   return true;
 }
 
-
-
-bool TaskStore::createTask(const QString &title, const QDate &scheduledDate,
-                           const QTime &scheduledTime, const RecurrenceRule &recurrence,
-                           const QList<int> &reminderMinutesBefore, const QString &emoji,
-                           const QString &categoryId, TaskRecord *createdTask,
+bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, const QTime &scheduledTime,
+                           const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
+                           const QString &emoji, const QString &categoryId, TaskRecord *createdTask,
                            QString *errorMessage) {
   const QString normalizedTitle = title.trimmed();
   if (normalizedTitle.isEmpty()) {
@@ -1512,11 +1515,10 @@ bool TaskStore::rescheduleTask(const QString &taskId, const QDate &scheduledDate
                      {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))}},
                     errorMessage);
 }
-bool TaskStore::editTask(const QString &taskId, const QString &title,
-                         const QTime &scheduledTime, const RecurrenceRule &recurrence,
-                         const std::optional<QList<int>> &reminderMinutesBefore,
-                         const QString &emoji, const std::optional<QString> &categoryId,
-                         QString *errorMessage) {
+bool TaskStore::editTask(const QString &taskId, const QString &title, const QTime &scheduledTime,
+                         const RecurrenceRule &recurrence,
+                         const std::optional<QList<int>> &reminderMinutesBefore, const QString &emoji,
+                         const std::optional<QString> &categoryId, QString *errorMessage) {
   QJsonObject fields{
       {QStringLiteral("title"), title},
       {QStringLiteral("scheduledTime"), scheduledTime.toString(QStringLiteral("HH:mm"))},
@@ -1746,8 +1748,7 @@ QJsonArray TaskStore::pendingMutations(QString *errorMessage) const {
   return pendingMutations({}, std::numeric_limits<qsizetype>::max(), errorMessage);
 }
 
-QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes,
-                                       const qsizetype maximumCount,
+QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes, const qsizetype maximumCount,
                                        QString *errorMessage) const {
   if (maximumCount < 1) {
     setError(errorMessage, QStringLiteral("Mutation batch size must be positive"));
@@ -1766,8 +1767,7 @@ QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes,
     return mutations;
   }
   while (mutations.size() < maximumCount && query.next()) {
-    if (!allowedEntityTypes.isEmpty() &&
-        !allowedEntityTypes.contains(query.value(1).toString())) {
+    if (!allowedEntityTypes.isEmpty() && !allowedEntityTypes.contains(query.value(1).toString())) {
       continue;
     }
     QJsonParseError parseError;
@@ -1789,11 +1789,9 @@ QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes,
 }
 QStringList TaskStore::serverSupportedEntityTypes(QString *errorMessage) const {
   QSqlQuery query(m_database);
-  query.prepare(
-      QStringLiteral("SELECT value FROM sync_state WHERE key = 'server-supported-entity-types'"));
+  query.prepare(QStringLiteral("SELECT value FROM sync_state WHERE key = 'server-supported-entity-types'"));
   if (!query.exec()) {
-    setError(errorMessage,
-             queryFailure(QStringLiteral("Cannot read server sync capabilities"), query));
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot read server sync capabilities"), query));
     return {};
   }
   if (!query.next()) {
@@ -1817,8 +1815,7 @@ QStringList TaskStore::serverSupportedEntityTypes(QString *errorMessage) const {
   return entityTypes;
 }
 
-bool TaskStore::saveServerSupportedEntityTypes(const QStringList &entityTypes,
-                                               QString *errorMessage) {
+bool TaskStore::saveServerSupportedEntityTypes(const QStringList &entityTypes, QString *errorMessage) {
   QJsonArray values;
   QSet<QString> unique;
   for (const QString &entityType : entityTypes) {
@@ -1830,18 +1827,16 @@ bool TaskStore::saveServerSupportedEntityTypes(const QStringList &entityTypes,
     values.append(entityType);
   }
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral(
-      "INSERT INTO sync_state(key, value) VALUES('server-supported-entity-types', ?) "
-      "ON CONFLICT(key) DO UPDATE SET value=excluded.value"));
+  query.prepare(
+      QStringLiteral("INSERT INTO sync_state(key, value) VALUES('server-supported-entity-types', ?) "
+                     "ON CONFLICT(key) DO UPDATE SET value=excluded.value"));
   query.addBindValue(QString::fromUtf8(QJsonDocument(values).toJson(QJsonDocument::Compact)));
   if (!query.exec()) {
-    setError(errorMessage,
-             queryFailure(QStringLiteral("Cannot save server sync capabilities"), query));
+    setError(errorMessage, queryFailure(QStringLiteral("Cannot save server sync capabilities"), query));
     return false;
   }
   return true;
 }
-
 
 QString TaskStore::syncCursor(QString *errorMessage) const {
   QSqlQuery query(m_database);
@@ -1912,8 +1907,7 @@ bool TaskStore::saveSyncConfiguration(const SyncConfiguration &configuration, QS
             QStringLiteral("DELETE FROM sync_state WHERE key = 'server-supported-entity-types'"))) {
       rollbackTransaction();
       setError(errorMessage,
-               queryFailure(QStringLiteral("Cannot reset server sync capabilities"),
-                            clearCapabilities));
+               queryFailure(QStringLiteral("Cannot reset server sync capabilities"), clearCapabilities));
       return false;
     }
   }
@@ -2395,11 +2389,10 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
                      queryFailure(QStringLiteral("Cannot preserve task category"), currentCategory));
             return false;
           }
-          payload.insert(
-              QStringLiteral("categoryId"),
-              currentCategory.next() && !currentCategory.value(0).isNull()
-                  ? QJsonValue(currentCategory.value(0).toString())
-                  : QJsonValue(QJsonValue::Null));
+          payload.insert(QStringLiteral("categoryId"),
+                         currentCategory.next() && !currentCategory.value(0).isNull()
+                             ? QJsonValue(currentCategory.value(0).toString())
+                             : QJsonValue(QJsonValue::Null));
         }
         const TaskRecord task = TaskRecord::fromJson(payload);
         if (!isValidTaskEmoji(task.emoji)) {
@@ -2458,10 +2451,9 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
       if (operation == QStringLiteral("delete")) {
         const QString deletedAt = payload.value(QStringLiteral("deletedAt")).toString();
         const qint64 version = payload.value(QStringLiteral("version")).toInteger();
-        apply.prepare(
-            QStringLiteral("UPDATE task_categories "
-                           "SET deleted_at = ?, updated_at = ?, version = ? "
-                           "WHERE id = ? AND version <= ?"));
+        apply.prepare(QStringLiteral("UPDATE task_categories "
+                                     "SET deleted_at = ?, updated_at = ?, version = ? "
+                                     "WHERE id = ? AND version <= ?"));
         apply.addBindValue(deletedAt);
         apply.addBindValue(deletedAt);
         apply.addBindValue(version);
@@ -2471,34 +2463,30 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         const TaskCategory category = TaskCategory::fromJson(payload);
         QString validationError;
         if (!validateTaskCategoryName(category.name, &validationError) ||
-            !validateTaskCategoryColor(category.color, &validationError) ||
-            !category.createdAt.isValid() || !category.updatedAt.isValid() ||
-            category.version < 1) {
+            !validateTaskCategoryColor(category.color, &validationError) || !category.createdAt.isValid() ||
+            !category.updatedAt.isValid() || category.version < 1) {
           rollbackTransaction();
-          setError(errorMessage,
-                   QStringLiteral("Remote task category is invalid: %1")
-                       .arg(validationError.isEmpty() ? QStringLiteral("invalid metadata")
-                                                      : validationError));
+          setError(errorMessage, QStringLiteral("Remote task category is invalid: %1")
+                                     .arg(validationError.isEmpty() ? QStringLiteral("invalid metadata")
+                                                                    : validationError));
           return false;
         }
         QSqlQuery duplicate(m_database);
-        duplicate.prepare(QStringLiteral(
-            "SELECT 1 FROM task_categories "
-            "WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL AND id <> ? LIMIT 1"));
+        duplicate.prepare(
+            QStringLiteral("SELECT 1 FROM task_categories "
+                           "WHERE name = ? COLLATE NOCASE AND deleted_at IS NULL AND id <> ? LIMIT 1"));
         duplicate.addBindValue(category.name);
         duplicate.addBindValue(category.id);
         if (!duplicate.exec()) {
           rollbackTransaction();
           setError(errorMessage,
-                   queryFailure(QStringLiteral("Cannot validate remote task category name"),
-                                duplicate));
+                   queryFailure(QStringLiteral("Cannot validate remote task category name"), duplicate));
           return false;
         }
         if (duplicate.next()) {
           rollbackTransaction();
           setError(errorMessage,
-                   QStringLiteral("Another active category already uses the name '%1'")
-                       .arg(category.name));
+                   QStringLiteral("Another active category already uses the name '%1'").arg(category.name));
           return false;
         }
         apply.prepare(

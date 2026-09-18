@@ -40,8 +40,8 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   const QVariantList weekday{today.dayOfWeek()};
   QVERIFY(controller.saveTask({}, QStringLiteral("Enviar relatório"), today.toString(Qt::ISODate),
                               QStringLiteral("12:30"), QStringLiteral("weekly"), 2, weekday,
-                              QStringLiteral("afterCount"), {}, 4, QVariantList{0, 30},
-                              QStringLiteral("📤"), categoryId));
+                              QStringLiteral("afterCount"), {}, 4, QVariantList{0, 30}, QStringLiteral("📤"),
+                              categoryId));
   QCOMPARE(controller.todayTasks().size(), 1);
   const QVariantMap task = controller.todayTasks().first().toMap();
   QCOMPARE(task.value(QStringLiteral("title")).toString(), QStringLiteral("Enviar relatório"));
@@ -61,13 +61,12 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   QVERIFY(recurringDefinition.value(QStringLiteral("recurrenceLabel"))
               .toString()
               .startsWith(QStringLiteral("A CADA 2 SEMANAS")));
-  QCOMPARE(recurringDefinition.value(QStringLiteral("categoryName")).toString(),
-           QStringLiteral("Trabalho"));
+  QCOMPARE(recurringDefinition.value(QStringLiteral("categoryName")).toString(), QStringLiteral("Trabalho"));
 
   const QDate tomorrow = today.addDays(1);
   QVERIFY(controller.saveTask({}, QStringLiteral("Comprar café"), tomorrow.toString(Qt::ISODate),
-                              QStringLiteral("18:00"), QStringLiteral("none"), 1, {},
-                              QStringLiteral("never"), {}, 0, {}, {}, {}));
+                              QStringLiteral("18:00"), QStringLiteral("none"), 1, {}, QStringLiteral("never"),
+                              {}, 0, {}, {}, {}));
   QCOMPARE(controller.allTasks().size(), 2);
   const QVariantMap oneOffDefinition = controller.allTasks().at(1).toMap();
   QVERIFY(!oneOffDefinition.value(QStringLiteral("recurring")).toBool());
@@ -75,14 +74,13 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
            tomorrow.toString(Qt::ISODate));
   QVERIFY(controller.saveTask(oneOffDefinition.value(QStringLiteral("taskId")).toString(),
                               QStringLiteral("Comprar chá"), tomorrow.addDays(1).toString(Qt::ISODate),
-                              QStringLiteral("17:30"), QStringLiteral("none"), 1, {},
-                              QStringLiteral("never"), {}, 0, {}, {}, {}));
+                              QStringLiteral("17:30"), QStringLiteral("none"), 1, {}, QStringLiteral("never"),
+                              {}, 0, {}, {}, {}));
   QCOMPARE(controller.allTasks().at(1).toMap().value(QStringLiteral("title")).toString(),
            QStringLiteral("Comprar chá"));
   QVERIFY(controller.deleteTask(oneOffDefinition.value(QStringLiteral("taskId")).toString()));
   QCOMPARE(controller.allTasks().size(), 1);
-  QVERIFY(controller.saveTaskCategory(categoryId, QStringLiteral("Projetos"),
-                                      QStringLiteral("#8B5CF6")));
+  QVERIFY(controller.saveTaskCategory(categoryId, QStringLiteral("Projetos"), QStringLiteral("#8B5CF6")));
   QCOMPARE(controller.todayTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
            QStringLiteral("Projetos"));
   QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
@@ -91,8 +89,7 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   QCOMPARE(controller.taskCategories().size(), 0);
   QCOMPARE(controller.todayTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
            QString());
-  QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(),
-           QString());
+  QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(), QString());
 
   QVERIFY(controller.setTaskCompleted(task.value(QStringLiteral("taskId")).toString(),
                                       today.toString(Qt::ISODate), true, true));
@@ -109,10 +106,19 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   QCOMPARE(controller.allHabits().size(), 1);
   QCOMPARE(controller.todayHabits().size(), 1);
   const QString habitId = controller.allHabits().first().toMap().value(QStringLiteral("id")).toString();
-  QVERIFY(controller.recordHabit(habitId));
+  QVERIFY(controller.recordHabit(habitId, controller.todayKey()));
   QCOMPARE(controller.todayHabits().first().toMap().value(QStringLiteral("amount")).toLongLong(), 2);
-  QVERIFY(controller.undoHabit(habitId));
+  QVERIFY(controller.undoHabit(habitId, controller.todayKey()));
   QCOMPARE(controller.todayHabits().first().toMap().value(QStringLiteral("amount")).toLongLong(), 0);
+
+  const QString previousWeekKey = today.addDays(-7).toString(Qt::ISODate);
+  controller.setSelectedDateKey(previousWeekKey);
+  QCOMPARE(controller.selectedDateHabits().size(), 1);
+  QVERIFY(controller.recordHabit(habitId, previousWeekKey));
+  QCOMPARE(controller.selectedDateHabits().first().toMap().value(QStringLiteral("amount")).toLongLong(), 2);
+  QCOMPARE(controller.todayHabits().first().toMap().value(QStringLiteral("amount")).toLongLong(), 0);
+  QVERIFY(controller.undoHabit(habitId, previousWeekKey));
+  QCOMPARE(controller.selectedDateHabits().first().toMap().value(QStringLiteral("amount")).toLongLong(), 0);
 }
 
 void MobileControllerTest::showOnlyFirstPendingRecurrenceOnCalendar() {
@@ -184,9 +190,9 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
 
   const QDate today(2026, 9, 2);
   waypoint::TaskCategory category;
-  QVERIFY2(store.createTaskCategory(QStringLiteral("Financeiro"), QStringLiteral("#22C55E"),
-                                    &category, &error),
-           qPrintable(error));
+  QVERIFY2(
+      store.createTaskCategory(QStringLiteral("Financeiro"), QStringLiteral("#22C55E"), &category, &error),
+      qPrintable(error));
   waypoint::TaskRecord overdue;
   QVERIFY2(store.createTask(QStringLiteral("Pagar conta"), today.addDays(-1), QTime(8, 30), {}, {},
                             QStringLiteral("💳"), category.id, &overdue, &error),
@@ -218,15 +224,16 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
                              QStringLiteral("💧"), &habit, &error),
            qPrintable(error));
   QVERIFY2(store.recordHabit(habit.id, today, std::nullopt, nullptr, &error), qPrintable(error));
+  const QDate previousWeek = today.addDays(-7);
+  QVERIFY2(store.recordHabit(habit.id, previousWeek, std::nullopt, nullptr, &error), qPrintable(error));
 
   const QJsonObject snapshot = waypoint::buildWidgetSnapshot(store, today, 1, 1, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 7);
+  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 8);
   QCOMPARE(snapshot.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("all"));
   QCOMPARE(snapshot.value(QStringLiteral("today")).toString(), QStringLiteral("2026-09-02"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeStart")).toString(), QStringLiteral("2026-08-01"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeEnd")).toString(), QStringLiteral("2026-10-31"));
-
 
   const QJsonObject dates = snapshot.value(QStringLiteral("dates")).toObject();
   const QJsonArray independenceDay =
@@ -277,11 +284,18 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
   QCOMPARE(pendingTasks.size(), 1);
   QCOMPARE(pendingTasks.first().toObject().value(QStringLiteral("taskId")).toString(), overdue.id);
   QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::All, &error), qPrintable(error));
-  const QJsonArray habits = snapshot.value(QStringLiteral("habits")).toArray();
+  const QJsonArray habits =
+      dates.value(today.toString(Qt::ISODate)).toObject().value(QStringLiteral("habits")).toArray();
   QCOMPARE(habits.size(), 1);
   QCOMPARE(habits.first().toObject().value(QStringLiteral("id")).toString(), habit.id);
   QCOMPARE(habits.first().toObject().value(QStringLiteral("amount")).toInteger(), 2);
   QCOMPARE(habits.first().toObject().value(QStringLiteral("targetAmount")).toInteger(), 8);
+  const QJsonArray historicalHabits =
+      dates.value(previousWeek.toString(Qt::ISODate)).toObject().value(QStringLiteral("habits")).toArray();
+  QCOMPARE(historicalHabits.size(), 1);
+  QCOMPARE(historicalHabits.first().toObject().value(QStringLiteral("date")).toString(),
+           previousWeek.toString(Qt::ISODate));
+  QCOMPARE(historicalHabits.first().toObject().value(QStringLiteral("amount")).toInteger(), 2);
 }
 
 void MobileControllerTest::buildFutureTaskAndHabitNotifications() {
@@ -293,8 +307,8 @@ void MobileControllerTest::buildFutureTaskAndHabitNotifications() {
   const QDate date(2026, 9, 1);
   const QDateTime now(date, QTime(8, 0));
   waypoint::TaskRecord task;
-  QVERIFY2(store.createTask(QStringLiteral("Consulta"), date, QTime(9, 0), {}, {0, 30},
-                            QStringLiteral("🩺"), {}, &task, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Consulta"), date, QTime(9, 0), {}, {0, 30}, QStringLiteral("🩺"),
+                            {}, &task, &error),
            qPrintable(error));
   waypoint::HabitRecord habit;
   QVERIFY2(store.createHabit(QStringLiteral("Água"), 2, QStringLiteral("copos"),
@@ -326,8 +340,8 @@ void MobileControllerTest::buildCatchUpNotificationForMostRecentMissedOffset() {
   const QDate date(2026, 9, 2);
   const QDateTime now(date, QTime(17, 32));
   waypoint::TaskRecord task;
-  QVERIFY2(store.createTask(QStringLiteral("Café da tarde"), date, QTime(18, 0), {},
-                            QList<int>{60, 30, 5, 0}, QStringLiteral("☕"), {}, &task, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Café da tarde"), date, QTime(18, 0), {}, QList<int>{60, 30, 5, 0},
+                            QStringLiteral("☕"), {}, &task, &error),
            qPrintable(error));
 
   QJsonArray schedule;
@@ -380,8 +394,8 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
   const QDate date(2026, 9, 2);
   const QDateTime now(date, QTime(12, 0));
   waypoint::TaskRecord task;
-  QVERIFY2(store.createTask(QStringLiteral("Concluir pelo widget"), date, QTime(13, 0), {},
-                            QList<int>{0}, {}, {}, &task, &error),
+  QVERIFY2(store.createTask(QStringLiteral("Concluir pelo widget"), date, QTime(13, 0), {}, QList<int>{0}, {},
+                            {}, &task, &error),
            qPrintable(error));
 
   waypoint::WidgetTaskActionResult result;
@@ -457,6 +471,7 @@ void MobileControllerTest::applyWidgetHabitCheckIns() {
 
   const QDate date(2026, 9, 2);
   const QDateTime now(date, QTime(12, 0));
+  const QDate habitDate = date.addDays(-7);
   const QList<int> weekdays{date.dayOfWeek()};
   waypoint::HabitRecord fixed;
   waypoint::HabitRecord manual;
@@ -474,14 +489,19 @@ void MobileControllerTest::applyWidgetHabitCheckIns() {
            qPrintable(error));
 
   waypoint::WidgetTaskActionResult result;
-  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, fixed.id, date, 0, now, &result, &error),
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, fixed.id, habitDate, 0, now, &result, &error),
            qPrintable(error));
-  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, manual.id, date, 1, now, &result, &error),
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, manual.id, habitDate, 1, now, &result, &error),
            qPrintable(error));
-  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, complete.id, date, 0, now, &result, &error),
+  QVERIFY2(waypoint::applyWidgetHabitCheckIn(store, complete.id, habitDate, 0, now, &result, &error),
            qPrintable(error));
 
-  const QJsonArray habits = result.snapshot.value(QStringLiteral("habits")).toArray();
+  const QJsonArray habits = result.snapshot.value(QStringLiteral("dates"))
+                                .toObject()
+                                .value(habitDate.toString(Qt::ISODate))
+                                .toObject()
+                                .value(QStringLiteral("habits"))
+                                .toArray();
   const auto progressFor = [&habits](const QString &habitId) {
     const auto progress = std::find_if(habits.cbegin(), habits.cend(), [&habitId](const QJsonValue &value) {
       return value.toObject().value(QStringLiteral("id")).toString() == habitId;
@@ -505,13 +525,11 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
       QByteArrayLiteral("secret-token"),
   };
   QVERIFY2(store.saveSyncConfiguration(configuration, &error), qPrintable(error));
-  QVERIFY2(store.createTaskCategory(QStringLiteral("Trabalho"), QStringLiteral("#3B82F6"),
-                                    nullptr, &error),
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Trabalho"), QStringLiteral("#3B82F6"), nullptr, &error),
            qPrintable(error));
 
   waypoint::BackgroundSyncRequest request;
-  QVERIFY2(waypoint::prepareBackgroundSync(store, false, &request, &error),
-           qPrintable(error));
+  QVERIFY2(waypoint::prepareBackgroundSync(store, false, &request, &error), qPrintable(error));
   QCOMPARE(request.endpoint, configuration.endpoint);
   QCOMPARE(request.token, configuration.token);
   QVERIFY(!request.payload.value(QStringLiteral("deviceId")).toString().isEmpty());
@@ -519,9 +537,8 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
   QVERIFY(request.payload.value(QStringLiteral("mutations")).toArray().isEmpty());
 
   const QJsonArray supportedEntityTypes{
-      QStringLiteral("task"), QStringLiteral("occurrence"),
-      QStringLiteral("habit"), QStringLiteral("habit-entry"),
-      QStringLiteral("category"),
+      QStringLiteral("task"),        QStringLiteral("occurrence"), QStringLiteral("habit"),
+      QStringLiteral("habit-entry"), QStringLiteral("category"),
   };
   const QJsonObject negotiationResponse{
       {QStringLiteral("nextCursor"), 0},
@@ -530,20 +547,16 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
       {QStringLiteral("supportedEntityTypes"), supportedEntityTypes},
   };
   waypoint::BackgroundSyncResult result;
-  QVERIFY2(waypoint::applyBackgroundSync(store, negotiationResponse, &result, &error),
-           qPrintable(error));
+  QVERIFY2(waypoint::applyBackgroundSync(store, negotiationResponse, &result, &error), qPrintable(error));
   QVERIFY(result.categoryFollowUpRequired);
 
   waypoint::BackgroundSyncRequest followUp;
-  QVERIFY2(waypoint::prepareBackgroundSync(store, true, &followUp, &error),
-           qPrintable(error));
-  const QJsonArray mutations =
-      followUp.payload.value(QStringLiteral("mutations")).toArray();
+  QVERIFY2(waypoint::prepareBackgroundSync(store, true, &followUp, &error), qPrintable(error));
+  const QJsonArray mutations = followUp.payload.value(QStringLiteral("mutations")).toArray();
   QCOMPARE(mutations.size(), 1);
   QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityType")).toString(),
            QStringLiteral("category"));
-  const QString mutationId =
-      mutations.first().toObject().value(QStringLiteral("mutationId")).toString();
+  const QString mutationId = mutations.first().toObject().value(QStringLiteral("mutationId")).toString();
   QVERIFY(!mutationId.isEmpty());
 
   const QJsonObject appliedResponse{
@@ -552,10 +565,9 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
       {QStringLiteral("changes"), QJsonArray{}},
       {QStringLiteral("supportedEntityTypes"), supportedEntityTypes},
   };
-  QVERIFY2(waypoint::applyBackgroundSync(store, appliedResponse, &result, &error),
-           qPrintable(error));
+  QVERIFY2(waypoint::applyBackgroundSync(store, appliedResponse, &result, &error), qPrintable(error));
   QVERIFY(!result.categoryFollowUpRequired);
-  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 7);
+  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 8);
   QVERIFY(result.notificationSchedule.isEmpty());
 }
 

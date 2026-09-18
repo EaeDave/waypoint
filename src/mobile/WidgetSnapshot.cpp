@@ -41,10 +41,14 @@ QJsonArray habitValues(const QList<HabitProgress> &progress) {
   return values;
 }
 
-
 void setTasksForDate(QJsonObject *dates, const QString &dateKey, const QJsonArray &tasks) {
   QJsonObject date = dates->value(dateKey).toObject();
   date.insert(QStringLiteral("tasks"), tasks);
+  dates->insert(dateKey, date);
+}
+void setHabitsForDate(QJsonObject *dates, const QString &dateKey, const QJsonArray &habits) {
+  QJsonObject date = dates->value(dateKey).toObject();
+  date.insert(QStringLiteral("habits"), habits);
   dates->insert(dateKey, date);
 }
 
@@ -93,7 +97,8 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
     setError(errorMessage, error);
     return {};
   }
-  const QList<HabitProgress> habitProgress = store.listHabitProgress(today, &error);
+  const QMap<QDate, QList<HabitProgress>> habitProgress =
+      store.listHabitProgress(rangeStart, rangeEnd, &error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
     return {};
@@ -120,16 +125,18 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
   for (const QJsonValue &holiday : holidays) {
     appendHoliday(&dates, holiday.toObject());
   }
+  for (auto progress = habitProgress.cbegin(); progress != habitProgress.cend(); ++progress) {
+    setHabitsForDate(&dates, progress.key().toString(Qt::ISODate), habitValues(progress.value()));
+  }
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 7},
+      {QStringLiteral("schemaVersion"), 8},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},
       {QStringLiteral("taskVisibility"), taskVisibilityModeName(visibility)},
       {QStringLiteral("dates"), dates},
-      {QStringLiteral("habits"), habitValues(habitProgress)},
   };
 }
 

@@ -892,7 +892,7 @@
         android:layout_height="30dp"
         android:fontFamily="monospace"
         android:gravity="center_vertical"
-        android:text="HÁBITOS DE HOJE"
+        android:text="HÁBITOS"
         android:textColor="#FF979FEC"
         android:textSize="10sp"
         android:textStyle="bold"
@@ -906,7 +906,7 @@
         android:gravity="center"
         android:paddingBottom="8dp"
         android:paddingTop="8dp"
-        android:text="Nenhum hábito marcado para hoje."
+        android:text="Nenhum hábito programado neste dia."
         android:textColor="#66FFFFFF"
         android:textSize="10sp"
         android:visibility="gone" />

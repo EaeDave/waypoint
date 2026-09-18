@@ -540,17 +540,24 @@ Item {
                     }
                 }
 
+
                 Text {
                     Layout.fillWidth: true
-                    visible: root.controller.selectedTasks.length === 0 && root.controller.selectedDateHolidays.length === 0
+                    visible: root.controller.selectedTasks.length === 0
                     text: root.controller.taskVisibility === "pending"
                         ? "Nenhuma tarefa pendente neste dia."
-                        : "Nada marcado para este dia."
+                        : "Nenhuma tarefa neste dia."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySize
                     horizontalAlignment: Text.AlignHCenter
                     Layout.topMargin: 14
+                }
+                HabitProgressSection {
+                    Layout.fillWidth: true
+                    controller: root.controller
+                    habits: root.controller.selectedDateHabits
+                    dateKey: root.controller.selectedDateKey
                 }
 
                 Item {

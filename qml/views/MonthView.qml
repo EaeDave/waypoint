@@ -291,29 +291,48 @@ Item {
                         placeholderText: "Nova tarefa neste dia…"
                     }
 
-                    ListView {
-                        id: selectedTasks
+                    ScrollView {
+                        id: selectedDateScroll
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.topMargin: 12
+                        contentWidth: availableWidth
                         clip: true
-                        spacing: 2
-                        model: root.controller.selectedDateTasks
 
-                        delegate: TaskRow {
-                            width: selectedTasks.width
-                            controller: root.controller
-                        }
+                        ColumnLayout {
+                            width: selectedDateScroll.availableWidth
+                            spacing: 4
 
-                        Text {
-                            anchors.centerIn: parent
-                            visible: selectedTasks.count === 0
-                            text: root.controller.taskVisibility === "pending"
-                                ? "Nenhuma tarefa pendente neste dia."
-                                : "Clique acima para planejar este dia."
-                            color: WaypointTheme.disabledText
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.bodySize
+                            Repeater {
+                                id: selectedTasks
+                                model: root.controller.selectedDateTasks
+
+                                delegate: TaskRow {
+                                    Layout.fillWidth: true
+                                    controller: root.controller
+                                }
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.topMargin: 12
+                                Layout.bottomMargin: 8
+                                visible: selectedTasks.count === 0
+                                text: root.controller.taskVisibility === "pending"
+                                    ? "Nenhuma tarefa pendente neste dia."
+                                    : "Clique acima para planejar este dia."
+                                horizontalAlignment: Text.AlignHCenter
+                                color: WaypointTheme.disabledText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.bodySize
+                            }
+
+                            HabitSection {
+                                Layout.fillWidth: true
+                                controller: root.controller
+                                habits: root.controller.selectedDateHabits
+                                dateKey: root.controller.selectedDateKey
+                            }
                         }
                     }
                 }

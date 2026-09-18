@@ -17,7 +17,7 @@ bool refreshWidgetActionResult(waypoint::TaskStore &store, const QDateTime &now,
                                waypoint::WidgetTaskActionResult *result, QString *errorMessage) {
   QString error;
   waypoint::WidgetTaskActionResult updated;
-  updated.snapshot = waypoint::buildWidgetSnapshot(store, now.date(), 1, 1, &error);
+  updated.snapshot = waypoint::buildWidgetSnapshot(store, now.date(), 6, 12, &error);
   if (!error.isEmpty()) {
     setError(errorMessage, error);
     return false;

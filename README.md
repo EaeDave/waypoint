@@ -55,7 +55,7 @@ Waypoint can place Brazilian calendar events next to tasks rather than forcing u
 - **Fixed increment** check-ins for repeatable units such as glasses of water or pages read.
 - **Manual amount** check-ins when each entry varies.
 - **Complete all** check-ins for binary routines.
-- Daily progress and undo support, with quick check-ins available from the Android widget and Omarchy panel.
+- Per-date progress on every surface, with add and undo support in the desktop and Android apps, Omarchy panel, and CLI, plus historical quick check-ins from the Android widget.
 
 ### Local-first synchronization
 
@@ -76,7 +76,7 @@ The Linux package also includes `waypointd` for reminders and synchronization, `
 
 ### Omarchy bar plugin
 
-The optional Omarchy plugin puts the calendar where it is most useful: one click from the bar. Review today's workload and holidays without changing windows, then add or edit tasks, complete or skip occurrences, and check in habits directly from the panel. It reduces context switching while retaining the full calendar model and local-first behavior of the desktop app.
+The optional Omarchy plugin puts the calendar where it is most useful: one click from the bar. Review any selected date and its holidays without changing windows, then add or edit tasks, complete or skip occurrences, and inspect, add, or undo habit check-ins for that date. It reduces context switching while retaining the full calendar model and local-first behavior of the desktop app.
 
 <table>
   <tr>
@@ -95,7 +95,7 @@ The Linux installer enables the plugin automatically when it detects Omarchy.
 
 ### Android app and home-screen widget
 
-The Android app carries the complete calendar, task, habit, holiday, reminder, and sync experience. The resizable home-screen widget keeps the month, selected-day tasks, and habit progress visible before the app is opened. Navigate months, select dates, switch between all and pending tasks, complete or reopen tasks, and check in habits from the launcher; each action updates local storage immediately and schedules background synchronization.
+The Android app carries the complete calendar, task, habit, holiday, reminder, and sync experience. The resizable home-screen widget keeps the month, selected-day tasks, and selected-day habit progress visible before the app is opened. Navigate months, select dates, switch between all and pending tasks, complete or reopen tasks, and add habit check-ins for the selected date from the launcher; each action updates local storage immediately and schedules background synchronization.
 
 That short interaction path matters for routines: fewer app-opening steps make quick capture and daily check-ins easier, while the calendar remains visible beside the rest of the home screen.
 

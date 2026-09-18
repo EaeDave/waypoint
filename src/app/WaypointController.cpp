@@ -94,9 +94,9 @@ TaskListModel *WaypointController::todayTasks() { return &m_todayTasks; }
 TaskListModel *WaypointController::selectedDateTasks() { return &m_selectedDateTasks; }
 
 QVariantList WaypointController::todayHabits() const { return m_todayHabits; }
+QVariantList WaypointController::selectedDateHabits() const { return m_selectedDateHabits; }
 QVariantList WaypointController::taskCategories() const { return m_taskCategories; }
 QVariantList WaypointController::allTasks() const { return m_allTasks; }
-
 
 CalendarModel *WaypointController::calendar() { return &m_calendar; }
 QString WaypointController::taskVisibility() const { return m_taskVisibility; }
@@ -112,6 +112,7 @@ void WaypointController::setSelectedDateKey(const QString &dateKey) {
   m_selectedDateTasks.setFocusDate(date);
   updateSelectedDateHolidays();
   emit selectedDateKeyChanged();
+  refresh();
 }
 
 bool WaypointController::online() const { return m_online; }
@@ -126,7 +127,6 @@ QString WaypointController::syncState() const { return m_syncState; }
 
 QString WaypointController::syncLastError() const { return m_syncLastError; }
 bool WaypointController::categorySyncAvailable() const { return m_categorySyncAvailable; }
-
 
 QString WaypointController::lastSuccessfulSync() const { return m_lastSuccessfulSync; }
 QString WaypointController::holidayStateCode() const { return m_holidayStateCode; }
@@ -194,6 +194,12 @@ void WaypointController::refresh() {
     updateConnection(false, error);
     return;
   }
+  const QList<HabitProgress> selectedDateHabitProgress =
+      m_selectedDate == today ? todayHabitProgress : m_client.listHabitProgress(m_selectedDate, &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
   const QList<TaskCategory> categories = m_client.listTaskCategories(&error);
   if (!error.isEmpty()) {
     updateConnection(false, error);
@@ -226,6 +232,10 @@ void WaypointController::refresh() {
   for (const HabitProgress &progress : todayHabitProgress) {
     habitValues.append(progress.toJson());
   }
+  QJsonArray selectedDateHabitValues;
+  for (const HabitProgress &progress : selectedDateHabitProgress) {
+    selectedDateHabitValues.append(progress.toJson());
+  }
   QJsonArray categoryValues;
   for (const TaskCategory &category : categories) {
     categoryValues.append(category.toJson());
@@ -235,10 +245,12 @@ void WaypointController::refresh() {
     rangeValues.append(occurrence.toJson());
   }
   const QVariantList taskValues = taskDefinitionValues(tasks);
-  const QByteArray signature = QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
-                                                         {QStringLiteral("habits"), habitValues},
-                                                         {QStringLiteral("range"), rangeValues}})
-                                   .toJson(QJsonDocument::Compact);
+  const QByteArray signature =
+      QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
+                                {QStringLiteral("todayHabits"), habitValues},
+                                {QStringLiteral("selectedDateHabits"), selectedDateHabitValues},
+                                {QStringLiteral("range"), rangeValues}})
+          .toJson(QJsonDocument::Compact);
   if (signature != m_snapshotSignature) {
     m_snapshotSignature = signature;
     publishOccurrences(todayOccurrences, rangeOccurrences);
@@ -246,10 +258,13 @@ void WaypointController::refresh() {
     for (const QJsonValue &value : habitValues) {
       m_todayHabits.append(value.toObject().toVariantMap());
     }
+    m_selectedDateHabits.clear();
+    for (const QJsonValue &value : selectedDateHabitValues) {
+      m_selectedDateHabits.append(value.toObject().toVariantMap());
+    }
     emit habitsChanged();
   }
-  const QByteArray taskSignature =
-      QJsonDocument::fromVariant(taskValues).toJson(QJsonDocument::Compact);
+  const QByteArray taskSignature = QJsonDocument::fromVariant(taskValues).toJson(QJsonDocument::Compact);
   if (taskSignature != m_taskSignature) {
     m_taskSignature = taskSignature;
     m_allTasks = taskValues;
@@ -281,11 +296,10 @@ void WaypointController::refresh() {
 
 bool WaypointController::addTask(const QString &title, const QString &scheduledDateKey,
                                  const QString &scheduledTimeKey, const QString &frequency,
-                                 const int interval, const QVariantList &weekdays,
-                                 const QString &endMode, const QString &untilDateKey,
-                                 const int occurrenceCount,
-                                 const QVariantList &reminderMinutesBefore,
-                                 const QString &emoji, const QString &categoryId) {
+                                 const int interval, const QVariantList &weekdays, const QString &endMode,
+                                 const QString &untilDateKey, const int occurrenceCount,
+                                 const QVariantList &reminderMinutesBefore, const QString &emoji,
+                                 const QString &categoryId) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
@@ -306,8 +320,7 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
 
   QString error;
   if (!m_client.addTask(title, scheduledDate, scheduledTime, recurrence,
-                        taskReminderMinutesBefore(reminderMinutesBefore), emoji, categoryId,
-                        &error)) {
+                        taskReminderMinutesBefore(reminderMinutesBefore), emoji, categoryId, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -370,11 +383,10 @@ bool WaypointController::rescheduleTask(const QString &taskId, const QString &sc
 }
 bool WaypointController::editTask(const QString &taskId, const QString &scheduledDateKey,
                                   const QString &title, const QString &scheduledTimeKey,
-                                  const QString &frequency, const int interval,
-                                  const QVariantList &weekdays, const QString &endMode,
-                                  const QString &untilDateKey, const int occurrenceCount,
-                                  const QVariantList &reminderMinutesBefore, const QString &emoji,
-                                  const QString &categoryId) {
+                                  const QString &frequency, const int interval, const QVariantList &weekdays,
+                                  const QString &endMode, const QString &untilDateKey,
+                                  const int occurrenceCount, const QVariantList &reminderMinutesBefore,
+                                  const QString &emoji, const QString &categoryId) {
   const QDate scheduledDate = QDate::fromString(scheduledDateKey, Qt::ISODate);
   const QTime scheduledTime = QTime::fromString(scheduledTimeKey, QStringLiteral("HH:mm"));
   if (!scheduledDate.isValid() || !scheduledTime.isValid()) {
@@ -395,8 +407,7 @@ bool WaypointController::editTask(const QString &taskId, const QString &schedule
 
   QString error;
   if (!m_client.editTask(taskId, title, scheduledTime, recurrence,
-                         taskReminderMinutesBefore(reminderMinutesBefore), emoji, categoryId,
-                         &error)) {
+                         taskReminderMinutesBefore(reminderMinutesBefore), emoji, categoryId, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -453,10 +464,10 @@ bool WaypointController::saveHabit(const QString &habitId, const QString &title,
   return true;
 }
 
-bool WaypointController::recordHabit(const QString &habitId, const qint64 amount) {
+bool WaypointController::recordHabit(const QString &habitId, const QString &dateKey, const qint64 amount) {
   QString error;
   const std::optional<qint64> recordedAmount = amount > 0 ? std::optional<qint64>(amount) : std::nullopt;
-  if (!m_client.recordHabit(habitId, QDate::currentDate(), recordedAmount, &error)) {
+  if (!m_client.recordHabit(habitId, QDate::fromString(dateKey, Qt::ISODate), recordedAmount, &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -464,9 +475,9 @@ bool WaypointController::recordHabit(const QString &habitId, const qint64 amount
   return true;
 }
 
-bool WaypointController::undoHabit(const QString &habitId) {
+bool WaypointController::undoHabit(const QString &habitId, const QString &dateKey) {
   QString error;
-  if (!m_client.undoLastHabitEntry(habitId, QDate::currentDate(), &error)) {
+  if (!m_client.undoLastHabitEntry(habitId, QDate::fromString(dateKey, Qt::ISODate), &error)) {
     updateConnection(false, error);
     return false;
   }
@@ -486,9 +497,8 @@ bool WaypointController::deleteHabit(const QString &habitId) {
 bool WaypointController::saveTaskCategory(const QString &categoryId, const QString &name,
                                           const QString &color) {
   QString error;
-  const bool succeeded =
-      categoryId.isEmpty() ? m_client.addTaskCategory(name, color, &error)
-                           : m_client.editTaskCategory(categoryId, name, color, &error);
+  const bool succeeded = categoryId.isEmpty() ? m_client.addTaskCategory(name, color, &error)
+                                              : m_client.editTaskCategory(categoryId, name, color, &error);
   if (!succeeded) {
     updateConnection(false, error);
     return false;
@@ -506,7 +516,6 @@ bool WaypointController::deleteTaskCategory(const QString &categoryId) {
   refresh();
   return true;
 }
-
 
 bool WaypointController::saveSyncConfiguration(const QString &endpoint, const QString &token) {
   QString error;
@@ -649,10 +658,8 @@ bool WaypointController::refreshSyncDetails(QString *errorMessage) {
   const QString state = status.value(QStringLiteral("state")).toString();
   const QString lastError = status.value(QStringLiteral("lastError")).toString();
   const QString lastSuccessfulSync = status.value(QStringLiteral("lastSuccessfulSync")).toString();
-  const bool categorySyncAvailable =
-      status.value(QStringLiteral("categorySyncAvailable")).toBool();
-  if (m_syncState != state || m_syncLastError != lastError ||
-      m_lastSuccessfulSync != lastSuccessfulSync ||
+  const bool categorySyncAvailable = status.value(QStringLiteral("categorySyncAvailable")).toBool();
+  if (m_syncState != state || m_syncLastError != lastError || m_lastSuccessfulSync != lastSuccessfulSync ||
       m_categorySyncAvailable != categorySyncAvailable) {
     m_syncState = state;
     m_syncLastError = lastError;

@@ -155,7 +155,10 @@ MobileController::MobileController(QString databasePath, QObject *parent)
     m_widgetSnapshotDirty = true;
     scheduleRefresh();
   });
-  connect(&m_store, &TaskStore::habitsChanged, this, &MobileController::scheduleRefresh);
+  connect(&m_store, &TaskStore::habitsChanged, this, [this] {
+    m_widgetSnapshotDirty = true;
+    scheduleRefresh();
+  });
   connect(&m_store, &TaskStore::holidaysChanged, this, [this] {
     m_widgetSnapshotDirty = true;
     QTimer::singleShot(0, this, &MobileController::refresh);
@@ -179,6 +182,7 @@ int MobileController::visibleMonth() const { return m_visibleMonth; }
 QVariantList MobileController::todayTasks() const { return m_todayTasks; }
 QVariantList MobileController::selectedTasks() const { return m_selectedTasks; }
 QVariantList MobileController::todayHabits() const { return m_todayHabits; }
+QVariantList MobileController::selectedDateHabits() const { return m_selectedDateHabits; }
 QVariantList MobileController::monthOccurrences() const { return m_monthOccurrences; }
 QVariantList MobileController::taskCategories() const { return m_taskCategories; }
 QVariantList MobileController::allTasks() const { return m_allTasks; }
@@ -290,6 +294,12 @@ void MobileController::refresh() {
     publishError(error);
     return;
   }
+  const QList<HabitProgress> selectedDateHabits =
+      m_selectedDate == today ? habits : m_store.listHabitProgress(m_selectedDate, &error);
+  if (!error.isEmpty()) {
+    publishError(error);
+    return;
+  }
   const QList<HabitRecord> activeHabits = m_store.listActiveHabits(&error);
   if (!error.isEmpty()) {
     publishError(error);
@@ -326,6 +336,7 @@ void MobileController::refresh() {
   m_todayTasks = occurrenceValues(todayOccurrences, scheduledDates);
   m_selectedTasks = occurrenceValues(selected, scheduledDates);
   m_todayHabits = habitValues(habits);
+  m_selectedDateHabits = habitValues(selectedDateHabits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
   m_taskCategories = categoryValues(categories);
   m_allTasks = taskDefinitionValues(activeTasks);
@@ -439,9 +450,8 @@ bool MobileController::setTaskVisibility(const QString &taskVisibility) {
 bool MobileController::saveTaskCategory(const QString &categoryId, const QString &name,
                                         const QString &color) {
   QString error;
-  const bool succeeded = categoryId.isEmpty()
-                             ? m_store.createTaskCategory(name, color, nullptr, &error)
-                             : m_store.editTaskCategory(categoryId, name, color, &error);
+  const bool succeeded = categoryId.isEmpty() ? m_store.createTaskCategory(name, color, nullptr, &error)
+                                              : m_store.editTaskCategory(categoryId, name, color, &error);
   return finishMutation(succeeded, error);
 }
 
@@ -466,19 +476,21 @@ bool MobileController::saveHabit(const QString &habitId, const QString &title, c
   return finishMutation(succeeded, error);
 }
 
-bool MobileController::recordHabit(const QString &habitId, const qint64 amount) {
+bool MobileController::recordHabit(const QString &habitId, const QString &dateKey, const qint64 amount) {
   const std::optional<qint64> recordedAmount = amount > 0 ? std::optional<qint64>(amount) : std::nullopt;
   QString error;
-  const bool succeeded = m_store.recordHabit(habitId, QDate::currentDate(), recordedAmount, nullptr, &error);
+  const bool succeeded =
+      m_store.recordHabit(habitId, QDate::fromString(dateKey, Qt::ISODate), recordedAmount, nullptr, &error);
   if (succeeded) {
     AndroidNotificationBridge::playCompletionSound();
   }
   return finishMutation(succeeded, error);
 }
 
-bool MobileController::undoHabit(const QString &habitId) {
+bool MobileController::undoHabit(const QString &habitId, const QString &dateKey) {
   QString error;
-  return finishMutation(m_store.undoLastHabitEntry(habitId, QDate::currentDate(), &error), error);
+  return finishMutation(m_store.undoLastHabitEntry(habitId, QDate::fromString(dateKey, Qt::ISODate), &error),
+                        error);
 }
 
 bool MobileController::deleteHabit(const QString &habitId) {
@@ -660,24 +672,21 @@ void MobileController::consumeLaunchRequest() {
   if (!activity.isValid()) {
     return;
   }
-  const QJniObject intent =
-      activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
+  const QJniObject intent = activity.callObjectMethod("getIntent", "()Landroid/content/Intent;");
   if (!intent.isValid()) {
     return;
   }
 
   const QJniObject pageKey = QJniObject::fromString(QStringLiteral("waypoint.openPage"));
-  const QJniObject pageValue =
-      intent.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;",
-                              pageKey.object<jstring>());
+  const QJniObject pageValue = intent.callObjectMethod(
+      "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", pageKey.object<jstring>());
   if (!pageValue.isValid() || pageValue.toString() != QStringLiteral("tasks")) {
     return;
   }
 
   const QJniObject taskKey = QJniObject::fromString(QStringLiteral("waypoint.taskId"));
-  const QJniObject taskValue =
-      intent.callObjectMethod("getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;",
-                              taskKey.object<jstring>());
+  const QJniObject taskValue = intent.callObjectMethod(
+      "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", taskKey.object<jstring>());
   intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",
                           pageKey.object<jstring>());
   intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",

@@ -153,11 +153,13 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       dates = new JSONObject();
     }
     boolean snapshotCurrent = today.toString().equals(snapshot.optString("today", ""));
-    JSONArray habits = snapshotCurrent ? snapshot.optJSONArray("habits") : null;
+    JSONObject selectedDateData =
+        snapshotCurrent ? dates.optJSONObject(selectedDate.toString()) : null;
+    JSONArray habits =
+        selectedDateData == null ? null : selectedDateData.optJSONArray("habits");
     String taskVisibility = snapshot.optString("taskVisibility", "all");
     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.waypoint_widget);
-    int[] detailLimits =
-        detailLimits(context, manager, appWidgetId, selectedDate.equals(today) && habits != null);
+    int[] detailLimits = detailLimits(context, manager, appWidgetId, habits != null);
 
     renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
     renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility,

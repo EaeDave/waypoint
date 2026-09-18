@@ -8,6 +8,8 @@ ColumnLayout {
     id: root
 
     required property var controller
+    required property var habits
+    required property string dateKey
     property string editingHabitId: ""
     property int weekdayMask: 127
     property string manualHabitId: ""
@@ -92,15 +94,15 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        visible: root.controller.todayHabits.length === 0
-        text: "Nenhum hábito programado para hoje."
+        visible: root.habits.length === 0
+        text: "Nenhum hábito programado neste dia."
         color: WaypointTheme.disabledText
         font.family: WaypointTheme.fontFamily
         font.pixelSize: WaypointTheme.bodySmallSize
     }
 
     Repeater {
-        model: root.controller.todayHabits
+        model: root.habits
 
         delegate: Rectangle {
             id: habitRow
@@ -164,7 +166,7 @@ ColumnLayout {
                         text: "↶"
                         square: true
                         enabled: habitRow.modelData.amount > 0
-                        onClicked: root.controller.undoHabit(habitRow.modelData.id)
+                        onClicked: root.controller.undoHabit(habitRow.modelData.id, root.dateKey)
                         ToolTip.visible: hovered
                         ToolTip.text: "Desfazer último registro"
                     }
@@ -189,7 +191,7 @@ ColumnLayout {
                                 manualPopup.open();
                                 manualAmount.forceActiveFocus();
                             } else {
-                                root.controller.recordHabit(habitRow.modelData.id, 0);
+                                root.controller.recordHabit(habitRow.modelData.id, root.dateKey, 0);
                             }
                         }
                     }
@@ -252,7 +254,8 @@ ColumnLayout {
                 inputMethodHints: Qt.ImhDigitsOnly
                 validator: IntValidator { bottom: 1; top: 1000000000 }
                 onAccepted: {
-                    if (acceptableInput && root.controller.recordHabit(root.manualHabitId, parseInt(text)))
+                    if (acceptableInput && root.controller.recordHabit(
+                            root.manualHabitId, root.dateKey, parseInt(text)))
                         manualPopup.close();
                 }
             }
@@ -266,7 +269,8 @@ ColumnLayout {
                     selected: true
                     enabled: manualAmount.acceptableInput
                     onClicked: {
-                        if (root.controller.recordHabit(root.manualHabitId, parseInt(manualAmount.text)))
+                        if (root.controller.recordHabit(
+                                root.manualHabitId, root.dateKey, parseInt(manualAmount.text)))
                             manualPopup.close();
                     }
                 }

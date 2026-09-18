@@ -144,6 +144,8 @@ Item {
                 HabitSection {
                     Layout.fillWidth: true
                     controller: root.controller
+                    habits: root.controller.todayHabits
+                    dateKey: Qt.formatDate(new Date(), "yyyy-MM-dd")
                 }
             }
         }
