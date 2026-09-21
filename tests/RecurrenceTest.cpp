@@ -18,6 +18,7 @@ private slots:
   void holdOldestUnresolvedDueRecurringOccurrence();
   void keepSkippedOccurrenceVisibleWhileAdvancingRecurrence();
   void advanceCalendarMarkerAfterResolvedOccurrence();
+  void placeLateMonthlyCompletionOnCompletionDay();
   void isolateDailyCountsAcrossMidnightAndSeries();
   void sortActionableTasksByTimeWithCompletedLast();
 };
@@ -162,8 +163,8 @@ void RecurrenceTest::keepSkippedOccurrenceVisibleWhileAdvancingRecurrence() {
   QVERIFY(skippedToday.first().toJson().value(QStringLiteral("skipped")).toBool());
 
   const auto projected = waypoint::assignCalendarMarkers(
-      waypoint::projectOccurrences({task}, states, QDate(2026, 1, 1), QDate(2026, 1, 3)), {task},
-      states, QDate(2026, 1, 3));
+      waypoint::projectOccurrences({task}, states, QDate(2026, 1, 1), QDate(2026, 1, 3)), {task}, states,
+      QDate(2026, 1, 3));
   QCOMPARE(projected.size(), 3);
   QVERIFY(projected.at(2).skipped);
   QVERIFY(projected.at(2).calendarMarker);
@@ -198,7 +199,7 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
   const auto afterCompletion = waypoint::assignCalendarMarkers(
       waypoint::projectOccurrences({task}, {resolved}, yesterday, tomorrow), {task}, {resolved}, today);
   QCOMPARE(afterCompletion.size(), 3);
-  QVERIFY(!afterCompletion.at(0).calendarMarker);
+  QVERIFY(afterCompletion.at(0).calendarMarker);
   QVERIFY(afterCompletion.at(1).calendarMarker);
   QVERIFY(!afterCompletion.at(2).calendarMarker);
 
@@ -209,8 +210,8 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
       waypoint::projectOccurrences({task}, completedThroughToday, yesterday, tomorrow), {task},
       completedThroughToday, today);
   QCOMPARE(nextPending.size(), 3);
-  QVERIFY(!nextPending.at(0).calendarMarker);
-  QVERIFY(!nextPending.at(1).calendarMarker);
+  QVERIFY(nextPending.at(0).calendarMarker);
+  QVERIFY(nextPending.at(1).calendarMarker);
   QVERIFY(nextPending.at(2).calendarMarker);
 
   resolved.status = waypoint::OccurrenceStatus::Skipped;
@@ -222,6 +223,44 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
   QVERIFY(afterSkip.at(0).calendarMarker);
   QVERIFY(afterSkip.at(1).calendarMarker);
   QVERIFY(!afterSkip.at(2).calendarMarker);
+}
+
+void RecurrenceTest::placeLateMonthlyCompletionOnCompletionDay() {
+  waypoint::TaskRecord task;
+  task.id = QStringLiteral("vivo-easy");
+  task.title = QStringLiteral("Vivo Easy");
+  task.scheduledDate = QDate(2026, 9, 19);
+  task.scheduledTime = QTime(9, 0);
+  task.recurrence.frequency = waypoint::RecurrenceFrequency::Monthly;
+
+  waypoint::TaskOccurrenceState completed;
+  completed.taskId = task.id;
+  completed.occurrenceDate = QDate(2026, 9, 19);
+  completed.status = waypoint::OccurrenceStatus::Completed;
+  completed.completedAt = QDateTime(QDate(2026, 9, 21), QTime(10, 30), QTimeZone::UTC);
+
+  const QDate completionDay(2026, 9, 21);
+  const auto calendarOccurrences = waypoint::assignCalendarMarkers(
+      waypoint::projectOccurrences({task}, {completed}, completionDay, completionDay), {task}, {completed},
+      completionDay);
+  QCOMPARE(calendarOccurrences.size(), 1);
+  QCOMPARE(calendarOccurrences.first().occurrenceDate, QDate(2026, 9, 19));
+  QCOMPARE(calendarOccurrences.first().calendarDate, completionDay);
+  QVERIFY(calendarOccurrences.first().completed);
+  QVERIFY(calendarOccurrences.first().calendarMarker);
+
+  const auto todayOccurrences = waypoint::projectActionableOccurrences({task}, {completed}, completionDay);
+  QCOMPARE(todayOccurrences.size(), 1);
+  QCOMPARE(todayOccurrences.first().occurrenceDate, QDate(2026, 9, 19));
+  QCOMPARE(todayOccurrences.first().calendarDate, completionDay);
+  QVERIFY(todayOccurrences.first().completed);
+
+  const auto octoberOccurrences =
+      waypoint::projectOccurrences({task}, {completed}, QDate(2026, 10, 19), QDate(2026, 10, 19));
+  QCOMPARE(octoberOccurrences.size(), 1);
+  QCOMPARE(octoberOccurrences.first().occurrenceDate, QDate(2026, 10, 19));
+  QCOMPARE(octoberOccurrences.first().calendarDate, QDate(2026, 10, 19));
+  QVERIFY(!octoberOccurrences.first().completed);
 }
 
 void RecurrenceTest::isolateDailyCountsAcrossMidnightAndSeries() {

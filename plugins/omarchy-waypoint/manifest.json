@@ -4,15 +4,15 @@
   "name": "Waypoint",
   "version": "0.2.1",
   "author": "Waypoint",
-  "description": "Tasks and calendar in the Omarchy bar",
+  "description": "Tarefas e calendário na barra do Omarchy",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Waypoint",
-    "description": "Today's tasks and an interactive month calendar",
-    "category": "Productivity",
+    "description": "Tarefas de hoje e calendário mensal interativo",
+    "category": "Produtividade",
     "allowMultiple": false,
     "defaultSection": "center"
   }

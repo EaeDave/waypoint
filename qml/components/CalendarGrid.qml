@@ -13,7 +13,7 @@ Item {
     implicitWidth: 7 * 58 + 6 * 5 + 28
     implicitHeight: weekdayHeader.height + 6 * 48 + 6 * 5
 
-    readonly property var weekdayLabels: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    readonly property var weekdayLabels: ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
 
     RowLayout {
         id: weekdayHeader
@@ -24,7 +24,7 @@ Item {
 
         Text {
             Layout.preferredWidth: 23
-            text: "W"
+            text: "S"
             color: WaypointTheme.disabledText
             horizontalAlignment: Text.AlignHCenter
             font.family: WaypointTheme.fontFamily

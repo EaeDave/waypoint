@@ -195,7 +195,7 @@ Rectangle {
 
         Text {
             visible: input.activeFocus && !root.compact
-            text: "ENTER"
+            text: "↵ CRIAR"
             color: WaypointTheme.disabledText
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.captionSize

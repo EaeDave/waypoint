@@ -88,7 +88,7 @@ Item {
                         }
 
                         Text {
-                            text: Qt.locale().toString(root.selectedDateValue, "MMMM d")
+                            text: Qt.locale("pt_BR").toString(root.selectedDateValue, "d 'de' MMMM")
                             color: WaypointTheme.foreground
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
@@ -202,7 +202,7 @@ Item {
 
                         Text {
                             Layout.fillWidth: true
-                            text: Qt.locale().toString(root.selectedDateValue, "dddd, d MMMM")
+                            text: Qt.locale("pt_BR").toString(root.selectedDateValue, "dddd, d 'de' MMMM")
                             color: WaypointTheme.foreground
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: WaypointTheme.headingSize

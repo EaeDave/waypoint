@@ -322,7 +322,7 @@ void MobileController::refresh() {
   } else {
     for (const TaskOccurrence &occurrence : month) {
       const bool calendarVisible = !occurrence.recurring || occurrence.calendarMarker;
-      if (occurrence.occurrenceDate == m_selectedDate && calendarVisible) {
+      if (occurrence.effectiveCalendarDate() == m_selectedDate && calendarVisible) {
         selected.append(occurrence);
       }
     }
@@ -418,8 +418,9 @@ bool MobileController::setTaskCompleted(const QString &taskId, const QString &oc
                                         const bool recurring, const bool completed) {
   const QDate date = QDate::fromString(occurrenceDateKey, Qt::ISODate);
   QString error;
-  const bool succeeded = recurring ? m_store.setOccurrenceCompleted(taskId, date, completed, &error)
-                                   : m_store.setTaskCompleted(taskId, completed, &error);
+  const QDateTime changedAt = QDateTime::currentDateTimeUtc();
+  const bool succeeded = recurring ? m_store.setOccurrenceCompleted(taskId, date, completed, changedAt, &error)
+                                   : m_store.setTaskCompleted(taskId, completed, changedAt, &error);
   if (succeeded && completed) {
     AndroidNotificationBridge::playCompletionSound();
   }

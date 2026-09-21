@@ -29,6 +29,7 @@ struct TaskRecord final {
   QString categoryName;
   QString categoryColor;
   bool completed = false;
+  QDateTime completedAt;
   RecurrenceRule recurrence;
   QDateTime createdAt;
   QDateTime updatedAt;

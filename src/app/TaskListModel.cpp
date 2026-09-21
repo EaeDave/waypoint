@@ -99,17 +99,15 @@ int TaskListModel::pendingCount() const {
 
 int TaskListModel::overdueCount() const {
   const QDate today = QDate::currentDate();
-  return static_cast<int>(std::count_if(m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(),
-                                        [today](const TaskOccurrence &occurrence) {
-                                          return !occurrence.completed && !occurrence.skipped &&
-                                                 occurrence.occurrenceDate < today;
-                                        }));
+  return static_cast<int>(std::count_if(
+      m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(), [today](const TaskOccurrence &occurrence) {
+        return !occurrence.completed && !occurrence.skipped && occurrence.occurrenceDate < today;
+      }));
 }
 
 int TaskListModel::skippedCount() const {
-  return static_cast<int>(
-      std::count_if(m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(),
-                    [](const TaskOccurrence &occurrence) { return occurrence.skipped; }));
+  return static_cast<int>(std::count_if(m_visibleOccurrences.cbegin(), m_visibleOccurrences.cend(),
+                                        [](const TaskOccurrence &occurrence) { return occurrence.skipped; }));
 }
 
 void TaskListModel::setSourceOccurrences(const QList<TaskOccurrence> &occurrences) {
@@ -123,7 +121,7 @@ void TaskListModel::rebuildVisibleTasks() {
   for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
     const bool calendarVisible =
         m_focusDate == today || !occurrence.recurring || occurrence.calendarMarker || occurrence.skipped;
-    const bool belongsToFocusDate = occurrence.occurrenceDate == m_focusDate;
+    const bool belongsToFocusDate = occurrence.effectiveCalendarDate() == m_focusDate;
     const bool overdueOnTodayView = m_focusDate == today && !occurrence.completed && !occurrence.skipped &&
                                     occurrence.occurrenceDate.isValid() && occurrence.occurrenceDate < today;
     if (calendarVisible && (belongsToFocusDate || overdueOnTodayView)) {
@@ -139,6 +137,9 @@ void TaskListModel::rebuildVisibleTasks() {
     }
     if (left.scheduledTime != right.scheduledTime) {
       return left.scheduledTime < right.scheduledTime;
+    }
+    if (left.effectiveCalendarDate() != right.effectiveCalendarDate()) {
+      return left.effectiveCalendarDate() < right.effectiveCalendarDate();
     }
     if (left.occurrenceDate != right.occurrenceDate) {
       return left.occurrenceDate < right.occurrenceDate;

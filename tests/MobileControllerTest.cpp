@@ -201,7 +201,8 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
   QVERIFY2(store.createTask(QStringLiteral("Enviar relatório"), today, QTime(11, 0), {}, {},
                             QStringLiteral("📤"), {}, &completed, &error),
            qPrintable(error));
-  QVERIFY2(store.setTaskCompleted(completed.id, true, &error), qPrintable(error));
+  QVERIFY2(store.setTaskCompleted(completed.id, true, QDateTime(today, QTime(12, 0)), &error),
+           qPrintable(error));
   waypoint::RecurrenceRule daily;
   daily.frequency = waypoint::RecurrenceFrequency::Daily;
   waypoint::TaskRecord skipped;

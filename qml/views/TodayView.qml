@@ -31,7 +31,7 @@ Item {
                 }
 
                 Text {
-                    text: Qt.locale().toString(new Date(), "dddd, d MMMM")
+                    text: Qt.locale("pt_BR").toString(new Date(), "dddd, d 'de' MMMM")
                     color: WaypointTheme.subduedText
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.bodySmallSize
@@ -53,7 +53,7 @@ Item {
                 Text {
                     id: connectionLabel
                     anchors.centerIn: parent
-                    text: root.controller.online ? "LOCAL" : "OFFLINE"
+                    text: root.controller.online ? "LOCAL" : "SEM REDE"
                     color: root.controller.online ? WaypointTheme.success : WaypointTheme.urgent
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.captionSize

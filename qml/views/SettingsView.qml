@@ -125,7 +125,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "Conecte este dispositivo ao seu servidor Waypoint self-hosted."
+                text: "Conecte este dispositivo ao seu servidor Waypoint hospedado por você."
                 color: WaypointTheme.subduedText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.bodySize
@@ -228,7 +228,7 @@ Item {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "Informe a URL base ou o endpoint /v1/sync."
+                        text: "Informe o endereço base ou o endereço /v1/sync."
                         color: WaypointTheme.disabledText
                         font.family: WaypointTheme.fontFamily
                         font.pixelSize: WaypointTheme.captionSize
@@ -423,7 +423,7 @@ Item {
 
 
                         Text {
-                            text: root.controller.holidaySyncState === "offline" ? "Cache offline" :
+                            text: root.controller.holidaySyncState === "offline" ? "Cache sem conexão" :
                                   root.controller.holidaySyncState === "partial" ? "Cobertura parcial" :
                                   root.controller.holidaySyncState === "ready" ? "Atualizado" :
                                   root.controller.holidaySyncState === "syncing" ? "Atualizando…" : "Somente local"
@@ -524,7 +524,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "A connection string do PostgreSQL permanece somente no servidor. Este dispositivo armazena apenas o endpoint e o token necessários para falar com a API."
+                text: "A string de conexão do PostgreSQL permanece somente no servidor. Este dispositivo armazena apenas o endereço e o token necessários para falar com a API."
                 color: WaypointTheme.disabledText
                 wrapMode: Text.Wrap
                 font.family: WaypointTheme.fontFamily

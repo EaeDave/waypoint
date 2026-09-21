@@ -268,7 +268,7 @@ Popup {
                     MobileField {
                         id: dateField
                         Layout.fillWidth: true
-                        placeholderText: "YYYY-MM-DD"
+                        placeholderText: "AAAA-MM-DD"
                         inputMethodHints: Qt.ImhDate
                     }
 
@@ -362,7 +362,7 @@ Popup {
                     id: untilField
                     Layout.fillWidth: true
                     visible: frequencyField.currentIndex > 0 && endField.currentIndex === 1
-                    placeholderText: "Última data YYYY-MM-DD"
+                    placeholderText: "Última data AAAA-MM-DD"
                     inputMethodHints: Qt.ImhDate
                 }
 

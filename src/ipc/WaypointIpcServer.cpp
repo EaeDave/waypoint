@@ -297,11 +297,12 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const QString taskId = request.value(QStringLiteral("taskId")).toString();
     const bool completed = request.value(QStringLiteral("completed")).toBool(true);
     const QString occurrenceDateKey = request.value(QStringLiteral("occurrenceDate")).toString();
+    const QDateTime changedAt = QDateTime::currentDateTimeUtc();
     const bool succeeded =
         occurrenceDateKey.isEmpty()
-            ? m_taskStore->setTaskCompleted(taskId, completed, &error)
+            ? m_taskStore->setTaskCompleted(taskId, completed, changedAt, &error)
             : m_taskStore->setOccurrenceCompleted(taskId, QDate::fromString(occurrenceDateKey, Qt::ISODate),
-                                                  completed, &error);
+                                                  completed, changedAt, &error);
     if (!succeeded) {
       return protocol::errorResponse(error);
     }

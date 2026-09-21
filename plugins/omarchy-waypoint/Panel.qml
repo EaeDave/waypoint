@@ -67,6 +67,7 @@ Panel {
     property string manualHabitId: ""
     property int habitWeekdayMask: 127
     readonly property int maximumHabitReminderCount: 10
+    readonly property var portugueseLocale: Qt.locale("pt_BR")
 
     readonly property var barIdentity: hostWidget || root
     readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
@@ -623,7 +624,7 @@ Panel {
                             Text {
                                 id: heroDate
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: Qt.formatDate(root.selectedDate, "MMMM d")
+                                text: root.portugueseLocale.toString(root.selectedDate, "d 'de' MMMM")
                                 color: root.foreground
                                 font.family: root.fontFamily
                                 font.pixelSize: 52
@@ -716,7 +717,7 @@ Panel {
                                 Text {
                                     width: root.weekColumnWidth
                                     height: Style.space(16)
-                                    text: "W"
+                                    text: "S"
                                     color: Qt.darker(root.foreground, 1.9)
                                     horizontalAlignment: Text.AlignHCenter
                                     verticalAlignment: Text.AlignVCenter
@@ -732,7 +733,7 @@ Panel {
                                 }
 
                                 Repeater {
-                                    model: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+                                    model: ["SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM"]
 
                                     Text {
                                         required property string modelData
@@ -904,7 +905,7 @@ Panel {
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: Style.space(130)
                                 horizontalAlignment: Text.AlignHCenter
-                                text: Qt.formatDate(new Date(root.viewYear, root.viewMonth, 1), "MMMM yyyy").toUpperCase()
+                                text: root.portugueseLocale.toString(new Date(root.viewYear, root.viewMonth, 1), "MMMM 'de' yyyy").toUpperCase()
                                 color: Qt.darker(root.foreground, 1.4)
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.body
@@ -1003,7 +1004,7 @@ Panel {
                             TextField {
                                 id: quickAdd
                                 Layout.fillWidth: true
-                                placeholderText: "New task on " + Qt.formatDate(root.selectedDate, "MMM d") + "…"
+                                placeholderText: "Nova tarefa em " + root.portugueseLocale.toString(root.selectedDate, "d 'de' MMM") + "…"
                                 color: root.foreground
                                 placeholderTextColor: Qt.darker(root.foreground, 1.8)
                                 font.family: root.fontFamily
@@ -1168,14 +1169,14 @@ Panel {
                                                 const details = (recurrence === ""
                                                     ? time : time + " · " + recurrence) + reminder;
                                                 if (modelData.skipped) {
-                                                    const date = Qt.formatDate(
+                                                    const date = root.portugueseLocale.toString(
                                                         Model.parseLocalDate(modelData.occurrenceDate),
                                                         "dd MMM").toUpperCase();
                                                     return "NÃO FEITA · " + date + " · " + details;
                                                 }
                                                 if (!taskRow.overdue)
                                                     return details;
-                                                const date = Qt.formatDate(
+                                                const date = root.portugueseLocale.toString(
                                                     Model.parseLocalDate(modelData.occurrenceDate),
                                                     "dd MMM").toUpperCase();
                                                 return "ATRASADA · " + date + " · " + details;
@@ -1238,7 +1239,7 @@ Panel {
                         Text {
                             visible: root.selectedTasks.length === 0
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: root.loadError !== "" ? root.loadError : "No tasks for this day"
+                            text: root.loadError !== "" ? root.loadError : "Nenhuma tarefa para este dia"
                             color: root.loadError !== "" ? Color.urgent : Qt.darker(root.foreground, 1.9)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -1423,10 +1424,10 @@ Panel {
                         }
 
                         Text {
-                            text: root.syncStatus.state === "ready" ? "Synced"
-                                : root.syncStatus.state === "syncing" ? "Syncing…"
-                                : root.syncStatus.state === "error" ? "Sync error"
-                                : "Local only"
+                            text: root.syncStatus.state === "ready" ? "Sincronizado"
+                                : root.syncStatus.state === "syncing" ? "Sincronizando…"
+                                : root.syncStatus.state === "error" ? "Erro de sincronização"
+                                : "Somente local"
                             color: Qt.darker(root.foreground, 1.5)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -1443,7 +1444,7 @@ Panel {
                         Button {
                             visible: root.updateStatus.state === "available"
                                      && root.updateStatus.canInstall === true
-                            text: "Update " + root.updateStatus.latestVersion
+                            text: "Atualizar para " + root.updateStatus.latestVersion
                             foreground: root.foreground
                             accent: Color.accent
                             selected: true
@@ -1459,7 +1460,7 @@ Panel {
 
                         PanelActionButton {
                             iconText: "󰒓"
-                            tooltipText: "Waypoint settings"
+                            tooltipText: "Configurações do Waypoint"
                             foreground: root.foreground
                             fontFamily: root.fontFamily
                             onClicked: if (root.hostWidget)

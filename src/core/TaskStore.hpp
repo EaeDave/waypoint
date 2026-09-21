@@ -103,9 +103,11 @@ public:
                                 const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
                                 const QString &emoji, const QString &categoryId,
                                 TaskRecord *createdTask = nullptr, QString *errorMessage = nullptr);
-  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, QString *errorMessage = nullptr);
+  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, const QDateTime &changedAt,
+                                      QString *errorMessage = nullptr);
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
-                                            bool completed, QString *errorMessage = nullptr);
+                                            bool completed, const QDateTime &changedAt,
+                                            QString *errorMessage = nullptr);
   [[nodiscard]] bool skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                     QString *errorMessage = nullptr);
   [[nodiscard]] bool rescheduleTask(const QString &taskId, const QDate &scheduledDate,
@@ -138,7 +140,8 @@ private:
                                      const QJsonObject &payload, QString *errorMessage);
   [[nodiscard]] bool validateTaskCategoryId(const QString &categoryId, QString *errorMessage) const;
   [[nodiscard]] bool setOccurrenceState(const QString &taskId, const QDate &occurrenceDate,
-                                        OccurrenceStatus status, QString *errorMessage);
+                                        OccurrenceStatus status, const QDateTime &changedAt,
+                                        QString *errorMessage);
   [[nodiscard]] bool beginTransaction(QString *errorMessage);
   [[nodiscard]] bool commitTransaction(QString *errorMessage);
   void rollbackTransaction();

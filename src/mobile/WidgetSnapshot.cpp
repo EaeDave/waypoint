@@ -53,7 +53,7 @@ void setHabitsForDate(QJsonObject *dates, const QString &dateKey, const QJsonArr
 }
 
 void appendTask(QJsonObject *dates, const TaskOccurrence &occurrence, const QDate &today) {
-  const QString dateKey = occurrence.occurrenceDate.toString(Qt::ISODate);
+  const QString dateKey = occurrence.effectiveCalendarDate().toString(Qt::ISODate);
   QJsonObject date = dates->value(dateKey).toObject();
   QJsonArray tasks = date.value(QStringLiteral("tasks")).toArray();
   tasks.append(occurrenceValue(occurrence, today));

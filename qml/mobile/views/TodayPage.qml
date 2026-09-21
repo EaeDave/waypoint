@@ -42,7 +42,7 @@ Item {
                 }
 
                 Text {
-                    text: Qt.locale().toString(root.now, "dddd, d MMMM")
+                    text: Qt.locale("pt_BR").toString(root.now, "dddd, d 'de' MMMM")
                     color: MobileTheme.subdued
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySmallSize
@@ -64,7 +64,7 @@ Item {
                 Text {
                     id: syncLabel
                     anchors.centerIn: parent
-                    text: root.controller.syncState === "ready" ? "SYNC" : root.controller.syncConfigured ? "LOCAL" : "OFFLINE"
+                    text: root.controller.syncState === "ready" ? "SINC." : root.controller.syncConfigured ? "LOCAL" : "SEM REDE"
                     color: root.controller.syncState === "ready" ? MobileTheme.success : root.controller.syncState === "error" ? MobileTheme.urgent : MobileTheme.subdued
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.captionSize

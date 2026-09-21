@@ -47,6 +47,7 @@ struct TaskOccurrence final {
   QString taskId;
   QString title;
   QDate occurrenceDate;
+  QDate calendarDate;
   QTime scheduledTime;
   QList<int> reminderMinutesBefore{0};
   QString emoji;
@@ -61,6 +62,7 @@ struct TaskOccurrence final {
   RecurrenceRule recurrence;
 
   [[nodiscard]] QString key() const;
+  [[nodiscard]] QDate effectiveCalendarDate() const;
   [[nodiscard]] QJsonObject toJson() const;
 };
 

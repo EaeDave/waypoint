@@ -14,6 +14,7 @@ class TaskStoreTest final : public QObject {
 
 private slots:
   void createCompleteAndRescheduleTask();
+  void persistSingleTaskCompletionTime();
   void editTaskTitleAndTimeAtomically();
   void persistFiveReminderOffsetsAndRejectInvalidLists();
   void persistCompoundEmojiAcrossStorageAndSync();
@@ -26,6 +27,7 @@ private slots:
   void persistHolidayPreferencesAndMunicipalities();
   void persistAndSynchronizeTaskVisibility();
   void persistRecurrenceAndOccurrenceState();
+  void placeLateMonthlyCompletionOnToday();
   void migrateLegacyTaskRowsAndOutbox();
   void applyRemoteOccurrenceChangesIdempotently();
   void applyRecurrenceDeletionScopes();
@@ -35,28 +37,24 @@ void TaskStoreTest::reportDuplicateCategoryNamesDuringUpgrade() {
   QVERIFY(directory.isValid());
   const QString path = directory.filePath(QStringLiteral("tasks.sqlite3"));
   const QString connectionName =
-      QStringLiteral("category-upgrade-%1")
-          .arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
+      QStringLiteral("category-upgrade-%1").arg(QUuid::createUuid().toString(QUuid::WithoutBraces));
   {
-    QSqlDatabase database =
-        QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
+    QSqlDatabase database = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), connectionName);
     database.setDatabaseName(path);
     QVERIFY(database.open());
     QSqlQuery query(database);
-    QVERIFY(query.exec(QStringLiteral(
-        "CREATE TABLE task_categories ("
-        "id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, "
-        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
-        "version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)")));
-    QVERIFY(query.exec(QStringLiteral(
-        "CREATE INDEX task_categories_active_idx "
-        "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL")));
-    QVERIFY(query.exec(QStringLiteral(
-        "INSERT INTO task_categories(id, name, color, created_at, updated_at) VALUES "
-        "('one', 'Work', '#112233', '2026-09-01T00:00:00.000Z', "
-        "'2026-09-01T00:00:00.000Z'), "
-        "('two', 'work', '#445566', '2026-09-01T00:00:00.000Z', "
-        "'2026-09-01T00:00:00.000Z')")));
+    QVERIFY(query.exec(QStringLiteral("CREATE TABLE task_categories ("
+                                      "id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL, "
+                                      "created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+                                      "version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)")));
+    QVERIFY(query.exec(QStringLiteral("CREATE INDEX task_categories_active_idx "
+                                      "ON task_categories(name COLLATE NOCASE) WHERE deleted_at IS NULL")));
+    QVERIFY(query.exec(
+        QStringLiteral("INSERT INTO task_categories(id, name, color, created_at, updated_at) VALUES "
+                       "('one', 'Work', '#112233', '2026-09-01T00:00:00.000Z', "
+                       "'2026-09-01T00:00:00.000Z'), "
+                       "('two', 'work', '#445566', '2026-09-01T00:00:00.000Z', "
+                       "'2026-09-01T00:00:00.000Z')")));
     database.close();
   }
   QSqlDatabase::removeDatabase(connectionName);
@@ -66,7 +64,6 @@ void TaskStoreTest::reportDuplicateCategoryNamesDuringUpgrade() {
   QVERIFY(!store.open(&error));
   QVERIFY(error.contains(QStringLiteral("duplicate active category name")));
 }
-
 
 void TaskStoreTest::createCompleteAndRescheduleTask() {
   QTemporaryDir directory;
@@ -83,7 +80,8 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
   QCOMPARE(created.scheduledDate, QDate(2026, 9, 1));
   QCOMPARE(created.scheduledTime, QTime(9, 30));
 
-  QVERIFY2(store.setTaskCompleted(created.id, true, &error), qPrintable(error));
+  QVERIFY2(store.setTaskCompleted(created.id, true, QDateTime::currentDateTimeUtc(), &error),
+           qPrintable(error));
   QVERIFY2(store.rescheduleTask(created.id, QDate(2026, 9, 2), QTime(11, 45), &error), qPrintable(error));
 
   const QList<waypoint::TaskRecord> tasks = store.listActiveTasks(&error);
@@ -102,6 +100,34 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
                .value(QStringLiteral("scheduledTime"))
                .toString(),
            QStringLiteral("11:45"));
+}
+
+void TaskStoreTest::persistSingleTaskCompletionTime() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  waypoint::TaskRecord created;
+  QVERIFY2(store.createTask(QStringLiteral("Conta única"), QDate::currentDate().addDays(-2), QTime(9, 0), {},
+                            QList<int>{0}, {}, {}, &created, &error),
+           qPrintable(error));
+  QVERIFY2(store.setTaskCompleted(created.id, true, QDateTime::currentDateTimeUtc(), &error),
+           qPrintable(error));
+
+  auto tasks = store.listActiveTasks(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(tasks.size(), 1);
+  QVERIFY(tasks.first().completed);
+  QVERIFY(tasks.first().completedAt.isValid());
+  QCOMPARE(tasks.first().completedAt.toLocalTime().date(), QDate::currentDate());
+
+  QVERIFY2(store.setTaskCompleted(created.id, false, QDateTime::currentDateTimeUtc(), &error),
+           qPrintable(error));
+  tasks = store.listActiveTasks(&error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QVERIFY(!tasks.first().completed);
+  QVERIFY(!tasks.first().completedAt.isValid());
 }
 void TaskStoreTest::editTaskTitleAndTimeAtomically() {
   QTemporaryDir directory;
@@ -146,8 +172,8 @@ void TaskStoreTest::editTaskTitleAndTimeAtomically() {
   QCOMPARE(payloadRecurrence.value(QStringLiteral("endMode")).toString(), QStringLiteral("afterCount"));
   QCOMPARE(payloadRecurrence.value(QStringLiteral("occurrenceCount")).toInt(), 5);
 
-  QVERIFY(!store.editTask(created.id, QStringLiteral(" \t "), QTime(19, 0), recurrence, QList<int>{0}, {},
-                          {}, &error));
+  QVERIFY(!store.editTask(created.id, QStringLiteral(" \t "), QTime(19, 0), recurrence, QList<int>{0}, {}, {},
+                          &error));
   QVERIFY(error.contains(QStringLiteral("visible character")));
   const waypoint::TaskRecord unchanged = store.listActiveTasks().first();
   QCOMPARE(unchanged.title, QStringLiteral("Teste editado"));
@@ -181,8 +207,8 @@ void TaskStoreTest::persistFiveReminderOffsetsAndRejectInvalidLists() {
     QVERIFY(!store.createTask(QStringLiteral("Muitos lembretes"), QDate(2026, 9, 2), QTime(9, 0), {},
                               QList<int>{360, 300, 180, 60, 30, 0}, {}, {}, nullptr, &error));
     QVERIFY(error.contains(QStringLiteral("at most 5")));
-    QVERIFY(!store.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {},
-                            QList<int>{30, 30}, {}, {}, &error));
+    QVERIFY(!store.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, QList<int>{30, 30},
+                            {}, {}, &error));
     QVERIFY(error.contains(QStringLiteral("duplicate")));
     QVERIFY(!store.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, QList<int>{-1}, {},
                             {}, &error));
@@ -192,12 +218,12 @@ void TaskStoreTest::persistFiveReminderOffsetsAndRejectInvalidLists() {
   waypoint::TaskStore reopened(path);
   QVERIFY2(reopened.open(&error), qPrintable(error));
   QCOMPARE(reopened.listActiveTasks(&error).first().reminderMinutesBefore, reminders);
-  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, std::nullopt, {},
-                             {}, &error),
+  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, std::nullopt, {}, {},
+                             &error),
            qPrintable(error));
   QCOMPARE(reopened.listActiveTasks(&error).first().reminderMinutesBefore, reminders);
-  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, QList<int>{}, {},
-                             {}, &error),
+  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Preparar viagem"), QTime(9, 0), {}, QList<int>{}, {}, {},
+                             &error),
            qPrintable(error));
   QVERIFY(reopened.listActiveTasks(&error).first().reminderMinutesBefore.isEmpty());
 }
@@ -214,8 +240,8 @@ void TaskStoreTest::persistCompoundEmojiAcrossStorageAndSync() {
     waypoint::TaskStore store(path);
     QVERIFY2(store.open(&error), qPrintable(error));
     waypoint::TaskRecord created;
-    QVERIFY2(store.createTask(QStringLiteral("Programar"), QDate(2026, 9, 1), QTime(9, 30), {},
-                              QList<int>{0}, compoundEmoji, {}, &created, &error),
+    QVERIFY2(store.createTask(QStringLiteral("Programar"), QDate(2026, 9, 1), QTime(9, 30), {}, QList<int>{0},
+                              compoundEmoji, {}, &created, &error),
              qPrintable(error));
     taskId = created.id;
     QCOMPARE(created.emoji, compoundEmoji);
@@ -252,22 +278,22 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
     waypoint::TaskStore store(path);
     QVERIFY2(store.open(&error), qPrintable(error));
     waypoint::TaskCategory category;
-    QVERIFY2(store.createTaskCategory(QStringLiteral(" Trabalho "), QStringLiteral("#3b82f6"),
-                                      &category, &error),
-             qPrintable(error));
+    QVERIFY2(
+        store.createTaskCategory(QStringLiteral(" Trabalho "), QStringLiteral("#3b82f6"), &category, &error),
+        qPrintable(error));
     categoryId = category.id;
     QCOMPARE(category.name, QStringLiteral("Trabalho"));
     QCOMPARE(category.color, QStringLiteral("#3B82F6"));
-    QVERIFY(!store.createTaskCategory(QStringLiteral("trabalho"), QStringLiteral("#EF4444"),
-                                      nullptr, &error));
+    QVERIFY(
+        !store.createTaskCategory(QStringLiteral("trabalho"), QStringLiteral("#EF4444"), nullptr, &error));
     QVERIFY(error.contains(QStringLiteral("already uses")));
     waypoint::TaskCategory unicodeCategory;
-    QVERIFY2(store.createTaskCategory(QStringLiteral("😀").repeated(80),
-                                      QStringLiteral("#112233"), &unicodeCategory, &error),
+    QVERIFY2(store.createTaskCategory(QStringLiteral("😀").repeated(80), QStringLiteral("#112233"),
+                                      &unicodeCategory, &error),
              qPrintable(error));
     QVERIFY2(store.deleteTaskCategory(unicodeCategory.id, &error), qPrintable(error));
-    QVERIFY(!store.createTaskCategory(QStringLiteral("Quebra"),
-                                      QStringLiteral("#112233\n"), nullptr, &error));
+    QVERIFY(
+        !store.createTaskCategory(QStringLiteral("Quebra"), QStringLiteral("#112233\n"), nullptr, &error));
     QVERIFY(error.contains(QStringLiteral("#RRGGBB")));
 
     waypoint::RecurrenceRule recurrence;
@@ -275,8 +301,8 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
     recurrence.endMode = waypoint::RecurrenceEndMode::AfterCount;
     recurrence.occurrenceCount = 3;
     waypoint::TaskRecord task;
-    QVERIFY2(store.createTask(QStringLiteral("Planejar"), QDate(2026, 9, 3), QTime(9, 0),
-                              recurrence, QList<int>{0}, {}, category.id, &task, &error),
+    QVERIFY2(store.createTask(QStringLiteral("Planejar"), QDate(2026, 9, 3), QTime(9, 0), recurrence,
+                              QList<int>{0}, {}, category.id, &task, &error),
              qPrintable(error));
     taskId = task.id;
     QCOMPARE(store.listActiveTasks(&error).first().categoryName, QStringLiteral("Trabalho"));
@@ -299,8 +325,7 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
   QVERIFY2(reopened.open(&error), qPrintable(error));
   QCOMPARE(reopened.listActiveTaskCategories(&error).size(), 1);
   QCOMPARE(reopened.listActiveTasks(&error).first().categoryId, categoryId);
-  QVERIFY2(reopened.editTaskCategory(categoryId, QStringLiteral("Foco"), QStringLiteral("#22c55e"),
-                                     &error),
+  QVERIFY2(reopened.editTaskCategory(categoryId, QStringLiteral("Foco"), QStringLiteral("#22c55e"), &error),
            qPrintable(error));
   QCOMPARE(reopened.listActiveTasks(&error).first().categoryName, QStringLiteral("Foco"));
   QCOMPARE(reopened.listActiveTasks(&error).first().categoryColor, QStringLiteral("#22C55E"));
@@ -314,9 +339,9 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
   QVERIFY(uncategorized.categoryColor.isEmpty());
 
   waypoint::TaskCategory replacement;
-  QVERIFY2(reopened.createTaskCategory(QStringLiteral("Foco"), QStringLiteral("#22C55E"),
-                                       &replacement, &error),
-           qPrintable(error));
+  QVERIFY2(
+      reopened.createTaskCategory(QStringLiteral("Foco"), QStringLiteral("#22C55E"), &replacement, &error),
+      qPrintable(error));
   QVERIFY(replacement.id != categoryId);
   waypoint::TaskCategory remoteDuplicate;
   remoteDuplicate.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
@@ -334,8 +359,8 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
   QVERIFY(!reopened.applyRemoteChanges({duplicateCategoryChange}, QStringLiteral("1"), {}, &error));
   QVERIFY(error.contains(QStringLiteral("already uses")));
   QCOMPARE(reopened.listActiveTaskCategories(&error).size(), 1);
-  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Planejar"), QTime(9, 0), {},
-                             QList<int>{0}, {}, replacement.id, &error),
+  QVERIFY2(reopened.editTask(taskId, QStringLiteral("Planejar"), QTime(9, 0), {}, QList<int>{0}, {},
+                             replacement.id, &error),
            qPrintable(error));
   QCOMPARE(reopened.listActiveTasks(&error).first().categoryId, replacement.id);
   waypoint::TaskRecord remoteTask = reopened.listActiveTasks(&error).first();
@@ -349,8 +374,7 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
       {QStringLiteral("operation"), QStringLiteral("upsert")},
       {QStringLiteral("payload"), legacyPayload},
   };
-  QVERIFY2(reopened.applyRemoteChanges({legacyChange}, QStringLiteral("1"), {}, &error),
-           qPrintable(error));
+  QVERIFY2(reopened.applyRemoteChanges({legacyChange}, QStringLiteral("1"), {}, &error), qPrintable(error));
   QCOMPARE(reopened.listActiveTasks(&error).first().categoryId, replacement.id);
 
   QJsonObject clearPayload = remoteTask.toJson();
@@ -362,8 +386,7 @@ void TaskStoreTest::persistTaskCategoriesAndAssignments() {
       {QStringLiteral("operation"), QStringLiteral("upsert")},
       {QStringLiteral("payload"), clearPayload},
   };
-  QVERIFY2(reopened.applyRemoteChanges({clearChange}, QStringLiteral("2"), {}, &error),
-           qPrintable(error));
+  QVERIFY2(reopened.applyRemoteChanges({clearChange}, QStringLiteral("2"), {}, &error), qPrintable(error));
   QVERIFY(reopened.listActiveTasks(&error).first().categoryId.isEmpty());
 }
 
@@ -415,13 +438,17 @@ void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
   QCOMPARE(tasks.first().scheduledTime, QTime(7, 15));
   QCOMPARE(store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 3), &error).size(), 3);
 
-  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), true, &error), qPrintable(error));
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), true,
+                                        QDateTime(QDate(2026, 1, 2), QTime(8, 0)), &error),
+           qPrintable(error));
   auto states = store.listOccurrenceStates(&error);
   QCOMPARE(states.size(), 1);
   QCOMPARE(states.first().occurrenceDate, QDate(2026, 1, 2));
   QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Completed);
 
-  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), false, &error), qPrintable(error));
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), false,
+                                        QDateTime(QDate(2026, 1, 2), QTime(9, 0)), &error),
+           qPrintable(error));
   states = store.listOccurrenceStates(&error);
   QCOMPARE(states.size(), 1);
   QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Pending);
@@ -432,6 +459,40 @@ void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
   QCOMPARE(mutations.at(0).toObject().value(QStringLiteral("entityType")).toString(), QStringLiteral("task"));
   QCOMPARE(mutations.at(1).toObject().value(QStringLiteral("entityType")).toString(),
            QStringLiteral("occurrence"));
+}
+
+void TaskStoreTest::placeLateMonthlyCompletionOnToday() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+
+  const QDate completionDay = QDate::currentDate();
+  const QDate dueDate = completionDay.addDays(-2);
+  waypoint::RecurrenceRule recurrence;
+  recurrence.frequency = waypoint::RecurrenceFrequency::Monthly;
+  waypoint::TaskRecord created;
+  QVERIFY2(store.createTask(QStringLiteral("Vivo Easy"), dueDate, QTime(9, 0), recurrence, QList<int>{0}, {},
+                            {}, &created, &error),
+           qPrintable(error));
+  QVERIFY2(store.setOccurrenceCompleted(created.id, dueDate, true,
+                                        QDateTime(completionDay, QTime(12, 0)), &error),
+           qPrintable(error));
+
+  const auto completedToday = store.listOccurrences(completionDay, completionDay, &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(completedToday.size(), 1);
+  QCOMPARE(completedToday.first().occurrenceDate, dueDate);
+  QCOMPARE(completedToday.first().calendarDate, completionDay);
+  QVERIFY(completedToday.first().completed);
+  QVERIFY(completedToday.first().calendarMarker);
+
+  const QDate nextDueDate = dueDate.addMonths(1);
+  const auto nextOccurrence = store.listOccurrences(nextDueDate, nextDueDate, &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(nextOccurrence.size(), 1);
+  QCOMPARE(nextOccurrence.first().occurrenceDate, nextDueDate);
+  QVERIFY(!nextOccurrence.first().completed);
 }
 
 void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {

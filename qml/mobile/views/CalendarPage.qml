@@ -38,7 +38,8 @@ Item {
         const markersById = {};
         const order = [];
         for (const occurrence of controller.monthOccurrences) {
-            if (occurrence.occurrenceDate !== key || !occurrence.calendarMarker)
+            const occurrenceDate = occurrence.calendarDate || occurrence.occurrenceDate;
+            if (occurrenceDate !== key || !occurrence.calendarMarker)
                 continue;
             const markerId = occurrence.categoryId || "__uncategorized";
             if (!markersById[markerId]) {
@@ -75,7 +76,8 @@ Item {
     function skippedOccurrenceCount(key) {
         let count = 0;
         for (const occurrence of controller.monthOccurrences) {
-            if (occurrence.occurrenceDate === key && occurrence.skipped)
+            const occurrenceDate = occurrence.calendarDate || occurrence.occurrenceDate;
+            if (occurrenceDate === key && occurrence.skipped)
                 ++count;
         }
         return count;
@@ -167,7 +169,7 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: Qt.locale().monthName(root.controller.visibleMonth - 1, Locale.LongFormat)
+                    text: Qt.locale("pt_BR").monthName(root.controller.visibleMonth - 1, Locale.LongFormat)
                     color: MobileTheme.foreground
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.titleSize
@@ -360,7 +362,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: Qt.locale().toString(root.selectedDateValue, "dddd, d MMMM")
+                text: Qt.locale("pt_BR").toString(root.selectedDateValue, "dddd, d 'de' MMMM")
                 color: MobileTheme.foreground
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.subtitleSize

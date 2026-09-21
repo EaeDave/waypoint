@@ -2,12 +2,15 @@
 #include "mobile/MobileController.hpp"
 
 #include <QGuiApplication>
+#include <QLocale>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QVariant>
 #include <QtCore/private/qandroidextras_p.h>
 
 int main(int argc, char *argv[]) {
+  QLocale::setDefault(QLocale(QLocale::Portuguese, QLocale::Brazil));
+
   QCoreApplication::setOrganizationName(QStringLiteral("eaedave"));
   QCoreApplication::setOrganizationDomain(QStringLiteral("eaedave.org"));
   QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));

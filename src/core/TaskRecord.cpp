@@ -79,6 +79,8 @@ QJsonObject TaskRecord::toJson() const {
       {QStringLiteral("categoryId"),
        categoryId.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(categoryId)},
       {QStringLiteral("completed"), completed},
+      {QStringLiteral("completedAt"),
+       completedAt.isValid() ? completedAt.toUTC().toString(Qt::ISODateWithMs) : QString()},
       {QStringLiteral("reminderMinutesBefore"), taskReminderMinutesBeforeToJson(reminderMinutesBefore)},
       {QStringLiteral("recurrence"), recurrence.toJson()},
       {QStringLiteral("createdAt"), createdAt.toUTC().toString(Qt::ISODateWithMs)},
@@ -97,6 +99,8 @@ TaskRecord TaskRecord::fromJson(const QJsonObject &json) {
   task.emoji = json.value(QStringLiteral("emoji")).toString(QStringLiteral(""));
   task.categoryId = json.value(QStringLiteral("categoryId")).toString();
   task.completed = json.value(QStringLiteral("completed")).toBool();
+  task.completedAt =
+      QDateTime::fromString(json.value(QStringLiteral("completedAt")).toString(), Qt::ISODateWithMs);
   task.reminderMinutesBefore =
       taskReminderMinutesBeforeFromJson(json.value(QStringLiteral("reminderMinutesBefore")));
   task.recurrence = RecurrenceRule::fromJson(json.value(QStringLiteral("recurrence")).toObject());
@@ -104,6 +108,9 @@ TaskRecord TaskRecord::fromJson(const QJsonObject &json) {
       QDateTime::fromString(json.value(QStringLiteral("createdAt")).toString(), Qt::ISODateWithMs);
   task.updatedAt =
       QDateTime::fromString(json.value(QStringLiteral("updatedAt")).toString(), Qt::ISODateWithMs);
+  if (task.completed && !task.completedAt.isValid()) {
+    task.completedAt = task.updatedAt;
+  }
   task.version = json.value(QStringLiteral("version")).toInteger();
   return task;
 }

@@ -42,8 +42,9 @@ bool applyWidgetTaskCompletion(TaskStore &store, const QString &taskId, const QD
   }
 
   QString error;
-  const bool changed = recurring ? store.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)
-                                 : store.setTaskCompleted(taskId, completed, &error);
+  const bool changed =
+      recurring ? store.setOccurrenceCompleted(taskId, occurrenceDate, completed, now, &error)
+                : store.setTaskCompleted(taskId, completed, now, &error);
   if (!changed) {
     setError(errorMessage, error);
     return false;

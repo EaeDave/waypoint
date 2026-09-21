@@ -3,17 +3,20 @@
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
+#include <QLocale>
 #include <QQmlApplicationEngine>
 #include <QQuickWindow>
 #include <QTimer>
 
 int main(int argc, char *argv[]) {
+  QLocale::setDefault(QLocale(QLocale::Portuguese, QLocale::Brazil));
+
   QGuiApplication application(argc, argv);
   QCommandLineParser parser;
   parser.addHelpOption();
-  parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Render the month view to a PNG and exit"),
-                    QStringLiteral("path")});
-  parser.addOption({QStringLiteral("settings"), QStringLiteral("Open synchronization settings")});
+  parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Renderiza a visão mensal em PNG e encerra"),
+                    QStringLiteral("caminho")});
+  parser.addOption({QStringLiteral("settings"), QStringLiteral("Abre as configurações de sincronização")});
   parser.process(application);
   QCoreApplication::setOrganizationName(QStringLiteral("Waypoint"));
   QCoreApplication::setApplicationName(QStringLiteral("Waypoint"));

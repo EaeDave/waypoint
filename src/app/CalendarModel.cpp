@@ -1,7 +1,7 @@
 #include "app/CalendarModel.hpp"
 
-#include <algorithm>
 #include <QLocale>
+#include <algorithm>
 
 namespace waypoint {
 namespace {
@@ -109,8 +109,8 @@ int CalendarModel::visibleYear() const { return m_visibleMonth.year(); }
 int CalendarModel::visibleMonth() const { return m_visibleMonth.month(); }
 
 QString CalendarModel::monthLabel() const {
-  const QLocale locale;
-  return QStringLiteral("%1 %2")
+  const QLocale locale(QLocale::Portuguese, QLocale::Brazil);
+  return QStringLiteral("%1 de %2")
       .arg(locale.standaloneMonthName(m_visibleMonth.month(), QLocale::LongFormat))
       .arg(m_visibleMonth.year());
 }
@@ -152,7 +152,7 @@ void CalendarModel::setVisibleMonth(const QDate &month) {
 }
 
 void CalendarModel::rebuildCells() {
-  const int firstDayOfWeek = static_cast<int>(QLocale().firstDayOfWeek());
+  const int firstDayOfWeek = static_cast<int>(QLocale(QLocale::Portuguese, QLocale::Brazil).firstDayOfWeek());
   const int offset = (m_visibleMonth.dayOfWeek() - firstDayOfWeek + 7) % 7;
   const QDate gridStart = m_visibleMonth.addDays(-offset);
   const QDate today = QDate::currentDate();
@@ -165,14 +165,13 @@ void CalendarModel::rebuildCells() {
     cell.inVisibleMonth =
         cell.date.month() == m_visibleMonth.month() && cell.date.year() == m_visibleMonth.year();
     for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
-      if (occurrence.occurrenceDate != cell.date) {
+      if (occurrence.effectiveCalendarDate() != cell.date) {
         continue;
       }
       if (!occurrence.calendarMarker) {
         continue;
       }
-      const bool urgent = occurrence.skipped ||
-                          (!occurrence.completed && occurrence.occurrenceDate < today);
+      const bool urgent = occurrence.skipped || (!occurrence.completed && occurrence.occurrenceDate < today);
       if (occurrence.skipped) {
         ++cell.skippedCount;
       } else if (occurrence.completed) {
@@ -184,10 +183,9 @@ void CalendarModel::rebuildCells() {
         }
       }
       const QString markerId = occurrence.categoryName.isEmpty() ? QString{} : occurrence.categoryId;
-      auto marker =
-          std::ranges::find_if(cell.categoryMarkers, [&markerId](const CategoryMarker &candidate) {
-            return candidate.id == markerId;
-          });
+      auto marker = std::ranges::find_if(cell.categoryMarkers, [&markerId](const CategoryMarker &candidate) {
+        return candidate.id == markerId;
+      });
       if (marker == cell.categoryMarkers.end()) {
         cell.categoryMarkers.append({
             markerId,

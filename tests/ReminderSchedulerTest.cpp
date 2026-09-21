@@ -74,7 +74,8 @@ void ReminderSchedulerTest::deliverDuePendingTaskExactlyOnce() {
   QVERIFY2(store.createTask(QStringLiteral("Concluída"), date, dueTime, {}, QList<int>{0}, {}, {},
                             &completedTask, &error),
            qPrintable(error));
-  QVERIFY2(store.setTaskCompleted(completedTask.id, true, &error), qPrintable(error));
+  QVERIFY2(store.setTaskCompleted(completedTask.id, true, QDateTime(date, dueTime), &error),
+           qPrintable(error));
   QVERIFY2(store.createTask(QStringLiteral("Mais tarde"), date, QTime(10, 0), {}, QList<int>{0}, {}, {},
                             nullptr, &error),
            qPrintable(error));

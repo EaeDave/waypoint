@@ -226,7 +226,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "LOCAL-FIRST  ·  SINCRONIZA QUANDO DISPONÍVEL"
+                text: "DADOS LOCAIS PRIMEIRO  ·  SINCRONIZA QUANDO DISPONÍVEL"
                 color: MobileTheme.subdued
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.captionSize
@@ -286,7 +286,7 @@ Item {
             }
 
             Text {
-                text: "SERVIDOR SELF-HOSTED"
+                text: "SERVIDOR HOSPEDADO POR VOCÊ"
                 color: MobileTheme.subdued
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.captionSize
@@ -300,17 +300,17 @@ Item {
                 placeholderText: "https://waypoint.exemplo.com"
                 inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase
                 Accessible.id: "sync-endpoint"
-                Accessible.name: "Endpoint de sincronização"
+                Accessible.name: "Endereço de sincronização"
             }
 
             MobileField {
                 id: tokenField
                 Layout.fillWidth: true
-                placeholderText: root.controller.syncConfigured ? "Token salvo — deixe vazio para manter" : "Bearer token"
+                placeholderText: root.controller.syncConfigured ? "Token salvo — deixe vazio para manter" : "Token de acesso"
                 echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText
                 Accessible.id: "sync-token"
-                Accessible.name: "Bearer token de sincronização"
+                Accessible.name: "Token de acesso de sincronização"
             }
 
             RowLayout {
@@ -343,7 +343,7 @@ Item {
 
             Text {
                 Layout.fillWidth: true
-                text: "Use HTTPS: o Bearer token dá acesso total à sua instância."
+                text: "Use HTTPS: o token de acesso dá acesso total à sua instância."
                 color: MobileTheme.warning
                 font.family: MobileTheme.fontFamily
                 font.pixelSize: MobileTheme.captionSize

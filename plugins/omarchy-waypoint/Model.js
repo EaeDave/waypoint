@@ -42,7 +42,7 @@ function monthCells(year, month, occurrences, holidays) {
         const categoryMarkersById = {}
         const categoryMarkerOrder = []
         for (const occurrence of occurrences || []) {
-            if (occurrence.occurrenceDate !== key)
+            if ((occurrence.calendarDate || occurrence.occurrenceDate) !== key)
                 continue
             if (occurrence.calendarMarker === false && occurrence.skipped !== true)
                 continue
@@ -130,7 +130,7 @@ function yearProgress(date) {
 function occurrencesForDate(occurrences, date) {
     const key = dateKey(date)
     return (occurrences || []).filter(occurrence =>
-        occurrence.occurrenceDate === key
+        (occurrence.calendarDate || occurrence.occurrenceDate) === key
         && (occurrence.recurring !== true || occurrence.calendarMarker !== false
             || occurrence.skipped === true))
 }
