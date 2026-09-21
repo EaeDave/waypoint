@@ -27,6 +27,7 @@ Rectangle {
     property int weekdayMask: 0
     property bool definitionMode: false
 
+    readonly property var portugueseLocale: Qt.locale("pt_BR")
     readonly property date scheduledDateValue: {
         const parts = scheduledDateKey.split("-");
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
@@ -124,9 +125,11 @@ Rectangle {
                             parts.push("CONCLUÍDA");
                         parts.push(root.recurring ? root.recurrenceLabel : "ÚNICA");
                     } else if (root.skipped) {
-                        parts.push("NÃO FEITA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
+                        parts.push("NÃO FEITA · " + root.portugueseLocale.toString(
+                            root.scheduledDateValue, "dd MMM"));
                     } else if (root.overdue) {
-                        parts.push("ATRASADA · " + Qt.formatDate(root.scheduledDateValue, "dd MMM"));
+                        parts.push("ATRASADA · " + root.portugueseLocale.toString(
+                            root.scheduledDateValue, "dd MMM"));
                     }
                     if (!root.definitionMode && root.recurring)
                         parts.push(root.recurrenceLabel);
@@ -145,7 +148,7 @@ Rectangle {
             readonly property int reminderCount:
                 (root.reminderMinutesBefore || []).length
             text: (root.definitionMode
-                   ? Qt.formatDate(root.scheduledDateValue, "dd MMM") + " · " : "")
+                   ? root.portugueseLocale.toString(root.scheduledDateValue, "dd MMM") + " · " : "")
                   + root.scheduledTimeKey
                   + (reminderCount > 0 ? " · 󰂚 " + reminderCount : "")
             color: root.completed ? WaypointTheme.disabledText

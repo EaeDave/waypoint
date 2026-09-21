@@ -11,6 +11,7 @@ Item {
     required property var controller
     property string filter: "all"
     property var collapsedGroups: ({})
+    readonly property var portugueseLocale: Qt.locale("pt_BR")
     function groupKey(listId) {
         return listId === "" ? "__entrada__" : listId;
     }
@@ -346,7 +347,7 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             text: {
-                                                const parts = [Qt.formatDate(
+                                                const parts = [root.portugueseLocale.toString(
                                                     new Date(taskRow.modelData.scheduledDate
                                                              + "T00:00:00"), "dd MMM"),
                                                     taskRow.modelData.scheduledTime];
