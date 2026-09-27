@@ -10,4 +10,16 @@
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowNoTitle">true</item>
     </style>
+    <style name="WidgetDialogTheme" parent="AppTheme">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+    </style>
+    <style name="WidgetHistoryTheme" parent="android:style/Theme.Material.Dialog.NoActionBar">
+        <item name="android:colorAccent">#979FEC</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:windowMinWidthMajor">90%</item>
+        <item name="android:windowMinWidthMinor">95%</item>
+    </style>
 </resources>

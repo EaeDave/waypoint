@@ -19,6 +19,16 @@ Panel {
     property var categories: []
     property var todayTasks: []
     property var selectedHabits: []
+    property var selectedRegistrationActivity: []
+    property bool registrationActivityExpanded: false
+    property var expandedActivityTasks: ({})
+    property var completionTask: null
+    property var editedTask: null
+    property bool completionPickerVisible: false
+    property bool completionCustomDateVisible: false
+    property string completionFeedback: ""
+    property var completionUndo: null
+    readonly property color completionLateColor: "#d9a441"
     property var holidays: []
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
@@ -124,6 +134,59 @@ Panel {
         }
         return options;
     }
+    function requestCompletion(task, editDate) {
+        if (!hostWidget || hostWidget.actionBusy)
+            return;
+        if (!editDate && (task.completed || task.skipped)) {
+            hostWidget.setOccurrenceCompleted(task.taskId, task.occurrenceDate, false, "");
+            return;
+        }
+        const todayKey = Model.dateKey(new Date());
+        if (!editDate && task.occurrenceDate >= todayKey) {
+            hostWidget.setOccurrenceCompleted(task.taskId, task.occurrenceDate, true, todayKey);
+            return;
+        }
+        completionTask = task;
+        completionDateInput.text = String(task.completedDate || todayKey);
+        completionCustomDateVisible = editDate;
+        completionPickerVisible = true;
+    }
+
+    function saveCompletion(dateKey) {
+        if (!hostWidget || !completionTask)
+            return;
+        if (hostWidget.setOccurrenceCompleted(completionTask.taskId,
+                completionTask.occurrenceDate, true, dateKey,
+                completionTask.completed ? String(completionTask.completedDate || "") : null))
+            completionPickerVisible = false;
+    }
+
+    function completionSaved(action) {
+        completionFeedback = !action.completed ? "Conclusão desfeita"
+            : action.previousCompletedDate !== null ? "Data da conclusão alterada"
+            : "Conclusão salva";
+        completionUndo = action.completed ? action : null;
+        completionFeedbackTimer.restart();
+    }
+
+    function undoCompletion() {
+        if (!hostWidget || !completionUndo)
+            return;
+        if (completionUndo.previousCompletedDate) {
+            hostWidget.setOccurrenceCompleted(completionUndo.taskId,
+                completionUndo.occurrenceDate, true, completionUndo.previousCompletedDate,
+                completionUndo.completedDate);
+        } else {
+            hostWidget.setOccurrenceCompleted(completionUndo.taskId,
+                completionUndo.occurrenceDate, false, "");
+        }
+    }
+
+    function toggleActivityTask(taskId) {
+        const expanded = Object.assign({}, expandedActivityTasks);
+        expanded[taskId] = !expanded[taskId];
+        expandedActivityTasks = expanded;
+    }
 
 
 
@@ -135,6 +198,7 @@ Panel {
         if (hostWidget) {
             hostWidget.refreshRange(viewYear, viewMonth);
             hostWidget.refreshHabits(Model.dateKey(selectedDate));
+            hostWidget.refreshRegistrationActivity(Model.dateKey(selectedDate));
         }
         controller.show();
     }
@@ -160,8 +224,12 @@ Panel {
 
     function selectDay(date) {
         selectedDate = date;
-        if (hostWidget)
+        registrationActivityExpanded = false;
+        expandedActivityTasks = ({});
+        if (hostWidget) {
             hostWidget.refreshHabits(Model.dateKey(selectedDate));
+            hostWidget.refreshRegistrationActivity(Model.dateKey(selectedDate));
+        }
         if (date.getMonth() !== viewMonth || date.getFullYear() !== viewYear) {
             viewMonth = date.getMonth();
             viewYear = date.getFullYear();
@@ -382,6 +450,7 @@ Panel {
 
 
     function openTaskEditor(task) {
+        editedTask = task;
         editingTaskId = String(task.taskId || "");
         editingOccurrenceDate = String(task.occurrenceDate || "");
         editingCompleted = task.completed === true;
@@ -454,7 +523,7 @@ Panel {
     function reopenEditedOccurrence() {
         if (!hostWidget)
             return;
-        hostWidget.setOccurrenceCompleted(editingTaskId, editingOccurrenceDate, false);
+        hostWidget.setOccurrenceCompleted(editingTaskId, editingOccurrenceDate, false, "");
         closeTaskEditor();
     }
 
@@ -570,6 +639,15 @@ Panel {
 
 
 
+    Timer {
+        id: completionFeedbackTimer
+        interval: 8000
+        onTriggered: {
+            root.completionFeedback = "";
+            root.completionUndo = null;
+        }
+    }
+
     KeyboardPanel {
         id: popup
         anchorItem: root.anchorItem
@@ -578,7 +656,7 @@ Panel {
         open: root.opened
         centerOnBar: true
         focusTarget: keyCatcher
-        contentWidth: popup.fittedContentWidth(Style.space(560))
+        contentWidth: popup.fittedContentWidth(Style.space(1120))
         contentHeight: popup.fittedContentHeight(contentColumn.implicitHeight)
 
         PanelKeyCatcher {
@@ -589,7 +667,12 @@ Panel {
                     root.moveMonth(dx);
             }
             onActivateRequested: quickAdd.forceActiveFocus()
-            onCloseRequested: root.close()
+            onCloseRequested: {
+                if (root.completionPickerVisible)
+                    root.completionPickerVisible = false;
+                else
+                    root.close();
+            }
 
             Flickable {
                 id: panelFlick
@@ -598,11 +681,40 @@ Panel {
                 contentHeight: contentColumn.implicitHeight
                 boundsBehavior: Flickable.StopAtBounds
                 clip: true
+                readonly property bool wideLayout: width >= Style.space(1000)
+                    && popup.fittedContentHeight(Style.space(720)) >= Style.space(600)
+                interactive: !wideLayout
+                onWideLayoutChanged: {
+                    contentY = 0;
+                    if (detailsFlick)
+                        detailsFlick.contentY = 0;
+                    if (habitsFlick)
+                        habitsFlick.contentY = 0;
+                }
 
-                Column {
+                Item {
                     id: contentColumn
-                    width: Math.max(panelFlick.width, calendarGridColumn.width)
-                    spacing: Style.space(8)
+                    width: panelFlick.width
+                    implicitHeight: panelFlick.wideLayout
+                        ? Math.max(calendarColumn.implicitHeight + Style.space(16)
+                                   + Math.min(habitsColumn.implicitHeight, Style.space(250)),
+                                   Math.min(detailsColumn.implicitHeight, Style.space(720)))
+                        : calendarColumn.implicitHeight + habitsColumn.implicitHeight
+                          + Style.space(32) + detailsColumn.implicitHeight
+
+                    Column {
+                        id: calendarColumn
+                        width: panelFlick.wideLayout ? (parent.width - Style.space(24)) / 2 : parent.width
+                        spacing: Style.space(8)
+                    Text {
+                        width: parent.width
+                        visible: root.loadError !== ""
+                        text: root.loadError
+                        color: Color.urgent
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.caption
+                        wrapMode: Text.Wrap
+                    }
 
                     Item {
                         width: parent.width
@@ -929,325 +1041,21 @@ Panel {
                             }
                         }
                     }
-
-                    RowLayout {
-                        width: parent.width
-
-                        Text {
-                            text: "TAREFAS"
-                            color: Qt.darker(root.foreground, 1.4)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                            font.bold: true
-                            font.letterSpacing: 1
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        Button {
-                            text: root.taskVisibility === "pending" ? "PENDENTES" : "TODAS"
-                            tooltipText: root.taskVisibility === "pending"
-                                ? "Exibindo somente pendentes; clique para mostrar todas"
-                                : "Exibindo todas; clique para mostrar somente pendentes"
-                            foreground: root.foreground
-                            accent: Color.accent
-                            bordered: true
-                            selected: root.taskVisibility === "pending"
-                            horizontalPadding: Style.space(7)
-                            verticalPadding: Style.space(3)
-                            onClicked: if (root.hostWidget)
-                                root.hostWidget.setTaskVisibility(
-                                    root.taskVisibility === "pending" ? "all" : "pending")
-                        }
                     }
 
-                    Rectangle {
-                        width: parent.width
-                        height: Style.space(42)
-                        radius: Style.cornerRadius
-                        color: Style.hoverFillFor(root.foreground, Color.accent)
-
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: Style.space(6)
-                            anchors.rightMargin: Style.space(10)
-                            spacing: Style.space(4)
-
-                            Button {
-                                text: root.quickEmoji === "" ? "☺" : root.quickEmoji
-                                tooltipText: "Escolher emoji"
-                                foreground: root.foreground
-                                accent: Color.accent
-                                bordered: false
-                                fontFamily: root.quickEmoji === ""
-                                            ? root.fontFamily : "Noto Color Emoji"
-                                horizontalPadding: Style.space(6)
-                                onClicked: root.openEmojiPicker("quick", root.quickEmoji)
-                            }
-
-
-                            Dropdown {
-                                Layout.preferredWidth: Style.space(150)
-                                showLabel: false
-                                foreground: root.foreground
-                                background: Color.popups.background
-                                accent: Color.accent
-                                options: root.categoryOptions()
-                                value: root.quickCategoryId
-                                onChanged: function(value) {
-                                    root.quickCategoryId = String(value || "");
-                                }
-                            }
-
-                            TextField {
-                                id: quickAdd
-                                Layout.fillWidth: true
-                                placeholderText: "Nova tarefa em " + root.portugueseLocale.toString(root.selectedDate, "d 'de' MMM") + "…"
-                                color: root.foreground
-                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
-                                font.family: root.fontFamily
-                                background: Item {}
-                                onAccepted: root.beginQuickTask()
-                            }
-                        }
-                    }
-
-
+                    Flickable {
+                        id: habitsFlick
+                        interactive: panelFlick.wideLayout
+                        y: calendarColumn.implicitHeight + Style.space(16)
+                        width: calendarColumn.width
+                        height: panelFlick.wideLayout ? Math.max(0, panelFlick.height - y) : habitsColumn.implicitHeight
+                        contentWidth: width
+                        contentHeight: habitsColumn.implicitHeight
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
                     Column {
-                        width: parent.width
-                        spacing: Style.space(3)
-                        visible: root.selectedHolidays.length > 0
-
-                        Repeater {
-                            model: root.selectedHolidays
-
-                            Rectangle {
-                                required property var modelData
-                                width: parent.width
-                                height: holidayDetails.implicitHeight + Style.space(14)
-                                radius: Style.cornerRadius
-                                color: Style.hoverFillFor(root.foreground,
-                                                         root.holidayColor(modelData.kind))
-
-                                Column {
-                                    id: holidayDetails
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.leftMargin: Style.space(8)
-                                    anchors.rightMargin: Style.space(8)
-                                    spacing: Style.space(2)
-
-                                    Text {
-                                        width: parent.width
-                                        text: modelData.name
-                                        color: root.holidayColor(modelData.kind)
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.body
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: root.holidayKindLabel(modelData.kind, modelData.scope)
-                                        color: root.holidayColor(modelData.kind)
-                                        opacity: 0.72
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.bold: true
-                                    }
-
-
-                                    Text {
-                                        width: parent.width
-                                        visible: String(modelData.description || "") !== ""
-                                        text: modelData.description || ""
-                                        color: Qt.darker(root.foreground, 1.5)
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                        wrapMode: Text.Wrap
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Column {
-                        width: parent.width
-                        spacing: Style.space(2)
-
-                        Repeater {
-                            model: root.selectedTasks
-
-                            Rectangle {
-                                id: taskRow
-                                required property var modelData
-                                readonly property bool overdue:
-                                    !modelData.completed && !modelData.skipped
-                                    && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
-                                width: parent.width
-                                height: Style.space(58)
-                                radius: Style.cornerRadius
-                                color: taskMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
-
-
-                                Rectangle {
-                                    visible: String(modelData.categoryName || "") !== ""
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: Style.spacing.hairline * 2
-                                    radius: width / 2
-                                    color: modelData.categoryColor || Color.accent
-                                }
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: Style.space(8)
-                                    anchors.rightMargin: Style.space(50)
-                                    spacing: Style.space(8)
-
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.completed ? "󰄲"
-                                            : modelData.skipped ? "×" : "󰄱"
-                                        color: modelData.completed ? Color.accent
-                                             : modelData.skipped ? Color.urgent : root.foreground
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.body
-                                    }
-
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Style.space(26)
-                                        visible: String(modelData.emoji || "") !== ""
-                                        text: modelData.emoji || ""
-                                        font.family: "Noto Color Emoji"
-                                        font.pixelSize: Style.font.body
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-
-                                    Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width
-                                               - Style.space(String(modelData.emoji || "") === ""
-                                                             ? 40 : 74)
-                                        spacing: 1
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.title
-                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8)
-                                                 : modelData.skipped ? Color.urgent : root.foreground
-                                            elide: Text.ElideRight
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.body
-                                            font.strikeout: modelData.completed
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            visible: String(modelData.categoryName || "") !== ""
-                                            text: String(modelData.categoryName || "").toUpperCase()
-                                            color: modelData.completed
-                                                   ? Qt.darker(root.foreground, 1.8)
-                                                   : modelData.categoryColor || Color.accent
-                                            elide: Text.ElideRight
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.caption
-                                            font.bold: true
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: {
-                                                const time = String(modelData.scheduledTime || "");
-                                                const recurrence = String(modelData.recurrenceLabel || "");
-                                                const reminderCount =
-                                                    (modelData.reminderMinutesBefore || []).length;
-                                                const reminder = reminderCount > 0
-                                                    ? " · 󰂚 " + reminderCount : "";
-                                                const details = (recurrence === ""
-                                                    ? time : time + " · " + recurrence) + reminder;
-                                                if (modelData.skipped) {
-                                                    const date = root.portugueseLocale.toString(
-                                                        Model.parseLocalDate(modelData.occurrenceDate),
-                                                        "dd MMM").toUpperCase();
-                                                    return "NÃO FEITA · " + date + " · " + details;
-                                                }
-                                                if (!taskRow.overdue)
-                                                    return details;
-                                                const date = root.portugueseLocale.toString(
-                                                    Model.parseLocalDate(modelData.occurrenceDate),
-                                                    "dd MMM").toUpperCase();
-                                                return "ATRASADA · " + date + " · " + details;
-                                            }
-                                            color: modelData.skipped || taskRow.overdue
-                                                ? Color.urgent : Color.accent
-                                            elide: Text.ElideRight
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.caption
-                                            font.bold: true
-                                        }
-                                    }
-                                }
-                                ToolButton {
-                                    id: taskActions
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Style.space(8)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Style.space(34)
-                                    height: Style.space(34)
-                                    z: 2
-                                    text: "⋯"
-                                    onClicked: root.openTaskEditor(modelData)
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Editar ou excluir tarefa"
-
-                                    background: Rectangle {
-                                        radius: Style.cornerRadius
-                                        color: taskActions.hovered
-                                            ? Style.hoverFillFor(root.foreground, Color.accent)
-                                            : "transparent"
-                                        border.width: Style.spacing.hairline
-                                        border.color: taskActions.hovered || taskActions.activeFocus
-                                            ? Color.accent
-                                            : Qt.rgba(root.foreground.r, root.foreground.g,
-                                                      root.foreground.b, 0.38)
-                                    }
-                                }
-
-                                TapHandler {
-                                    acceptedButtons: Qt.RightButton
-                                    onTapped: root.openTaskEditor(modelData)
-                                }
-
-
-                                MouseArea {
-                                    id: taskMouse
-                                    anchors.fill: parent
-                                    anchors.rightMargin: Style.space(50)
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (root.hostWidget)
-                                        root.hostWidget.setOccurrenceCompleted(
-                                            modelData.taskId, modelData.occurrenceDate,
-                                            modelData.skipped ? false : !modelData.completed)
-                                }
-                            }
-                        }
-
-                        Text {
-                            visible: root.selectedTasks.length === 0
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            text: root.loadError !== "" ? root.loadError : "Nenhuma tarefa para este dia"
-                            color: root.loadError !== "" ? Color.urgent : Qt.darker(root.foreground, 1.9)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
-                        }
-                    }
-
-                    Column {
-                        width: parent.width
+                        id: habitsColumn
+                        width: habitsFlick.width
                         spacing: Style.space(3)
 
                         RowLayout {
@@ -1410,6 +1218,450 @@ Panel {
                             }
                         }
                     }
+                    }
+
+                    Flickable {
+                        id: detailsFlick
+                        x: panelFlick.wideLayout ? calendarColumn.width + Style.space(24) : 0
+                        y: panelFlick.wideLayout ? 0 : habitsFlick.y + habitsFlick.height + Style.space(16)
+                        width: calendarColumn.width
+                        height: panelFlick.wideLayout ? panelFlick.height : detailsColumn.implicitHeight
+                        contentWidth: width
+                        contentHeight: detailsColumn.implicitHeight
+                        interactive: panelFlick.wideLayout
+                        boundsBehavior: Flickable.StopAtBounds
+                        clip: true
+                        Column {
+                            id: detailsColumn
+                            width: detailsFlick.width
+                            spacing: Style.space(8)
+
+                    RowLayout {
+                        width: parent.width
+
+                        Text {
+                            text: "TAREFAS"
+                            color: Qt.darker(root.foreground, 1.4)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                            font.letterSpacing: 1
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        Button {
+                            text: root.taskVisibility === "pending" ? "PENDENTES" : "TODAS"
+                            tooltipText: root.taskVisibility === "pending"
+                                ? "Exibindo somente pendentes; clique para mostrar todas"
+                                : "Exibindo todas; clique para mostrar somente pendentes"
+                            foreground: root.foreground
+                            accent: Color.accent
+                            bordered: true
+                            selected: root.taskVisibility === "pending"
+                            horizontalPadding: Style.space(7)
+                            verticalPadding: Style.space(3)
+                            onClicked: if (root.hostWidget)
+                                root.hostWidget.setTaskVisibility(
+                                    root.taskVisibility === "pending" ? "all" : "pending")
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: Style.space(42)
+                        radius: Style.cornerRadius
+                        color: Style.hoverFillFor(root.foreground, Color.accent)
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: Style.space(6)
+                            anchors.rightMargin: Style.space(10)
+                            spacing: Style.space(4)
+
+                            Button {
+                                text: root.quickEmoji === "" ? "☺" : root.quickEmoji
+                                tooltipText: "Escolher emoji"
+                                foreground: root.foreground
+                                accent: Color.accent
+                                bordered: false
+                                fontFamily: root.quickEmoji === ""
+                                            ? root.fontFamily : "Noto Color Emoji"
+                                horizontalPadding: Style.space(6)
+                                onClicked: root.openEmojiPicker("quick", root.quickEmoji)
+                            }
+
+
+                            Dropdown {
+                                Layout.preferredWidth: Style.space(150)
+                                showLabel: false
+                                foreground: root.foreground
+                                background: Color.popups.background
+                                accent: Color.accent
+                                options: root.categoryOptions()
+                                value: root.quickCategoryId
+                                onChanged: function(value) {
+                                    root.quickCategoryId = String(value || "");
+                                }
+                            }
+
+                            TextField {
+                                id: quickAdd
+                                Layout.fillWidth: true
+                                placeholderText: "Nova tarefa em " + root.portugueseLocale.toString(root.selectedDate, "d 'de' MMM") + "…"
+                                color: root.foreground
+                                placeholderTextColor: Qt.darker(root.foreground, 1.8)
+                                font.family: root.fontFamily
+                                background: Item {}
+                                onAccepted: root.beginQuickTask()
+                            }
+                        }
+                    }
+
+
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(3)
+                        visible: root.selectedHolidays.length > 0
+
+                        Repeater {
+                            model: root.selectedHolidays
+
+                            Rectangle {
+                                required property var modelData
+                                width: parent.width
+                                height: holidayDetails.implicitHeight + Style.space(14)
+                                radius: Style.cornerRadius
+                                color: Style.hoverFillFor(root.foreground,
+                                                         root.holidayColor(modelData.kind))
+
+                                Column {
+                                    id: holidayDetails
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: Style.space(8)
+                                    anchors.rightMargin: Style.space(8)
+                                    spacing: Style.space(2)
+
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.name
+                                        color: root.holidayColor(modelData.kind)
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.body
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: root.holidayKindLabel(modelData.kind, modelData.scope)
+                                        color: root.holidayColor(modelData.kind)
+                                        opacity: 0.72
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        font.bold: true
+                                    }
+
+
+                                    Text {
+                                        width: parent.width
+                                        visible: String(modelData.description || "") !== ""
+                                        text: modelData.description || ""
+                                        color: Qt.darker(root.foreground, 1.5)
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.caption
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(2)
+
+                        Repeater {
+                            model: root.selectedTasks
+
+                            Rectangle {
+                                id: taskRow
+                                required property var modelData
+                                readonly property bool overdue:
+                                    !modelData.completed && !modelData.skipped
+                                    && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
+                                width: parent.width
+                                height: Math.max(Style.space(58), taskDetails.implicitHeight + Style.space(12))
+                                radius: Style.cornerRadius
+                                color: taskMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+
+
+                                Rectangle {
+                                    visible: String(modelData.categoryName || "") !== ""
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: Style.spacing.hairline * 2
+                                    radius: width / 2
+                                    color: modelData.categoryColor || Color.accent
+                                }
+                                Row {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Style.space(8)
+                                    anchors.rightMargin: Style.space(50)
+                                    spacing: Style.space(8)
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: modelData.completed ? "󰄲"
+                                            : modelData.skipped ? "×" : "󰄱"
+                                        color: modelData.completed ? Color.accent
+                                             : modelData.skipped ? Color.urgent : root.foreground
+                                        font.family: root.fontFamily
+                                        font.pixelSize: Style.font.body
+                                    }
+
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Style.space(26)
+                                        visible: String(modelData.emoji || "") !== ""
+                                        text: modelData.emoji || ""
+                                        font.family: "Noto Color Emoji"
+                                        font.pixelSize: Style.font.body
+                                        horizontalAlignment: Text.AlignHCenter
+                                    }
+
+                                    Column {
+                                        id: taskDetails
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width
+                                               - Style.space(String(modelData.emoji || "") === ""
+                                                             ? 40 : 74)
+                                        spacing: 1
+
+                                        Text {
+                                            width: parent.width
+                                            text: modelData.title
+                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8)
+                                                 : modelData.skipped ? Color.urgent : root.foreground
+                                            elide: Text.ElideRight
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.body
+                                            font.strikeout: modelData.completed
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            visible: String(modelData.categoryName || "") !== ""
+                                            text: String(modelData.categoryName || "").toUpperCase()
+                                            color: modelData.completed
+                                                   ? Qt.darker(root.foreground, 1.8)
+                                                   : modelData.categoryColor || Color.accent
+                                            elide: Text.ElideRight
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.caption
+                                            font.bold: true
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: {
+                                                if (modelData.completed)
+                                                    return modelData.completionLabel || "";
+                                                const time = String(modelData.scheduledTime || "");
+                                                const recurrence = String(modelData.recurrenceLabel || "");
+                                                const reminderCount =
+                                                    (modelData.reminderMinutesBefore || []).length;
+                                                const reminder = reminderCount > 0
+                                                    ? " · 󰂚 " + reminderCount : "";
+                                                const details = (recurrence === ""
+                                                    ? time : time + " · " + recurrence) + reminder;
+                                                if (modelData.skipped) {
+                                                    const date = root.portugueseLocale.toString(
+                                                        Model.parseLocalDate(modelData.occurrenceDate),
+                                                        "dd MMM").toUpperCase();
+                                                    return "NÃO FEITA · " + date + " · " + details;
+                                                }
+                                                if (!taskRow.overdue)
+                                                    return details;
+                                                const date = root.portugueseLocale.toString(
+                                                    Model.parseLocalDate(modelData.occurrenceDate),
+                                                    "dd MMM").toUpperCase();
+                                                return "ATRASADA · " + date + " · " + details;
+                                            }
+                                            color: modelData.completed
+                                                ? (modelData.completionLate ? root.completionLateColor
+                                                   : Qt.darker(root.foreground, 1.5))
+                                                : modelData.skipped || taskRow.overdue
+                                                  ? Color.urgent : Color.accent
+                                            wrapMode: Text.Wrap
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.font.caption
+                                            font.bold: true
+                                        }
+                                    }
+                                }
+                                ToolButton {
+                                    id: taskActions
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: Style.space(8)
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: Style.space(34)
+                                    height: Style.space(34)
+                                    z: 2
+                                    text: "⋯"
+                                    onClicked: root.openTaskEditor(modelData)
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Editar ou excluir tarefa"
+
+                                    background: Rectangle {
+                                        radius: Style.cornerRadius
+                                        color: taskActions.hovered
+                                            ? Style.hoverFillFor(root.foreground, Color.accent)
+                                            : "transparent"
+                                        border.width: Style.spacing.hairline
+                                        border.color: taskActions.hovered || taskActions.activeFocus
+                                            ? Color.accent
+                                            : Qt.rgba(root.foreground.r, root.foreground.g,
+                                                      root.foreground.b, 0.38)
+                                    }
+                                }
+
+                                TapHandler {
+                                    acceptedButtons: Qt.RightButton
+                                    onTapped: root.openTaskEditor(modelData)
+                                }
+
+
+                                MouseArea {
+                                    id: taskMouse
+                                    anchors.fill: parent
+                                    anchors.rightMargin: Style.space(50)
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                    onClicked: root.requestCompletion(modelData, false)
+                                }
+                            }
+                        }
+
+                        Text {
+                            visible: root.selectedTasks.length === 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: root.loadError !== "" ? root.loadError : "Nenhuma tarefa para este dia"
+                            color: root.loadError !== "" ? Color.urgent : Qt.darker(root.foreground, 1.9)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+                    }
+
+                    Column {
+                        width: parent.width
+                        spacing: Style.space(6)
+                        visible: root.selectedRegistrationActivity.length > 0
+
+                        Button {
+                            width: parent.width
+                            text: (root.registrationActivityExpanded ? "▾ " : "▸ ")
+                                  + "CONCLUSÕES REGISTRADAS NESTE DIA"
+                            foreground: Qt.darker(root.foreground, 1.4)
+                            accent: Color.accent
+                            bordered: false
+                            onClicked: root.registrationActivityExpanded =
+                                           !root.registrationActivityExpanded
+                        }
+
+                        Repeater {
+                            model: root.registrationActivityExpanded
+                                   ? root.selectedRegistrationActivity : []
+
+                            Column {
+                                id: activityGroup
+                                required property var modelData
+                                width: parent.width
+                                spacing: Style.space(4)
+
+                                Button {
+                                    width: parent.width
+                                    text: (root.expandedActivityTasks[activityGroup.modelData.taskId]
+                                           ? "▾ " : "▸ ")
+                                          + (activityGroup.modelData.emoji
+                                             ? activityGroup.modelData.emoji + " " : "")
+                                          + activityGroup.modelData.title + " · "
+                                          + activityGroup.modelData.count
+                                    foreground: root.foreground
+                                    accent: Color.accent
+                                    bordered: false
+                                    onClicked: root.toggleActivityTask(activityGroup.modelData.taskId)
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: activityGroup.modelData.dateSummary
+                                    color: Qt.darker(root.foreground, 1.5)
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.caption
+                                    wrapMode: Text.Wrap
+                                }
+                                Repeater {
+                                    model: root.expandedActivityTasks[activityGroup.modelData.taskId]
+                                           ? activityGroup.modelData.occurrences : []
+
+                                    RowLayout {
+                                        id: activityOccurrence
+                                        required property var modelData
+                                        width: activityGroup.width
+                                        spacing: Style.space(6)
+
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: "PREVISTA PARA " + root.portugueseLocale.toString(
+                                                    Model.parseLocalDate(activityOccurrence.modelData.occurrenceDate),
+                                                    "dd MMM yyyy").toUpperCase()
+                                                color: Qt.darker(root.foreground, 1.5)
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.Wrap
+                                            }
+                                            Text {
+                                                Layout.fillWidth: true
+                                                text: activityOccurrence.modelData.completionLabel
+                                                color: activityOccurrence.modelData.completionLate
+                                                       ? root.completionLateColor
+                                                       : Qt.darker(root.foreground, 1.5)
+                                                font.family: root.fontFamily
+                                                font.pixelSize: Style.font.caption
+                                                wrapMode: Text.Wrap
+                                            }
+                                        }
+                                        Button {
+                                            text: "Alterar data"
+                                            tooltipText: "Alterar data da conclusão"
+                                            foreground: root.foreground
+                                            accent: Color.accent
+                                            bordered: false
+                                            enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                            onClicked: root.requestCompletion(
+                                                           activityOccurrence.modelData, true)
+                                        }
+                                        Button {
+                                            text: "Desfazer"
+                                            tooltipText: "Desfazer conclusão"
+                                            foreground: root.foreground
+                                            accent: Color.accent
+                                            bordered: false
+                                            enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                            onClicked: root.requestCompletion(
+                                                           activityOccurrence.modelData, false)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
 
                     RowLayout {
                         width: parent.width
@@ -1465,6 +1717,8 @@ Panel {
                             fontFamily: root.fontFamily
                             onClicked: if (root.hostWidget)
                                 root.hostWidget.openSettings()
+                        }
+                    }
                         }
                     }
                 }
@@ -2146,6 +2400,31 @@ Panel {
 
                         RowLayout {
                             Layout.fillWidth: true
+                            Button {
+                                text: root.editingCompleted ? "Alterar data da conclusão" : "Concluir"
+                                visible: !root.editingSkipped
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                onClicked: {
+                                    root.closeTaskEditor();
+                                    root.requestCompletion(root.editedTask, root.editingCompleted);
+                                }
+                            }
+                            Button {
+                                text: "Desfazer conclusão"
+                                visible: root.editingCompleted
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                onClicked: root.reopenEditedOccurrence()
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
                             spacing: Style.space(8)
 
                             Button {
@@ -2509,6 +2788,188 @@ Panel {
                                 onClicked: root.applyTimePicker()
                             }
                         }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 230
+                visible: root.completionPickerVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.completionPickerVisible = false
+                }
+                BorderSurface {
+                    id: completionPickerCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(440))
+                    height: contentTopInset + contentBottomInset
+                            + completionPickerColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea { anchors.fill: parent }
+                    ColumnLayout {
+                        id: completionPickerColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: completionPickerCard.contentLeftInset
+                        anchors.rightMargin: completionPickerCard.contentRightInset
+                        spacing: Style.space(10)
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.completionTask && root.completionTask.completed
+                                  ? "Alterar data da conclusão" : "Quando foi concluída?"
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.body
+                            font.bold: true
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.completionTask ? String(root.completionTask.title || "") : ""
+                            color: Qt.darker(Color.popups.text, 1.5)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            wrapMode: Text.Wrap
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Hoje"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            enabled: root.hostWidget && !root.hostWidget.actionBusy
+                            onClicked: root.saveCompletion(Model.dateKey(new Date()))
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Na data prevista"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            enabled: root.completionTask
+                                     && root.completionTask.occurrenceDate <= Model.dateKey(new Date())
+                                     && root.hostWidget && !root.hostWidget.actionBusy
+                            onClicked: root.saveCompletion(root.completionTask.occurrenceDate)
+                        }
+                        Button {
+                            Layout.fillWidth: true
+                            text: "Escolher data"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            onClicked: {
+                                root.completionCustomDateVisible = true;
+                                completionDateInput.forceActiveFocus();
+                                completionDateInput.selectAll();
+                            }
+                        }
+                        TextField {
+                            id: completionDateInput
+                            Layout.fillWidth: true
+                            visible: root.completionCustomDateVisible
+                            placeholderText: "AAAA-MM-DD"
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            selectByMouse: true
+                            validator: RegularExpressionValidator {
+                                regularExpression: /\d{4}-\d{2}-\d{2}/
+                            }
+                            readonly property bool validDate: acceptableInput
+                                && Qt.formatDate(Date.fromLocaleString(Qt.locale("C"), text,
+                                                                      "yyyy-MM-dd"), "yyyy-MM-dd") === text
+                                && text <= Model.dateKey(new Date())
+                            onAccepted: {
+                                if (validDate)
+                                    root.saveCompletion(text);
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.completionCustomDateVisible
+                            text: "Use AAAA-MM-DD, até hoje."
+                            color: Qt.darker(Color.popups.text, 1.5)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button {
+                                text: "Cancelar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.completionPickerVisible = false
+                            }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                visible: root.completionCustomDateVisible
+                                text: "Salvar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                selected: true
+                                enabled: completionDateInput.validDate
+                                         && root.hostWidget && !root.hostWidget.actionBusy
+                                onClicked: root.saveCompletion(completionDateInput.text)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                z: 240
+                visible: root.completionFeedback !== "" && !root.completionPickerVisible
+                height: completionFeedbackRow.implicitHeight + Style.space(16)
+                color: Color.popups.background
+                radius: Style.cornerRadius
+                border.color: Color.accent
+                border.width: Style.spacing.hairline
+
+                RowLayout {
+                    id: completionFeedbackRow
+                    anchors.fill: parent
+                    anchors.margins: Style.space(8)
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.completionFeedback
+                        color: Color.popups.text
+                        font.family: root.fontFamily
+                        font.pixelSize: Style.font.body
+                    }
+                    Button {
+                        text: root.completionUndo
+                              && root.completionUndo.previousCompletedDate === ""
+                              ? "Reabrir tarefa" : "Desfazer"
+                        visible: root.completionUndo !== null
+                        foreground: Color.popups.text
+                        accent: Color.accent
+                        bordered: false
+                        enabled: root.hostWidget && !root.hostWidget.actionBusy
+                        onClicked: root.undoCompletion()
+                    }
+                    Button {
+                        text: "Alterar data"
+                        tooltipText: "Alterar data da conclusão"
+                        visible: root.completionUndo !== null
+                        foreground: Color.popups.text
+                        accent: Color.accent
+                        bordered: false
+                        enabled: root.hostWidget && !root.hostWidget.actionBusy
+                        onClicked: root.requestCompletion(root.completionUndo, true)
                     }
                 }
             }

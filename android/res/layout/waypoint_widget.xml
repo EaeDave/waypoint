@@ -43,6 +43,16 @@
             android:contentDescription="Próximo mês"
             android:padding="9dp"
             android:src="@drawable/waypoint_widget_next" />
+        <TextView
+            android:id="@+id/widget_day_details"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="Ver todas as tarefas e conclusões do dia selecionado"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:text="DIA"
+            android:textColor="#FF979FEC"
+            android:textSize="10sp" />
     </LinearLayout>
 
     <LinearLayout
@@ -734,149 +744,43 @@
         android:textSize="10sp" />
 
     <LinearLayout
-        android:id="@+id/widget_task_row_0"
+        android:id="@+id/widget_task_rows"
         android:layout_width="match_parent"
-        android:layout_height="36dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
+
+    <LinearLayout
+        android:id="@+id/widget_history_header"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
         android:gravity="center_vertical"
         android:orientation="horizontal"
         android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_status_0"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="8dp"
-            android:contentDescription="@null"
-            android:src="@drawable/waypoint_widget_task_pending" />
-
         <TextView
-            android:id="@+id/widget_task_title_0"
+            android:id="@+id/widget_history_toggle"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="match_parent"
             android:layout_weight="1"
-            android:ellipsize="end"
+            android:gravity="center_vertical"
             android:fontFamily="monospace"
-            android:maxLines="1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_task_time_0"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:fontFamily="monospace"
-            android:textColor="#94FFFFFF"
+            android:maxLines="2"
+            android:textColor="#FFAEB2BF"
             android:textSize="10sp" />
+        <TextView
+            android:id="@+id/widget_history_all"
+            android:layout_width="72dp"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:fontFamily="monospace"
+            android:text="VER TODAS"
+            android:textColor="#FF979FEC"
+            android:textSize="9sp" />
     </LinearLayout>
     <LinearLayout
-        android:id="@+id/widget_task_row_1"
+        android:id="@+id/widget_history_rows"
         android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_status_1"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="8dp"
-            android:contentDescription="@null"
-            android:src="@drawable/waypoint_widget_task_pending" />
-
-        <TextView
-            android:id="@+id/widget_task_title_1"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:maxLines="1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_task_time_1"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:fontFamily="monospace"
-            android:textColor="#94FFFFFF"
-            android:textSize="10sp" />
-    </LinearLayout>
-    <LinearLayout
-        android:id="@+id/widget_task_row_2"
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_status_2"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="8dp"
-            android:contentDescription="@null"
-            android:src="@drawable/waypoint_widget_task_pending" />
-
-        <TextView
-            android:id="@+id/widget_task_title_2"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:maxLines="1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_task_time_2"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:fontFamily="monospace"
-            android:textColor="#94FFFFFF"
-            android:textSize="10sp" />
-    </LinearLayout>
-    <LinearLayout
-        android:id="@+id/widget_task_row_3"
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:visibility="gone">
-
-        <ImageView
-            android:id="@+id/widget_task_status_3"
-            android:layout_width="18dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="8dp"
-            android:contentDescription="@null"
-            android:src="@drawable/waypoint_widget_task_pending" />
-
-        <TextView
-            android:id="@+id/widget_task_title_3"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:maxLines="1"
-            android:textColor="#FFFFFFFF"
-            android:textSize="11sp" />
-
-        <TextView
-            android:id="@+id/widget_task_time_3"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
-            android:fontFamily="monospace"
-            android:textColor="#94FFFFFF"
-            android:textSize="10sp" />
-    </LinearLayout>
+        android:layout_height="wrap_content"
+        android:orientation="vertical" />
 
     <TextView
         android:id="@+id/widget_habits_divider"

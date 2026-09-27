@@ -44,6 +44,14 @@ QVariant TaskListModel::data(const QModelIndex &index, int role) const {
     return occurrence.categoryColor;
   case CompletedRole:
     return occurrence.completed;
+  case CompletedDateRole:
+    return occurrence.completedDate.toString(Qt::ISODate);
+  case RegisteredAtRole:
+    return occurrence.registeredAt.toUTC().toString(Qt::ISODateWithMs);
+  case CompletionLabelRole:
+    return occurrence.completionLabel();
+  case CompletionLateRole:
+    return occurrence.completionLate();
   case SkippedRole:
     return occurrence.skipped;
   case OverdueRole:
@@ -72,6 +80,10 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
       {CategoryNameRole, "categoryName"},
       {CategoryColorRole, "categoryColor"},
       {CompletedRole, "completed"},
+      {CompletedDateRole, "completedDate"},
+      {RegisteredAtRole, "registeredAt"},
+      {CompletionLabelRole, "completionLabel"},
+      {CompletionLateRole, "completionLate"},
       {SkippedRole, "skipped"},
       {OverdueRole, "overdue"},
       {RecurringRole, "recurring"},
@@ -120,7 +132,8 @@ void TaskListModel::rebuildVisibleTasks() {
   const QDate today = QDate::currentDate();
   for (const TaskOccurrence &occurrence : m_sourceOccurrences) {
     const bool calendarVisible =
-        m_focusDate == today || !occurrence.recurring || occurrence.calendarMarker || occurrence.skipped;
+        m_focusDate == today || !occurrence.recurring || occurrence.calendarMarker ||
+        occurrence.completed || occurrence.skipped;
     const bool belongsToFocusDate = occurrence.effectiveCalendarDate() == m_focusDate;
     const bool overdueOnTodayView = m_focusDate == today && !occurrence.completed && !occurrence.skipped &&
                                     occurrence.occurrenceDate.isValid() && occurrence.occurrenceDate < today;

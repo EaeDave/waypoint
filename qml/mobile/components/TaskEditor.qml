@@ -114,6 +114,12 @@ Popup {
             close();
     }
 
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+        onCommitted: root.close()
+    }
+
     TaskListManager {
         id: listManager
         controller: root.controller
@@ -427,6 +433,32 @@ Popup {
                     }
                 }
 
+                Text {
+                    Layout.fillWidth: true
+                    visible: !!root.editingTask.completed
+                    text: root.editingTask.completionLabel || ""
+                    color: root.editingTask.completionLate ? MobileTheme.warning : MobileTheme.subdued
+                    font.family: MobileTheme.fontFamily
+                    font.pixelSize: MobileTheme.bodySize
+                    wrapMode: Text.Wrap
+                }
+
+                MobileButton {
+                    Layout.fillWidth: true
+                    visible: !!root.editingTask.taskId && !!root.editingTask.completed
+                    text: "ALTERAR DATA DA CONCLUSÃO"
+                    onClicked: completionFlow.edit(root.editingTask)
+                }
+
+                MobileButton {
+                    Layout.fillWidth: true
+                    visible: !!root.editingTask.taskId
+                             && (!root.editingDefinition || !root.editingTask.recurring)
+                             && !root.editingTask.skipped
+                    text: root.editingTask.completed ? "DESFAZER CONCLUSÃO" : "CONCLUIR TAREFA"
+                    onClicked: completionFlow.toggle(root.editingTask)
+                }
+
                 MobileButton {
                     Layout.fillWidth: true
                     visible: !root.editingDefinition && !!root.editingTask.taskId
@@ -445,12 +477,7 @@ Popup {
                     visible: !root.editingDefinition && !!root.editingTask.taskId
                              && root.editingTask.skipped
                     text: "REABRIR OCORRÊNCIA"
-                    onClicked: {
-                        if (root.controller.setTaskCompleted(root.editingTask.taskId,
-                                                             root.editingTask.occurrenceDate,
-                                                             true, false))
-                            root.close();
-                    }
+                    onClicked: completionFlow.toggle(root.editingTask)
                 }
 
                 MobileButton {

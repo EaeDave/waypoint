@@ -4,10 +4,12 @@
 
 #include <QHash>
 #include <QJsonArray>
+#include <QMap>
 #include <QSet>
 #include <QStringList>
 
 #include <algorithm>
+#include <utility>
 
 namespace waypoint {
 namespace {
@@ -181,9 +183,9 @@ TaskOccurrence occurrenceFor(const TaskRecord &task, const QDate &date, const Ta
   occurrence.calendarMarker = !occurrence.recurring || occurrence.completed;
   occurrence.recurrenceLabel = task.recurrence.label();
   occurrence.recurrence = task.recurrence;
-  const QDateTime completedAt = state != nullptr ? state->completedAt : task.completedAt;
-  if (occurrence.completed && completedAt.isValid()) {
-    occurrence.calendarDate = completedAt.toLocalTime().date();
+  if (occurrence.completed) {
+    occurrence.completedDate = state != nullptr ? state->completedDate : task.completedDate;
+    occurrence.registeredAt = state != nullptr ? state->registeredAt : task.registeredAt;
   }
   return occurrence;
 }
@@ -290,8 +292,8 @@ QJsonObject TaskOccurrenceState::toJson() const {
       {QStringLiteral("taskId"), taskId},
       {QStringLiteral("occurrenceDate"), occurrenceDate.toString(Qt::ISODate)},
       {QStringLiteral("status"), statusName(status)},
-      {QStringLiteral("completedAt"),
-       completedAt.isValid() ? completedAt.toUTC().toString(Qt::ISODateWithMs) : QString()},
+      {QStringLiteral("completedDate"), completedDate.toString(Qt::ISODate)},
+      {QStringLiteral("registeredAt"), registeredAt.toUTC().toString(Qt::ISODateWithMs)},
       {QStringLiteral("updatedAt"), updatedAt.toUTC().toString(Qt::ISODateWithMs)},
       {QStringLiteral("version"), version},
   };
@@ -303,8 +305,13 @@ TaskOccurrenceState TaskOccurrenceState::fromJson(const QJsonObject &json) {
   state.occurrenceDate =
       QDate::fromString(json.value(QStringLiteral("occurrenceDate")).toString(), Qt::ISODate);
   state.status = parseStatus(json.value(QStringLiteral("status")).toString());
-  state.completedAt =
-      QDateTime::fromString(json.value(QStringLiteral("completedAt")).toString(), Qt::ISODateWithMs);
+  if (state.status == OccurrenceStatus::Completed) {
+    state.completedDate = QDate::fromString(json.value(QStringLiteral("completedDate")).toString(), Qt::ISODate);
+    state.registeredAt = QDateTime::fromString(
+        json.value(json.contains(QStringLiteral("registeredAt")) ? QStringLiteral("registeredAt")
+                                                                 : QStringLiteral("completedAt")).toString(),
+        Qt::ISODateWithMs);
+  }
   state.updatedAt =
       QDateTime::fromString(json.value(QStringLiteral("updatedAt")).toString(), Qt::ISODateWithMs);
   state.version = json.value(QStringLiteral("version")).toInteger();
@@ -314,7 +321,37 @@ TaskOccurrenceState TaskOccurrenceState::fromJson(const QJsonObject &json) {
 QString TaskOccurrence::key() const { return occurrenceKey(taskId, occurrenceDate); }
 
 QDate TaskOccurrence::effectiveCalendarDate() const {
-  return calendarDate.isValid() ? calendarDate : occurrenceDate;
+  return occurrenceDate;
+}
+
+bool TaskOccurrence::completionLate() const {
+  return completed && completedDate.isValid() && occurrenceDate.isValid() && completedDate > occurrenceDate;
+}
+
+QString TaskOccurrence::completionLabel() const {
+  if (!completed) {
+    return {};
+  }
+  const QDate registrationDate = registeredAt.toLocalTime().date();
+  const auto dateLabel = [](const QDate &date) { return date.toString(QStringLiteral("dd/MM/yyyy")); };
+  if (!completedDate.isValid()) {
+    return registrationDate.isValid()
+               ? QStringLiteral("CONCLUÍDA · REGISTRADA %1").arg(dateLabel(registrationDate))
+               : QStringLiteral("CONCLUÍDA");
+  }
+  if (completionLate()) {
+    const qint64 days = occurrenceDate.daysTo(completedDate);
+    return QStringLiteral("CONCLUÍDA %1 · %2 %3 DEPOIS")
+        .arg(dateLabel(completedDate)).arg(days)
+        .arg(days == 1 ? QStringLiteral("DIA") : QStringLiteral("DIAS"));
+  }
+  if (registrationDate.isValid() && registrationDate != completedDate) {
+    return QStringLiteral("CONCLUÍDA %1 · REGISTRADA %2")
+        .arg(dateLabel(completedDate), dateLabel(registrationDate));
+  }
+  return completedDate == occurrenceDate
+             ? QStringLiteral("CONCLUÍDA")
+             : QStringLiteral("CONCLUÍDA %1").arg(dateLabel(completedDate));
 }
 
 QJsonObject TaskOccurrence::toJson() const {
@@ -335,6 +372,10 @@ QJsonObject TaskOccurrence::toJson() const {
       {QStringLiteral("categoryName"), categoryName},
       {QStringLiteral("categoryColor"), categoryColor},
       {QStringLiteral("completed"), completed},
+      {QStringLiteral("completedDate"), completedDate.toString(Qt::ISODate)},
+      {QStringLiteral("registeredAt"), registeredAt.toUTC().toString(Qt::ISODateWithMs)},
+      {QStringLiteral("completionLabel"), completionLabel()},
+      {QStringLiteral("completionLate"), completionLate()},
       {QStringLiteral("skipped"), skipped},
       {QStringLiteral("recurring"), recurring},
       {QStringLiteral("calendarMarker"), calendarMarker},
@@ -413,17 +454,12 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
     stateByOccurrence.insert(occurrenceKey(state.taskId, state.occurrenceDate), state);
   }
 
-  QHash<QString, const TaskRecord *> taskById;
-  taskById.reserve(tasks.size());
   QList<TaskOccurrence> occurrences;
-  QSet<QString> includedOccurrenceKeys;
   for (const TaskRecord &task : tasks) {
-    taskById.insert(task.id, &task);
     if (!task.recurrence.isRecurring()) {
       const TaskOccurrence occurrence = occurrenceFor(task, task.scheduledDate, nullptr);
       if (occurrence.calendarDate >= from && occurrence.calendarDate <= to) {
         occurrences.append(occurrence);
-        includedOccurrenceKeys.insert(occurrence.key());
       }
       continue;
     }
@@ -432,24 +468,6 @@ QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
       const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, date));
       const TaskOccurrence occurrence =
           occurrenceFor(task, date, state == stateByOccurrence.cend() ? nullptr : &state.value());
-      if (!occurrence.completed || (occurrence.calendarDate >= from && occurrence.calendarDate <= to)) {
-        occurrences.append(occurrence);
-        includedOccurrenceKeys.insert(occurrence.key());
-      }
-    }
-  }
-
-  for (const TaskOccurrenceState &state : states) {
-    if (state.status != OccurrenceStatus::Completed ||
-        includedOccurrenceKeys.contains(occurrenceKey(state.taskId, state.occurrenceDate))) {
-      continue;
-    }
-    const auto task = taskById.constFind(state.taskId);
-    if (task == taskById.cend()) {
-      continue;
-    }
-    const TaskOccurrence occurrence = occurrenceFor(**task, state.occurrenceDate, &state);
-    if (occurrence.calendarDate >= from && occurrence.calendarDate <= to) {
       occurrences.append(occurrence);
     }
   }
@@ -512,10 +530,8 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
                                                    const QList<TaskOccurrenceState> &states,
                                                    const QDate &today) {
   QHash<QString, TaskOccurrenceState> stateByOccurrence;
-  QHash<QString, QList<TaskOccurrenceState>> statesByTask;
   for (const TaskOccurrenceState &state : states) {
     stateByOccurrence.insert(occurrenceKey(state.taskId, state.occurrenceDate), state);
-    statesByTask[state.taskId].append(state);
   }
 
   QList<TaskOccurrence> occurrences;
@@ -529,13 +545,10 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
       continue;
     }
 
-    const QList<TaskOccurrenceState> taskStates = statesByTask.value(task.id);
-    for (const TaskOccurrenceState &state : taskStates) {
-      const TaskOccurrence occurrence = occurrenceFor(task, state.occurrenceDate, &state);
-      if ((occurrence.completed && occurrence.calendarDate == today) ||
-          (occurrence.skipped && occurrence.occurrenceDate == today)) {
-        occurrences.append(occurrence);
-      }
+    const auto todayState = stateByOccurrence.constFind(occurrenceKey(task.id, today));
+    if (todayState != stateByOccurrence.cend() && todayState->status != OccurrenceStatus::Pending &&
+        !recurrenceDates(task.scheduledDate, task.recurrence, today, today).isEmpty()) {
+      occurrences.append(occurrenceFor(task, today, &todayState.value()));
     }
 
     const QDate unresolvedDueDate = firstUnresolvedDueDate(task, stateByOccurrence, today);
@@ -565,6 +578,68 @@ QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &task
               return left.taskId < right.taskId;
             });
   return occurrences;
+}
+
+QJsonObject projectRegistrationActivity(const QList<TaskRecord> &tasks,
+                                        const QList<TaskOccurrenceState> &states,
+                                        const QDate &from, const QDate &to) {
+  QHash<QString, const TaskRecord *> taskById;
+  taskById.reserve(tasks.size());
+  QMap<QDate, QMap<QString, QList<TaskOccurrence>>> grouped;
+  const auto addOccurrence = [&grouped, &from, &to](TaskOccurrence occurrence) {
+    const QDate day = occurrence.registeredAt.toLocalTime().date();
+    if (occurrence.completed && occurrence.occurrenceDate.isValid() && day.isValid() &&
+        day >= from && day <= to && day != occurrence.occurrenceDate) {
+      grouped[day][occurrence.taskId].append(std::move(occurrence));
+    }
+  };
+  for (const TaskRecord &task : tasks) {
+    taskById.insert(task.id, &task);
+    if (task.completed && !task.recurrence.isRecurring()) {
+      addOccurrence(occurrenceFor(task, task.scheduledDate, nullptr));
+    }
+  }
+  for (const TaskOccurrenceState &state : states) {
+    const auto task = taskById.constFind(state.taskId);
+    if (task == taskById.cend() || !(*task)->recurrence.isRecurring() ||
+        state.status != OccurrenceStatus::Completed) {
+      continue;
+    }
+    const QDate day = state.registeredAt.toLocalTime().date();
+    if (!day.isValid() || day < from || day > to || day == state.occurrenceDate ||
+        recurrenceDates((*task)->scheduledDate, (*task)->recurrence,
+                        state.occurrenceDate, state.occurrenceDate).isEmpty()) {
+      continue;
+    }
+    addOccurrence(occurrenceFor(**task, state.occurrenceDate, &state));
+  }
+  QJsonObject result;
+  for (auto day = grouped.begin(); day != grouped.end(); ++day) {
+    QJsonArray groups;
+    for (auto task = day->begin(); task != day->end(); ++task) {
+      auto &occurrences = task.value();
+      std::sort(occurrences.begin(), occurrences.end(), [](const auto &left, const auto &right) {
+        return left.occurrenceDate < right.occurrenceDate;
+      });
+      QJsonArray children;
+      QStringList dates;
+      for (const TaskOccurrence &occurrence : std::as_const(occurrences)) {
+        children.append(occurrence.toJson());
+        dates.append(occurrence.occurrenceDate.toString(QStringLiteral("dd/MM/yyyy")));
+      }
+      const TaskOccurrence &first = occurrences.constFirst();
+      groups.append(QJsonObject{
+          {QStringLiteral("taskId"), first.taskId},
+          {QStringLiteral("title"), first.title},
+          {QStringLiteral("emoji"), first.emoji},
+          {QStringLiteral("count"), occurrences.size()},
+          {QStringLiteral("dateSummary"), QStringLiteral("REFERENTES A %1").arg(dates.join(QStringLiteral(", ")))},
+          {QStringLiteral("occurrences"), children},
+      });
+    }
+    result.insert(day.key().toString(Qt::ISODate), groups);
+  }
+  return result;
 }
 
 OccurrenceSummary summarizeOccurrences(const QList<TaskOccurrence> &occurrences, const QDate &today) {

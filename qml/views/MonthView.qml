@@ -10,6 +10,11 @@ Item {
 
     required property var controller
 
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+    }
+
     readonly property bool compact: width < WaypointTheme.calendarSplitBreakpoint
     readonly property int pageMargin: compact ? 18 : 34
     readonly property date now: new Date()
@@ -310,6 +315,7 @@ Item {
                                 delegate: TaskRow {
                                     Layout.fillWidth: true
                                     controller: root.controller
+                                    completionActions: completionFlow
                                 }
                             }
 
@@ -325,6 +331,13 @@ Item {
                                 color: WaypointTheme.disabledText
                                 font.family: WaypointTheme.fontFamily
                                 font.pixelSize: WaypointTheme.bodySize
+                            }
+
+                            RegistrationActivity {
+                                Layout.fillWidth: true
+                                groups: root.controller.selectedRegistrationActivity
+                                dateKey: root.controller.selectedDateKey
+                                completionActions: completionFlow
                             }
 
                             HabitSection {

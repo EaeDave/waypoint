@@ -45,7 +45,7 @@ jstring widgetActionResponse(JNIEnv *environment, const bool applied,
 extern "C" JNIEXPORT jstring JNICALL
 Java_org_eaedave_waypoint_WaypointWidgetActionService_applyTaskCompletion(
     JNIEnv *environment, jclass, jstring databasePath, jstring taskId, jstring occurrenceDate,
-    const jboolean recurring, const jboolean completed) {
+    const jboolean recurring, const jboolean completed, jstring completedDate) {
   QString error;
   waypoint::TaskStore store(fromJavaString(environment, databasePath));
   waypoint::WidgetTaskActionResult result;
@@ -55,7 +55,8 @@ Java_org_eaedave_waypoint_WaypointWidgetActionService_applyTaskCompletion(
       waypoint::applyWidgetTaskCompletion(
           store, fromJavaString(environment, taskId),
           QDate::fromString(fromJavaString(environment, occurrenceDate), Qt::ISODate), recurring == JNI_TRUE,
-          completed == JNI_TRUE, QDateTime::currentDateTime(), &result, &error);
+          completed == JNI_TRUE, QDate::fromString(fromJavaString(environment, completedDate), Qt::ISODate),
+          QDateTime::currentDateTime(), &result, &error);
   return widgetActionResponse(environment, applied, result, error);
 }
 

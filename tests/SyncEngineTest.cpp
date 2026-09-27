@@ -47,6 +47,7 @@ private slots:
   void synchronizeTaskVisibilityCompatibly();
   void negotiateCategorySyncCapabilities();
   void limitSyncMutationBatchSize();
+  void synchronizeCompletionHistoryAcrossStores();
   void renegotiateBeforeUploadingCategories();
   void discardSyncReplyAfterEndpointChange();
   void syncsImmediatelyWhenEventArrives();
@@ -104,6 +105,60 @@ void SyncEngineTest::preserveExistingTokenWhenRequested() {
   QCOMPARE(stored.token, QByteArrayLiteral("token"));
 
   QVERIFY2(engine.updateConfiguration({}, {}, true, &error), qPrintable(error));
+}
+
+void SyncEngineTest::synchronizeCompletionHistoryAcrossStores() {
+  QTemporaryDir directory;
+  waypoint::TaskStore source(directory.filePath(QStringLiteral("source.sqlite3")));
+  const QString replicaPath = directory.filePath(QStringLiteral("replica.sqlite3"));
+  waypoint::TaskStore replica(replicaPath);
+  QString error;
+  QVERIFY2(source.open(&error), qPrintable(error));
+  QVERIFY2(replica.open(&error), qPrintable(error));
+  const QDate due(2026, 9, 19);
+  const QDateTime registered(QDate(2026, 9, 21), QTime(12, 0));
+  waypoint::TaskRecord recurring;
+  waypoint::TaskRecord single;
+  waypoint::RecurrenceRule rule;
+  rule.frequency = waypoint::RecurrenceFrequency::Monthly;
+  QVERIFY2(source.createTask(QStringLiteral("Mensal"), due, QTime(9, 0), rule,
+                             QList<int>{0}, {}, {}, &recurring, &error), qPrintable(error));
+  QVERIFY2(source.createTask(QStringLiteral("Única"), due, QTime(9, 0), {},
+                             QList<int>{0}, {}, {}, &single, &error), qPrintable(error));
+  QVERIFY2(source.setOccurrenceCompleted(recurring.id, due, true, due, registered, &error), qPrintable(error));
+  QVERIFY2(source.setTaskCompleted(single.id, true, due.addDays(1), registered, &error), qPrintable(error));
+  const auto transfer = [&source, &replica, &error]() {
+    const QJsonObject request = waypoint::buildSyncRequest(source, QStringLiteral("history-source"), false, &error);
+    return error.isEmpty() && waypoint::applySyncResponse(
+        replica, {{QStringLiteral("nextCursor"), 1},
+                  {QStringLiteral("acceptedMutationIds"), QJsonArray{}},
+                  {QStringLiteral("changes"), request.value(QStringLiteral("mutations"))}}, &error);
+  };
+  QVERIFY2(transfer(), qPrintable(error));
+  auto occurrences = replica.listOccurrences(due, due, &error);
+  QCOMPARE(occurrences.size(), 2);
+  for (const auto &occurrence : occurrences) {
+    QCOMPARE(occurrence.calendarDate, due);
+    QCOMPARE(occurrence.registeredAt, registered);
+    QCOMPARE(occurrence.completedDate, occurrence.taskId == recurring.id ? due : due.addDays(1));
+  }
+  QVERIFY(replica.listOccurrences(registered.date(), registered.date(), &error).isEmpty());
+  QCOMPARE(replica.registrationActivity(registered.date(), registered.date(), &error)
+               .value(registered.date().toString(Qt::ISODate)).toArray().size(), 2);
+  QVERIFY2(source.setOccurrenceCompleted(recurring.id, due, true, due.addDays(1), registered.addDays(2), &error), qPrintable(error));
+  QVERIFY2(transfer(), qPrintable(error));
+  waypoint::TaskStore reopened(replicaPath);
+  QVERIFY2(reopened.open(&error), qPrintable(error));
+  const auto state = reopened.listOccurrenceStates(&error).first();
+  QCOMPARE(state.registeredAt, registered);
+  QCOMPARE(state.completedDate, due.addDays(1));
+  QVERIFY2(source.setOccurrenceCompleted(recurring.id, due, false, {}, registered.addDays(3), &error), qPrintable(error));
+  QVERIFY2(source.setTaskCompleted(single.id, false, {}, registered.addDays(3), &error), qPrintable(error));
+  QVERIFY2(transfer(), qPrintable(error));
+  QVERIFY(replica.registrationActivity(registered.date(), registered.date(), &error).isEmpty());
+  QVERIFY(!replica.listOccurrenceStates(&error).first().registeredAt.isValid());
+  QVERIFY(!replica.listOccurrenceStates(&error).first().completedDate.isValid());
+  QVERIFY(!replica.listActiveTasks(&error).first().registeredAt.isValid());
 }
 
 void SyncEngineTest::syncsImmediatelyWhenEventArrives() {

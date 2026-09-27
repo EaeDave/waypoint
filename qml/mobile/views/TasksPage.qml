@@ -354,8 +354,6 @@ Item {
                                                 parts.push(taskRow.modelData.recurring
                                                            ? taskRow.modelData.recurrenceLabel
                                                            : "ÚNICA");
-                                                if (taskRow.modelData.completed)
-                                                    parts.push("CONCLUÍDA");
                                                 return parts.join(" · ");
                                             }
                                             color: taskRow.modelData.completed
@@ -363,6 +361,17 @@ Item {
                                             font.family: MobileTheme.fontFamily
                                             font.pixelSize: MobileTheme.captionSize
                                             elide: Text.ElideRight
+                                        }
+
+                                        Text {
+                                            Layout.fillWidth: true
+                                            visible: taskRow.modelData.completed
+                                            text: taskRow.modelData.completionLabel
+                                            color: taskRow.modelData.completionLate
+                                                   ? MobileTheme.warning : MobileTheme.subdued
+                                            font.family: MobileTheme.fontFamily
+                                            font.pixelSize: MobileTheme.captionSize
+                                            wrapMode: Text.Wrap
                                         }
                                     }
 

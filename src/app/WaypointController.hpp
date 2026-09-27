@@ -18,6 +18,8 @@ class WaypointController final : public QObject {
   Q_PROPERTY(TaskListModel *selectedDateTasks READ selectedDateTasks CONSTANT)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY habitsChanged)
   Q_PROPERTY(QVariantList selectedDateHabits READ selectedDateHabits NOTIFY habitsChanged)
+  Q_PROPERTY(QVariantList todayRegistrationActivity READ todayRegistrationActivity NOTIFY registrationActivityChanged)
+  Q_PROPERTY(QVariantList selectedRegistrationActivity READ selectedRegistrationActivity NOTIFY registrationActivityChanged)
   Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY categoriesChanged)
   Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY tasksChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
@@ -56,6 +58,8 @@ public:
   [[nodiscard]] TaskListModel *selectedDateTasks();
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList selectedDateHabits() const;
+  [[nodiscard]] QVariantList todayRegistrationActivity() const;
+  [[nodiscard]] QVariantList selectedRegistrationActivity() const;
   [[nodiscard]] QVariantList taskCategories() const;
   [[nodiscard]] QVariantList allTasks() const;
   [[nodiscard]] CalendarModel *calendar();
@@ -95,7 +99,8 @@ public:
                            int occurrenceCount, const QVariantList &reminderMinutesBefore,
                            const QString &emoji, const QString &categoryId);
   Q_INVOKABLE bool setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
-                                          bool completed);
+                                          bool completed, const QString &completedDateKey);
+  Q_INVOKABLE QString completionDateError(const QString &completedDateKey) const;
   Q_INVOKABLE bool skipOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteOccurrence(const QString &taskId, const QString &occurrenceDateKey,
                                     const QString &scope);
@@ -131,6 +136,7 @@ public:
 signals:
   void selectedDateKeyChanged();
   void habitsChanged();
+  void registrationActivityChanged();
   void categoriesChanged();
   void tasksChanged();
   void taskVisibilityChanged();
@@ -160,6 +166,8 @@ private:
   CalendarModel m_calendar;
   QVariantList m_todayHabits;
   QVariantList m_selectedDateHabits;
+  QVariantList m_todayRegistrationActivity;
+  QVariantList m_selectedRegistrationActivity;
   QVariantList m_taskCategories;
   QVariantList m_allTasks;
   QTimer m_refreshTimer;

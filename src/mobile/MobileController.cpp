@@ -87,6 +87,13 @@ QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
     value.insert(QStringLiteral("categoryColor"), task.categoryColor);
     value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
     value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
+    TaskOccurrence occurrence;
+    occurrence.occurrenceDate = task.scheduledDate;
+    occurrence.completed = task.completed;
+    occurrence.completedDate = task.completedDate;
+    occurrence.registeredAt = task.registeredAt;
+    value.insert(QStringLiteral("completionLabel"), occurrence.completionLabel());
+    value.insert(QStringLiteral("completionLate"), occurrence.completionLate());
     result.append(value);
   }
   return result;
@@ -181,6 +188,8 @@ int MobileController::visibleYear() const { return m_visibleYear; }
 int MobileController::visibleMonth() const { return m_visibleMonth; }
 QVariantList MobileController::todayTasks() const { return m_todayTasks; }
 QVariantList MobileController::selectedTasks() const { return m_selectedTasks; }
+QVariantList MobileController::todayRegistrationActivity() const { return m_todayRegistrationActivity; }
+QVariantList MobileController::selectedRegistrationActivity() const { return m_selectedRegistrationActivity; }
 QVariantList MobileController::todayHabits() const { return m_todayHabits; }
 QVariantList MobileController::selectedDateHabits() const { return m_selectedDateHabits; }
 QVariantList MobileController::monthOccurrences() const { return m_monthOccurrences; }
@@ -316,6 +325,12 @@ void MobileController::refresh() {
     return;
   }
 
+  const QJsonObject activity =
+      m_store.registrationActivity(qMin(today, m_selectedDate), qMax(today, m_selectedDate), &error);
+  if (!error.isEmpty()) {
+    publishError(error);
+    return;
+  }
   QList<TaskOccurrence> selected;
   if (m_selectedDate == today) {
     selected = todayOccurrences;
@@ -335,6 +350,9 @@ void MobileController::refresh() {
 
   m_todayTasks = occurrenceValues(todayOccurrences, scheduledDates);
   m_selectedTasks = occurrenceValues(selected, scheduledDates);
+  m_todayRegistrationActivity = activity.value(today.toString(Qt::ISODate)).toArray().toVariantList();
+  m_selectedRegistrationActivity =
+      activity.value(m_selectedDate.toString(Qt::ISODate)).toArray().toVariantList();
   m_todayHabits = habitValues(habits);
   m_selectedDateHabits = habitValues(selectedDateHabits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
@@ -415,12 +433,15 @@ bool MobileController::saveTask(const QString &taskId, const QString &title, con
 }
 
 bool MobileController::setTaskCompleted(const QString &taskId, const QString &occurrenceDateKey,
-                                        const bool recurring, const bool completed) {
+                                        const bool recurring, const bool completed,
+                                        const QString &completedDateKey) {
   const QDate date = QDate::fromString(occurrenceDateKey, Qt::ISODate);
+  const QDate completedDate = QDate::fromString(completedDateKey, Qt::ISODate);
   QString error;
   const QDateTime changedAt = QDateTime::currentDateTimeUtc();
-  const bool succeeded = recurring ? m_store.setOccurrenceCompleted(taskId, date, completed, changedAt, &error)
-                                   : m_store.setTaskCompleted(taskId, completed, changedAt, &error);
+  const bool succeeded =
+      recurring ? m_store.setOccurrenceCompleted(taskId, date, completed, completedDate, changedAt, &error)
+                : m_store.setTaskCompleted(taskId, completed, completedDate, changedAt, &error);
   if (succeeded && completed) {
     AndroidNotificationBridge::playCompletionSound();
   }

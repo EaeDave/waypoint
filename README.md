@@ -39,6 +39,24 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
 
+#### Completion history
+
+Desktop, Android, the home-screen widget, and the Omarchy panel keep each completed occurrence on its **original scheduled date**. The **actual completion date** is a separate floating calendar day; **registered at** records when the action was entered. Completing an overdue task asks **Hoje**, **Na data prevista**, or **Escolher data**. Same-day completion remains a single action.
+
+Use **Alterar data** to correct an actual completion date without changing the original registration timestamp, or **Desfazer** to reopen the occurrence. Undoing a date edit restores the previous known actual date. Legacy completions retain their registration timestamp but have an unknown actual date until explicitly corrected; the app never guesses it from the timestamp.
+
+The registration day has a collapsed **Conclusões registradas** section, grouped by task with expandable original occurrences. This secondary activity does not duplicate normal calendar markers or change recurrence cadence. The pending-only filter hides it. Small Android widgets expose the complete, scrollable day history through **DIA** or **VER TODAS**.
+
+The CLI requires an explicit actual date when completing a task. For a recurring occurrence, `--date` identifies the original due day:
+
+```bash
+waypointctl complete TASK_ID --date 2026-09-22 --completed-date 2026-09-24
+waypointctl registration-activity --from 2026-09-24 --to 2026-09-27
+waypointctl reopen TASK_ID --date 2026-09-22
+```
+
+Repeat `complete` with another `--completed-date` to correct it. Actual dates may be earlier than the due date, but not in the future. For a non-recurring task, omit `--date`.
+
 ### Brazilian holidays
 
 Waypoint can place Brazilian calendar events next to tasks rather than forcing users to consult a separate holiday calendar.
@@ -77,6 +95,8 @@ The Linux package also includes `waypointd` for reminders and synchronization, `
 ### Omarchy bar plugin
 
 The optional Omarchy plugin puts the calendar where it is most useful: one click from the bar. Review any selected date and its holidays without changing windows, then add or edit tasks, complete or skip occurrences, and inspect, add, or undo habit check-ins for that date. It reduces context switching while retaining the full calendar model and local-first behavior of the desktop app.
+
+On wide screens, the popup keeps the complete calendar fixed on the left, with the selected day's habits below it, and tasks on the right. Task and habit lists scroll independently without moving the calendar. Narrow or short screens use a single scrolling column in calendar, habits, and tasks order.
 
 <table>
   <tr>

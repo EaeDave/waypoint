@@ -11,6 +11,11 @@ Item {
     required property var controller
     readonly property bool compact: width < WaypointTheme.compactBreakpoint
 
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.margins: root.compact ? 18 : 34
@@ -125,6 +130,7 @@ Item {
                     delegate: TaskRow {
                         width: taskList.width
                         controller: root.controller
+                        completionActions: completionFlow
                     }
                 }
 
@@ -139,6 +145,13 @@ Item {
                     color: WaypointTheme.disabledText
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.subtitleSize
+                }
+
+                RegistrationActivity {
+                    Layout.fillWidth: true
+                    groups: root.controller.todayRegistrationActivity
+                    dateKey: Qt.formatDate(new Date(), "yyyy-MM-dd")
+                    completionActions: completionFlow
                 }
 
                 HabitSection {

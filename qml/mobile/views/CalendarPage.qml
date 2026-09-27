@@ -17,6 +17,11 @@ Item {
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+    }
+
     function firstGridDate() {
         const first = new Date(controller.visibleYear, controller.visibleMonth - 1, 1);
         const mondayOffset = (first.getDay() + 6) % 7;
@@ -459,16 +464,14 @@ Item {
 
                             Button {
                                 id: completionButton
-                                Layout.preferredWidth: 36
-                                Layout.preferredHeight: 36
+                                Layout.preferredWidth: MobileTheme.touchHeight
+                                Layout.preferredHeight: MobileTheme.touchHeight
                                 text: taskRow.modelData.completed ? "✓"
                                     : taskRow.modelData.skipped ? "×" : ""
-                                onClicked: root.controller.setTaskCompleted(
-                                               taskRow.modelData.taskId,
-                                               taskRow.modelData.occurrenceDate,
-                                               taskRow.modelData.recurring,
-                                               taskRow.modelData.skipped ? false
-                                                                           : !taskRow.modelData.completed)
+                                Accessible.name: taskRow.modelData.completed || taskRow.modelData.skipped
+                                                 ? "Reabrir tarefa " + taskRow.modelData.title
+                                                 : "Concluir tarefa " + taskRow.modelData.title
+                                onClicked: completionFlow.toggle(taskRow.modelData)
                                 background: Rectangle {
                                     radius: MobileTheme.radius
                                     color: taskRow.modelData.completed ? MobileTheme.success
@@ -530,10 +533,21 @@ Item {
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.captionSize
                                 }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: taskRow.modelData.completed
+                                    text: taskRow.modelData.completionLabel
+                                    color: taskRow.modelData.completionLate
+                                           ? MobileTheme.warning : MobileTheme.subdued
+                                    font.family: MobileTheme.fontFamily
+                                    font.pixelSize: MobileTheme.captionSize
+                                    wrapMode: Text.Wrap
+                                }
                             }
 
                             MobileButton {
-                                Layout.preferredWidth: 44
+                                Layout.preferredWidth: MobileTheme.touchHeight
                                 text: "···"
                                 quiet: true
                                 onClicked: taskEditor.openForEdit(taskRow.modelData)
@@ -554,6 +568,12 @@ Item {
                     font.pixelSize: MobileTheme.bodySize
                     horizontalAlignment: Text.AlignHCenter
                     Layout.topMargin: 14
+                }
+
+                RegistrationActivity {
+                    Layout.fillWidth: true
+                    groups: root.controller.selectedRegistrationActivity
+                    completionActions: completionFlow
                 }
                 HabitProgressSection {
                     Layout.fillWidth: true

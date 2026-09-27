@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.16 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.17 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -118,6 +118,8 @@ if(ANDROID)
             qml/mobile/MobileTheme.qml
             qml/mobile/components/HabitEditor.qml
             qml/mobile/components/HabitProgressSection.qml
+            qml/mobile/components/CompletionActions.qml
+            qml/mobile/components/RegistrationActivity.qml
             qml/mobile/components/MobileButton.qml
             qml/mobile/components/MobileComboBox.qml
             qml/mobile/components/MobileCheck.qml
@@ -232,6 +234,8 @@ else()
             qml/components/CalendarGrid.qml
             qml/components/QuickTaskComposer.qml
             qml/components/TaskRow.qml
+            qml/components/CompletionActions.qml
+            qml/components/RegistrationActivity.qml
             qml/components/TaskListManager.qml
             qml/components/TaskVisibilityChip.qml
             qml/views/MonthView.qml

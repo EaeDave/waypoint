@@ -34,17 +34,19 @@ bool refreshWidgetActionResult(waypoint::TaskStore &store, const QDateTime &now,
 } // namespace
 
 bool applyWidgetTaskCompletion(TaskStore &store, const QString &taskId, const QDate &occurrenceDate,
-                               const bool recurring, const bool completed, const QDateTime &now,
+                               const bool recurring, const bool completed, const QDate &completedDate,
+                               const QDateTime &now,
                                WidgetTaskActionResult *result, QString *errorMessage) {
-  if (taskId.isEmpty() || !occurrenceDate.isValid() || !now.isValid() || result == nullptr) {
+  if (taskId.isEmpty() || !occurrenceDate.isValid() || !now.isValid() || result == nullptr ||
+      (completed && (!completedDate.isValid() || completedDate > now.toLocalTime().date()))) {
     setError(errorMessage, QStringLiteral("Invalid widget task completion request"));
     return false;
   }
 
   QString error;
   const bool changed =
-      recurring ? store.setOccurrenceCompleted(taskId, occurrenceDate, completed, now, &error)
-                : store.setTaskCompleted(taskId, completed, now, &error);
+      recurring ? store.setOccurrenceCompleted(taskId, occurrenceDate, completed, completedDate, now, &error)
+                : store.setTaskCompleted(taskId, completed, completedDate, now, &error);
   if (!changed) {
     setError(errorMessage, error);
     return false;

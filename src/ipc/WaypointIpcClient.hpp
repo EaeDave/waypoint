@@ -26,6 +26,8 @@ public:
                                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
                                                                 QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonObject registrationActivity(const QDate &from, const QDate &to,
+                                                QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<HabitProgress> listHabitProgress(const QDate &date,
                                                        QString *errorMessage = nullptr) const;
   [[nodiscard]] bool addHabit(const HabitRecord &habit, QString *errorMessage = nullptr) const;
@@ -45,10 +47,11 @@ public:
                              const QTime &scheduledTime, const RecurrenceRule &recurrence,
                              const QList<int> &reminderMinutesBefore, const QString &emoji,
                              const QString &categoryId, QString *errorMessage = nullptr) const;
-  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed,
+  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, const QDate &completedDate,
                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
-                                            bool completed, QString *errorMessage = nullptr) const;
+                                            bool completed, const QDate &completedDate,
+                                            QString *errorMessage = nullptr) const;
   [[nodiscard]] bool skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                     QString *errorMessage = nullptr) const;
   [[nodiscard]] bool deleteOccurrence(const QString &taskId, const QDate &occurrenceDate,

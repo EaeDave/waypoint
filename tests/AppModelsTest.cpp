@@ -15,6 +15,7 @@ private slots:
   void exposeSkippedRecurringOccurrence();
   void sortTasksByFloatingLocalTime();
   void exposeEmojiRoleWithoutBreakingLegacyTasks();
+  void keepRegisteredCompletionsOnOriginalDay();
 };
 
 namespace {
@@ -276,6 +277,53 @@ void AppModelsTest::sortTasksByFloatingLocalTime() {
            QStringLiteral("late"));
   QCOMPARE(model.data(model.index(2, 0), waypoint::TaskListModel::TaskIdRole).toString(),
            QStringLiteral("completed-early"));
+}
+
+void AppModelsTest::keepRegisteredCompletionsOnOriginalDay() {
+  const QDate today = QDate::currentDate();
+  const QDate dueDate = today.addDays(-1);
+  waypoint::TaskOccurrence completed = occurrence(QStringLiteral("completed-yesterday"), dueDate, true, true);
+  completed.calendarDate = dueDate;
+  completed.completedDate = dueDate;
+  completed.registeredAt = QDateTime(today, QTime(12, 0)).toUTC();
+  completed.categoryId = QStringLiteral("work");
+  completed.categoryName = QStringLiteral("Trabalho");
+  completed.categoryColor = QStringLiteral("#3B82F6");
+
+  waypoint::TaskListModel tasks;
+  tasks.setSourceOccurrences({completed});
+  QCOMPARE(tasks.rowCount(), 0);
+  tasks.setFocusDate(dueDate);
+  QCOMPARE(tasks.rowCount(), 1);
+  QVERIFY(!tasks.data(tasks.index(0, 0), waypoint::TaskListModel::OverdueRole).toBool());
+  QVERIFY(!tasks.data(tasks.index(0, 0), waypoint::TaskListModel::CompletionLateRole).toBool());
+
+  completed.completedDate = today;
+  tasks.setSourceOccurrences({completed});
+  QCOMPARE(tasks.rowCount(), 1);
+  QVERIFY(tasks.data(tasks.index(0, 0), waypoint::TaskListModel::CompletionLateRole).toBool());
+  QCOMPARE(tasks.data(tasks.index(0, 0), waypoint::TaskListModel::ScheduledDateRole).toString(),
+           dueDate.toString(Qt::ISODate));
+  QCOMPARE(tasks.data(tasks.index(0, 0), waypoint::TaskListModel::CompletedDateRole).toString(),
+           today.toString(Qt::ISODate));
+  tasks.setFocusDate(today);
+  QCOMPARE(tasks.rowCount(), 0);
+
+  waypoint::CalendarModel calendar;
+  calendar.setSourceOccurrences({completed});
+  for (int row = 0; row < calendar.rowCount(); ++row) {
+    const QModelIndex index = calendar.index(row, 0);
+    const QString dateKey = calendar.data(index, waypoint::CalendarModel::DateRole).toString();
+    if (dateKey == today.toString(Qt::ISODate)) {
+      QCOMPARE(calendar.data(index, waypoint::CalendarModel::CompletedCountRole).toInt(), 0);
+      QVERIFY(calendar.data(index, waypoint::CalendarModel::CategoryMarkersRole).toList().isEmpty());
+    } else if (dateKey == dueDate.toString(Qt::ISODate)) {
+      QCOMPARE(calendar.data(index, waypoint::CalendarModel::CompletedCountRole).toInt(), 1);
+      const QVariantList markers = calendar.data(index, waypoint::CalendarModel::CategoryMarkersRole).toList();
+      QCOMPARE(markers.first().toMap().value(QStringLiteral("id")).toString(), QStringLiteral("work"));
+      QVERIFY(!markers.first().toMap().value(QStringLiteral("urgent")).toBool());
+    }
+  }
 }
 
 QTEST_MAIN(AppModelsTest)

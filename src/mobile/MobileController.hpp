@@ -24,6 +24,8 @@ class MobileController final : public QObject {
   Q_PROPERTY(int visibleMonth READ visibleMonth NOTIFY visibleMonthChanged)
   Q_PROPERTY(QVariantList todayTasks READ todayTasks NOTIFY dataChanged)
   Q_PROPERTY(QVariantList selectedTasks READ selectedTasks NOTIFY dataChanged)
+  Q_PROPERTY(QVariantList todayRegistrationActivity READ todayRegistrationActivity NOTIFY dataChanged)
+  Q_PROPERTY(QVariantList selectedRegistrationActivity READ selectedRegistrationActivity NOTIFY dataChanged)
   Q_PROPERTY(QVariantList todayHabits READ todayHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList selectedDateHabits READ selectedDateHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthOccurrences READ monthOccurrences NOTIFY dataChanged)
@@ -61,6 +63,8 @@ public:
   [[nodiscard]] int visibleMonth() const;
   [[nodiscard]] QVariantList todayTasks() const;
   [[nodiscard]] QVariantList selectedTasks() const;
+  [[nodiscard]] QVariantList todayRegistrationActivity() const;
+  [[nodiscard]] QVariantList selectedRegistrationActivity() const;
   [[nodiscard]] QVariantList todayHabits() const;
   [[nodiscard]] QVariantList selectedDateHabits() const;
   [[nodiscard]] QVariantList monthOccurrences() const;
@@ -96,7 +100,7 @@ public:
                             int occurrenceCount, const QVariantList &reminderMinutesBefore,
                             const QString &emoji, const QString &categoryId);
   Q_INVOKABLE bool setTaskCompleted(const QString &taskId, const QString &occurrenceDateKey, bool recurring,
-                                    bool completed);
+                                    bool completed, const QString &completedDateKey);
   Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
@@ -156,6 +160,8 @@ private:
   int m_visibleMonth = 0;
   QVariantList m_todayTasks;
   QVariantList m_selectedTasks;
+  QVariantList m_todayRegistrationActivity;
+  QVariantList m_selectedRegistrationActivity;
   QVariantList m_todayHabits;
   QVariantList m_selectedDateHabits;
   QVariantList m_monthOccurrences;

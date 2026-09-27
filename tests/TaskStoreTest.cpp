@@ -7,6 +7,7 @@
 #include <QUuid>
 #include <QtTest>
 
+#include <algorithm>
 #include <optional>
 
 class TaskStoreTest final : public QObject {
@@ -14,7 +15,7 @@ class TaskStoreTest final : public QObject {
 
 private slots:
   void createCompleteAndRescheduleTask();
-  void persistSingleTaskCompletionTime();
+  void persistSingleTaskCompletionHistory();
   void editTaskTitleAndTimeAtomically();
   void persistFiveReminderOffsetsAndRejectInvalidLists();
   void persistCompoundEmojiAcrossStorageAndSync();
@@ -27,7 +28,9 @@ private slots:
   void persistHolidayPreferencesAndMunicipalities();
   void persistAndSynchronizeTaskVisibility();
   void persistRecurrenceAndOccurrenceState();
-  void placeLateMonthlyCompletionOnToday();
+  void retainLateCompletionOnDueDay();
+  void groupCrossDayRegistrationsByTask();
+  void rejectFutureCompletionAndAllowEarlyCompletion();
   void migrateLegacyTaskRowsAndOutbox();
   void applyRemoteOccurrenceChangesIdempotently();
   void applyRecurrenceDeletionScopes();
@@ -80,7 +83,7 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
   QCOMPARE(created.scheduledDate, QDate(2026, 9, 1));
   QCOMPARE(created.scheduledTime, QTime(9, 30));
 
-  QVERIFY2(store.setTaskCompleted(created.id, true, QDateTime::currentDateTimeUtc(), &error),
+  QVERIFY2(store.setTaskCompleted(created.id, true, QDate::currentDate(), QDateTime::currentDateTimeUtc(), &error),
            qPrintable(error));
   QVERIFY2(store.rescheduleTask(created.id, QDate(2026, 9, 2), QTime(11, 45), &error), qPrintable(error));
 
@@ -102,32 +105,38 @@ void TaskStoreTest::createCompleteAndRescheduleTask() {
            QStringLiteral("11:45"));
 }
 
-void TaskStoreTest::persistSingleTaskCompletionTime() {
+void TaskStoreTest::persistSingleTaskCompletionHistory() {
   QTemporaryDir directory;
-  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  const QString path = directory.filePath(QStringLiteral("tasks.sqlite3"));
+  waypoint::TaskStore store(path);
   QString error;
   QVERIFY2(store.open(&error), qPrintable(error));
-
+  const QDate due(2026, 9, 19);
+  const QDateTime registered(QDate(2026, 9, 21), QTime(12, 0));
   waypoint::TaskRecord created;
-  QVERIFY2(store.createTask(QStringLiteral("Conta única"), QDate::currentDate().addDays(-2), QTime(9, 0), {},
-                            QList<int>{0}, {}, {}, &created, &error),
-           qPrintable(error));
-  QVERIFY2(store.setTaskCompleted(created.id, true, QDateTime::currentDateTimeUtc(), &error),
-           qPrintable(error));
-
-  auto tasks = store.listActiveTasks(&error);
-  QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(tasks.size(), 1);
-  QVERIFY(tasks.first().completed);
-  QVERIFY(tasks.first().completedAt.isValid());
-  QCOMPARE(tasks.first().completedAt.toLocalTime().date(), QDate::currentDate());
-
-  QVERIFY2(store.setTaskCompleted(created.id, false, QDateTime::currentDateTimeUtc(), &error),
-           qPrintable(error));
-  tasks = store.listActiveTasks(&error);
-  QVERIFY2(error.isEmpty(), qPrintable(error));
-  QVERIFY(!tasks.first().completed);
-  QVERIFY(!tasks.first().completedAt.isValid());
+  QVERIFY2(store.createTask(QStringLiteral("Conta única"), due, QTime(9, 0), {},
+                            QList<int>{0}, {}, {}, &created, &error), qPrintable(error));
+  QVERIFY2(store.setTaskCompleted(created.id, true, due, registered, &error), qPrintable(error));
+  auto task = store.listActiveTasks(&error).first();
+  QVERIFY(task.completed);
+  QCOMPARE(task.completedDate, due);
+  QCOMPARE(task.registeredAt, registered);
+  QVERIFY2(store.setTaskCompleted(created.id, true, due.addDays(1), registered.addDays(2), &error), qPrintable(error));
+  waypoint::TaskStore reopened(path);
+  QVERIFY2(reopened.open(&error), qPrintable(error));
+  task = reopened.listActiveTasks(&error).first();
+  QCOMPARE(task.completedDate, due.addDays(1));
+  QCOMPARE(task.registeredAt, registered);
+  QCOMPARE(reopened.listOccurrences(due, due, &error).first().calendarDate, due);
+  QCOMPARE(reopened.registrationActivity(registered.date(), registered.date(), &error)
+               .value(registered.date().toString(Qt::ISODate)).toArray().first().toObject()
+               .value(QStringLiteral("taskId")).toString(), created.id);
+  QVERIFY2(store.setTaskCompleted(created.id, false, {}, registered.addDays(3), &error), qPrintable(error));
+  task = store.listActiveTasks(&error).first();
+  QVERIFY(!task.completed);
+  QVERIFY(!task.completedDate.isValid());
+  QVERIFY(!task.registeredAt.isValid());
+  QVERIFY(store.registrationActivity(registered.date(), registered.date(), &error).isEmpty());
 }
 void TaskStoreTest::editTaskTitleAndTimeAtomically() {
   QTemporaryDir directory;
@@ -438,7 +447,7 @@ void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
   QCOMPARE(tasks.first().scheduledTime, QTime(7, 15));
   QCOMPARE(store.listOccurrences(QDate(2026, 1, 1), QDate(2026, 1, 3), &error).size(), 3);
 
-  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), true,
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), true, QDate(2026, 1, 2),
                                         QDateTime(QDate(2026, 1, 2), QTime(8, 0)), &error),
            qPrintable(error));
   auto states = store.listOccurrenceStates(&error);
@@ -446,13 +455,15 @@ void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
   QCOMPARE(states.first().occurrenceDate, QDate(2026, 1, 2));
   QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Completed);
 
-  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), false,
+  QVERIFY2(store.setOccurrenceCompleted(created.id, QDate(2026, 1, 2), false, {},
                                         QDateTime(QDate(2026, 1, 2), QTime(9, 0)), &error),
            qPrintable(error));
   states = store.listOccurrenceStates(&error);
   QCOMPARE(states.size(), 1);
   QCOMPARE(states.first().status, waypoint::OccurrenceStatus::Pending);
   QCOMPARE(states.first().version, 2);
+  QVERIFY(!states.first().registeredAt.isValid());
+  QVERIFY(!states.first().completedDate.isValid());
 
   const QJsonArray mutations = store.pendingMutations(&error);
   QCOMPARE(mutations.size(), 3);
@@ -461,7 +472,7 @@ void TaskStoreTest::persistRecurrenceAndOccurrenceState() {
            QStringLiteral("occurrence"));
 }
 
-void TaskStoreTest::placeLateMonthlyCompletionOnToday() {
+void TaskStoreTest::retainLateCompletionOnDueDay() {
   QTemporaryDir directory;
   waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
   QString error;
@@ -475,17 +486,24 @@ void TaskStoreTest::placeLateMonthlyCompletionOnToday() {
   QVERIFY2(store.createTask(QStringLiteral("Vivo Easy"), dueDate, QTime(9, 0), recurrence, QList<int>{0}, {},
                             {}, &created, &error),
            qPrintable(error));
-  QVERIFY2(store.setOccurrenceCompleted(created.id, dueDate, true,
+  QVERIFY2(store.setOccurrenceCompleted(created.id, dueDate, true, completionDay,
                                         QDateTime(completionDay, QTime(12, 0)), &error),
            qPrintable(error));
 
-  const auto completedToday = store.listOccurrences(completionDay, completionDay, &error);
+  const auto history = store.listOccurrences(dueDate, dueDate, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(completedToday.size(), 1);
-  QCOMPARE(completedToday.first().occurrenceDate, dueDate);
-  QCOMPARE(completedToday.first().calendarDate, completionDay);
-  QVERIFY(completedToday.first().completed);
-  QVERIFY(completedToday.first().calendarMarker);
+  QCOMPARE(history.size(), 1);
+  QCOMPARE(history.first().occurrenceDate, dueDate);
+  QCOMPARE(history.first().calendarDate, dueDate);
+  QCOMPARE(history.first().completedDate, completionDay);
+  QVERIFY(history.first().completed);
+  QVERIFY(history.first().calendarMarker);
+  QVERIFY(store.listOccurrences(completionDay, completionDay, &error).isEmpty());
+  QVERIFY(store.listActionableOccurrences(completionDay, &error).isEmpty());
+  const auto activity = store.registrationActivity(completionDay, completionDay, &error)
+                            .value(completionDay.toString(Qt::ISODate)).toArray();
+  QCOMPARE(activity.size(), 1);
+  QCOMPARE(activity.first().toObject().value(QStringLiteral("count")).toInt(), 1);
 
   const QDate nextDueDate = dueDate.addMonths(1);
   const auto nextOccurrence = store.listOccurrences(nextDueDate, nextDueDate, &error);
@@ -493,6 +511,109 @@ void TaskStoreTest::placeLateMonthlyCompletionOnToday() {
   QCOMPARE(nextOccurrence.size(), 1);
   QCOMPARE(nextOccurrence.first().occurrenceDate, nextDueDate);
   QVERIFY(!nextOccurrence.first().completed);
+}
+
+void TaskStoreTest::groupCrossDayRegistrationsByTask() {
+  QTemporaryDir directory;
+  const QString path = directory.filePath(QStringLiteral("tasks.sqlite3"));
+  waypoint::TaskStore store(path);
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const QDate firstDue(2026, 1, 1);
+  const QDate registrationDay(2026, 1, 5);
+  const QDateTime registered(registrationDay, QTime(12, 0));
+  waypoint::TaskCategory category;
+  QVERIFY2(store.createTaskCategory(QStringLiteral("Saúde"), QStringLiteral("#112233"), &category, &error), qPrintable(error));
+  waypoint::RecurrenceRule daily;
+  daily.frequency = waypoint::RecurrenceFrequency::Daily;
+  waypoint::TaskRecord recurring;
+  waypoint::TaskRecord single;
+  QVERIFY2(store.createTask(QStringLiteral("Mesmo título"), firstDue, QTime(9, 0), daily,
+                            QList<int>{0}, {}, category.id, &recurring, &error), qPrintable(error));
+  QVERIFY2(store.createTask(QStringLiteral("Mesmo título"), firstDue, QTime(10, 0), {},
+                            QList<int>{0}, {}, {}, &single, &error), qPrintable(error));
+  for (const QDate &due : {firstDue.addDays(2), firstDue, registrationDay}) {
+    QVERIFY2(store.setOccurrenceCompleted(recurring.id, due, true, due, registered, &error), qPrintable(error));
+  }
+  QVERIFY2(store.setTaskCompleted(single.id, true, firstDue, registered, &error), qPrintable(error));
+  QVERIFY2(store.skipOccurrence(recurring.id, firstDue.addDays(3), &error), qPrintable(error));
+  QVERIFY2(store.setOccurrenceCompleted(recurring.id, firstDue, true, firstDue.addDays(1),
+                                        registered.addDays(1), &error), qPrintable(error));
+  waypoint::TaskStore reopened(path);
+  QVERIFY2(reopened.open(&error), qPrintable(error));
+  const QJsonObject dates = reopened.registrationActivity(registrationDay, registrationDay.addDays(1), &error);
+  QVERIFY2(error.isEmpty(), qPrintable(error));
+  QCOMPARE(dates.keys(), QStringList{registrationDay.toString(Qt::ISODate)});
+  const QJsonArray groups = dates.value(registrationDay.toString(Qt::ISODate)).toArray();
+  QCOMPARE(groups.size(), 2);
+  QJsonObject recurringGroup;
+  for (const QJsonValue &group : groups) {
+    if (group.toObject().value(QStringLiteral("taskId")).toString() == recurring.id) {
+      recurringGroup = group.toObject();
+    }
+  }
+  QCOMPARE(recurringGroup.value(QStringLiteral("count")).toInt(), 2);
+  const QJsonArray children = recurringGroup.value(QStringLiteral("occurrences")).toArray();
+  QCOMPARE(children.at(0).toObject().value(QStringLiteral("occurrenceDate")).toString(), QStringLiteral("2026-01-01"));
+  QCOMPARE(children.at(1).toObject().value(QStringLiteral("occurrenceDate")).toString(), QStringLiteral("2026-01-03"));
+  QCOMPARE(children.at(0).toObject().value(QStringLiteral("completedDate")).toString(), QStringLiteral("2026-01-02"));
+  QCOMPARE(children.at(0).toObject().value(QStringLiteral("registeredAt")).toString(), registered.toUTC().toString(Qt::ISODateWithMs));
+  QCOMPARE(children.at(0).toObject().value(QStringLiteral("categoryId")).toString(), category.id);
+  QVERIFY(recurringGroup.value(QStringLiteral("dateSummary")).toString().contains(QStringLiteral("01/01/2026")));
+  QVERIFY(recurringGroup.value(QStringLiteral("dateSummary")).toString().contains(QStringLiteral("03/01/2026")));
+  QVERIFY(!recurringGroup.value(QStringLiteral("dateSummary")).toString().contains(QStringLiteral("02/01/2026")));
+  const auto actionable = store.listActionableOccurrences(registrationDay, &error);
+  QCOMPARE(actionable.size(), 2);
+  QCOMPARE(actionable.first().occurrenceDate, firstDue.addDays(1));
+  QCOMPARE(actionable.last().occurrenceDate, registrationDay);
+  QVERIFY(actionable.last().completed);
+  QVERIFY2(store.setOccurrenceCompleted(recurring.id, firstDue, false, {}, registered.addDays(2), &error), qPrintable(error));
+  QVERIFY2(store.deleteTask(single.id, &error), qPrintable(error));
+  const auto remaining = store.registrationActivity(registrationDay, registrationDay, &error)
+                             .value(registrationDay.toString(Qt::ISODate)).toArray();
+  QCOMPARE(remaining.size(), 1);
+  QCOMPARE(remaining.first().toObject().value(QStringLiteral("count")).toInt(), 1);
+  QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::Pending, &error), qPrintable(error));
+  QVERIFY(store.registrationActivity(registrationDay, registrationDay, &error).isEmpty());
+  QVERIFY2(store.setTaskVisibilityMode(waypoint::TaskVisibilityMode::All, &error), qPrintable(error));
+  QVERIFY2(store.deleteOccurrence(recurring.id, firstDue.addDays(2), waypoint::RecurrenceEditScope::Following, &error), qPrintable(error));
+  QVERIFY(store.registrationActivity(registrationDay, registrationDay, &error).isEmpty());
+}
+
+void TaskStoreTest::rejectFutureCompletionAndAllowEarlyCompletion() {
+  QTemporaryDir directory;
+  waypoint::TaskStore store(directory.filePath(QStringLiteral("tasks.sqlite3")));
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  const QDate actionDay(2026, 9, 21);
+  const QDateTime now(actionDay, QTime(12, 0));
+  const QDate due = actionDay.addDays(2);
+  for (const auto frequency : {waypoint::RecurrenceFrequency::None, waypoint::RecurrenceFrequency::Daily}) {
+    waypoint::RecurrenceRule rule;
+    rule.frequency = frequency;
+    waypoint::TaskRecord task;
+    QVERIFY2(store.createTask(QStringLiteral("Adiantada"), due, QTime(9, 0), rule,
+                              QList<int>{0}, {}, {}, &task, &error), qPrintable(error));
+    if (!rule.isRecurring()) {
+      QVERIFY(!store.setTaskCompleted(task.id, true, {}, now, &error));
+      error.clear();
+      QVERIFY(!store.setTaskCompleted(task.id, true, actionDay.addDays(1), now, &error));
+      error.clear();
+    }
+    QVERIFY(!store.setOccurrenceCompleted(task.id, due, true, {}, now, &error));
+    error.clear();
+    QVERIFY(!store.setOccurrenceCompleted(task.id, due, true, actionDay.addDays(1), now, &error));
+    error.clear();
+    QVERIFY2(store.setOccurrenceCompleted(task.id, due, true, actionDay, now, &error), qPrintable(error));
+    const auto dueOccurrences = store.listOccurrences(due, due, &error);
+    const auto occurrence = std::find_if(dueOccurrences.cbegin(), dueOccurrences.cend(), [&task](const auto &value) {
+      return value.taskId == task.id;
+    });
+    QVERIFY(occurrence != dueOccurrences.cend());
+    QCOMPARE(occurrence->completedDate, actionDay);
+    QCOMPARE(occurrence->calendarDate, due);
+    QVERIFY(!occurrence->completionLate());
+  }
 }
 
 void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {
@@ -507,17 +628,26 @@ void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {
     QVERIFY(query.exec(
         QStringLiteral("CREATE TABLE tasks (id TEXT PRIMARY KEY, title TEXT NOT NULL, scheduled_date TEXT, "
                        "completed INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, "
-                       "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT)")));
+                       "updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, deleted_at TEXT, completed_at TEXT)")));
     QVERIFY(query.exec(QStringLiteral("INSERT INTO tasks VALUES "
-                                      "('legacy-task', 'Legado', '2026-09-01', 0, "
-                                      "'2026-08-01T00:00:00.000Z', '2026-08-01T00:00:00.000Z', 1, NULL)")));
+                                      "('legacy-task', 'Legado', '2026-09-01', 1, "
+                                      "'2026-08-01T00:00:00.000Z', '2026-09-03T12:00:00.000Z', 1, NULL, "
+                                      "'2026-09-02T12:00:00.000Z')")));
+    QVERIFY(query.exec(QStringLiteral(
+        "CREATE TABLE task_occurrence_states (task_id TEXT NOT NULL, occurrence_date TEXT NOT NULL, "
+        "status TEXT NOT NULL, completed_at TEXT, updated_at TEXT NOT NULL, version INTEGER NOT NULL, "
+        "PRIMARY KEY(task_id, occurrence_date))")));
+    QVERIFY(query.exec(QStringLiteral(
+        "INSERT INTO task_occurrence_states VALUES ('legacy-task', '2026-09-01', 'completed', "
+        "'2026-09-02T12:00:00.000Z', '2026-09-03T12:00:00.000Z', 1)")));
     QVERIFY(query.exec(
         QStringLiteral("CREATE TABLE outbox (mutation_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, "
                        "operation TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)")));
     QVERIFY(query.exec(
         QStringLiteral("INSERT INTO outbox VALUES "
                        "('legacy-mutation', 'legacy-task', 'upsert', "
-                       "'{\"id\":\"legacy-task\",\"title\":\"Legado\",\"scheduledDate\":\"2026-09-01\"}', "
+                       "'{\"id\":\"legacy-task\",\"title\":\"Legado\",\"scheduledDate\":\"2026-09-01\","
+                       "\"completed\":true,\"completedAt\":\"2026-09-02T12:00:00.000Z\"}', "
                        "'2026-08-01T00:00:00.000Z')")));
     QVERIFY(query.exec(QStringLiteral(
         "CREATE TABLE reminder_deliveries ("
@@ -540,6 +670,12 @@ void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {
   QVERIFY(!tasks.first().scheduledTime.isValid());
   QVERIFY(tasks.first().emoji.isEmpty());
   QCOMPARE(tasks.first().reminderMinutesBefore, QList<int>({0}));
+  const auto registration = QDateTime::fromString(QStringLiteral("2026-09-02T12:00:00.000Z"), Qt::ISODateWithMs);
+  QCOMPARE(tasks.first().registeredAt, registration);
+  QVERIFY(!tasks.first().completedDate.isValid());
+  const auto legacyState = store.listOccurrenceStates(&error).first();
+  QCOMPARE(legacyState.registeredAt, registration);
+  QVERIFY(!legacyState.completedDate.isValid());
   bool claimed = true;
   QVERIFY2(store.claimReminderDelivery(QStringLiteral("legacy-task"), QDate(2026, 9, 1), 0, &claimed, &error),
            qPrintable(error));
@@ -555,6 +691,14 @@ void TaskStoreTest::migrateLegacyTaskRowsAndOutbox() {
            QStringLiteral("task"));
   QCOMPARE(mutations.first().toObject().value(QStringLiteral("entityId")).toString(),
            QStringLiteral("legacy-task"));
+  const auto payload = mutations.first().toObject().value(QStringLiteral("payload")).toObject();
+  QVERIFY(!payload.contains(QStringLiteral("completedAt")));
+  QCOMPARE(payload.value(QStringLiteral("registeredAt")).toString(), QStringLiteral("2026-09-02T12:00:00.000Z"));
+  QCOMPARE(payload.value(QStringLiteral("completedDate")).toString(), QString());
+  waypoint::TaskStore reopened(path);
+  QVERIFY2(reopened.open(&error), qPrintable(error));
+  QCOMPARE(reopened.listActiveTasks(&error).first().registeredAt, registration);
+  QVERIFY(!reopened.listActiveTasks(&error).first().completedDate.isValid());
 }
 
 void TaskStoreTest::applyRemoteOccurrenceChangesIdempotently() {

@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
       QStringLiteral("command"),
       QStringLiteral("ping, snapshot, categories, add-category, edit-category, delete-category, "
                      "habits, add-habit, edit-habit, record-habit, undo-habit, delete-habit, add, "
-                     "complete, reopen, skip, edit, reschedule, delete, task-visibility, sync-status, "
+                     "complete, reopen, registration-activity, skip, edit, reschedule, delete, task-visibility, sync-status, "
                      "sync-config, configure-sync, disable-sync, sync-now, holiday-status, "
                      "holiday-preferences, configure-holidays, municipalities, holidays, "
                      "refresh-holidays, update-status, check-update, or update"));
@@ -142,6 +142,9 @@ int main(int argc, char *argv[]) {
        QStringLiteral("id")});
   parser.addOption({{QStringLiteral("d"), QStringLiteral("date")},
                     QStringLiteral("Calendar date in YYYY-MM-DD format"),
+                    QStringLiteral("date")});
+  parser.addOption({QStringLiteral("completed-date"),
+                    QStringLiteral("Actual completion date in YYYY-MM-DD format (required for complete)"),
                     QStringLiteral("date")});
   parser.addOption({QStringLiteral("time"), QStringLiteral("Scheduled local time in HH:mm format"),
                     QStringLiteral("time")});
@@ -607,6 +610,16 @@ int main(int argc, char *argv[]) {
     printJson({{QStringLiteral("ok"), true}, {QStringLiteral("status"), QStringLiteral("installing")}});
     return 0;
   }
+  if (command == QStringLiteral("registration-activity")) {
+    const QDate from = QDate::fromString(parser.value(QStringLiteral("from")), Qt::ISODate);
+    const QDate to = QDate::fromString(parser.value(QStringLiteral("to")), Qt::ISODate);
+    const QJsonObject dates = client.registrationActivity(from, to, &error);
+    if (!error.isEmpty()) {
+      return printError(error);
+    }
+    printJson({{QStringLiteral("ok"), true}, {QStringLiteral("dates"), dates}});
+    return 0;
+  }
   if (positional.size() < 2) {
     return printError(QStringLiteral("%1 requires a task id").arg(command));
   }
@@ -616,9 +629,17 @@ int main(int argc, char *argv[]) {
   if (command == QStringLiteral("complete") || command == QStringLiteral("reopen")) {
     const bool completed = command == QStringLiteral("complete");
     const QDate occurrenceDate = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+    const QDate completedDate =
+        QDate::fromString(parser.value(QStringLiteral("completed-date")), Qt::ISODate);
+    if (completed && !completedDate.isValid()) {
+      return printError(QStringLiteral("complete requires --completed-date YYYY-MM-DD"));
+    }
+    if (parser.isSet(QStringLiteral("date")) && !occurrenceDate.isValid()) {
+      return printError(QStringLiteral("--date requires YYYY-MM-DD"));
+    }
     succeeded = occurrenceDate.isValid()
-                    ? client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)
-                    : client.setTaskCompleted(taskId, completed, &error);
+                    ? client.setOccurrenceCompleted(taskId, occurrenceDate, completed, completedDate, &error)
+                    : client.setTaskCompleted(taskId, completed, completedDate, &error);
   } else if (command == QStringLiteral("skip")) {
     const QDate occurrenceDate = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     if (!occurrenceDate.isValid()) {

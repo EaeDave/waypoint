@@ -113,6 +113,11 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
     setError(errorMessage, error);
     return {};
   }
+  const QJsonObject registrationActivity = store.registrationActivity(rangeStart, rangeEnd, &error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
 
   QJsonObject dates;
   for (const TaskOccurrence &occurrence : occurrences) {
@@ -128,10 +133,16 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
   for (auto progress = habitProgress.cbegin(); progress != habitProgress.cend(); ++progress) {
     setHabitsForDate(&dates, progress.key().toString(Qt::ISODate), habitValues(progress.value()));
   }
+  for (auto activity = registrationActivity.constBegin(); activity != registrationActivity.constEnd();
+       ++activity) {
+    QJsonObject date = dates.value(activity.key()).toObject();
+    date.insert(QStringLiteral("registrationActivity"), activity.value());
+    dates.insert(activity.key(), date);
+  }
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 8},
+      {QStringLiteral("schemaVersion"), 9},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},

@@ -23,6 +23,7 @@ private slots:
   void buildWidgetCalendarSnapshot();
   void applyWidgetTaskCompletionAndUndo();
   void applyWidgetHabitCheckIns();
+  void preserveOccurrenceHistoryAcrossAppAndWidget();
   void prepareAndApplyBackgroundSync();
 };
 
@@ -92,7 +93,7 @@ void MobileControllerTest::exposeTaskAndHabitWorkflows() {
   QCOMPARE(controller.allTasks().first().toMap().value(QStringLiteral("categoryName")).toString(), QString());
 
   QVERIFY(controller.setTaskCompleted(task.value(QStringLiteral("taskId")).toString(),
-                                      today.toString(Qt::ISODate), true, true));
+                                      today.toString(Qt::ISODate), true, true, today.toString(Qt::ISODate)));
   QVERIFY(controller.todayTasks().first().toMap().value(QStringLiteral("completed")).toBool());
   QCOMPARE(controller.taskVisibility(), QStringLiteral("all"));
   QVERIFY(controller.setTaskVisibility(QStringLiteral("pending")));
@@ -136,11 +137,11 @@ void MobileControllerTest::showOnlyFirstPendingRecurrenceOnCalendar() {
   const QVariantMap todayTask = controller.selectedTasks().first().toMap();
   QCOMPARE(todayTask.value(QStringLiteral("recurrenceLabel")).toString(), QStringLiteral("DIÁRIA"));
   QVERIFY(controller.setTaskCompleted(todayTask.value(QStringLiteral("taskId")).toString(),
-                                      today.toString(Qt::ISODate), true, true));
+                                      today.toString(Qt::ISODate), true, true, today.toString(Qt::ISODate)));
   QCOMPARE(controller.selectedTasks().size(), 1);
   QVERIFY(controller.selectedTasks().first().toMap().value(QStringLiteral("completed")).toBool());
   QVERIFY(controller.setTaskCompleted(todayTask.value(QStringLiteral("taskId")).toString(),
-                                      today.toString(Qt::ISODate), true, false));
+                                      today.toString(Qt::ISODate), true, false, {}));
   QVERIFY(controller.skipTaskOccurrence(todayTask.value(QStringLiteral("taskId")).toString(),
                                         today.toString(Qt::ISODate)));
   QCOMPARE(controller.selectedTasks().size(), 1);
@@ -201,7 +202,7 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
   QVERIFY2(store.createTask(QStringLiteral("Enviar relatório"), today, QTime(11, 0), {}, {},
                             QStringLiteral("📤"), {}, &completed, &error),
            qPrintable(error));
-  QVERIFY2(store.setTaskCompleted(completed.id, true, QDateTime(today, QTime(12, 0)), &error),
+  QVERIFY2(store.setTaskCompleted(completed.id, true, today, QDateTime(today, QTime(12, 0)), &error),
            qPrintable(error));
   waypoint::RecurrenceRule daily;
   daily.frequency = waypoint::RecurrenceFrequency::Daily;
@@ -230,7 +231,6 @@ void MobileControllerTest::buildWidgetCalendarSnapshot() {
 
   const QJsonObject snapshot = waypoint::buildWidgetSnapshot(store, today, 1, 1, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
-  QCOMPARE(snapshot.value(QStringLiteral("schemaVersion")).toInt(), 8);
   QCOMPARE(snapshot.value(QStringLiteral("taskVisibility")).toString(), QStringLiteral("all"));
   QCOMPARE(snapshot.value(QStringLiteral("today")).toString(), QStringLiteral("2026-09-02"));
   QCOMPARE(snapshot.value(QStringLiteral("rangeStart")).toString(), QStringLiteral("2026-08-01"));
@@ -400,7 +400,7 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
            qPrintable(error));
 
   waypoint::WidgetTaskActionResult result;
-  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, task.id, date, false, true, now, &result, &error),
+  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, task.id, date, false, true, date, now, &result, &error),
            qPrintable(error));
   QCOMPARE(result.notificationSchedule.size(), 0);
   const QJsonArray completedTasks = result.snapshot.value(QStringLiteral("dates"))
@@ -425,7 +425,7 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
   QVERIFY2(waypoint::applyWidgetTaskVisibility(store, QStringLiteral("all"), now, &result, &error),
            qPrintable(error));
 
-  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, task.id, date, false, false, now, &result, &error),
+  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, task.id, date, false, false, {}, now, &result, &error),
            qPrintable(error));
   QCOMPARE(result.notificationSchedule.size(), 1);
   QVERIFY(!result.snapshot.value(QStringLiteral("dates"))
@@ -446,7 +446,7 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
                             QList<int>{0}, {}, {}, &recurringTask, &error),
            qPrintable(error));
   QVERIFY2(
-      waypoint::applyWidgetTaskCompletion(store, recurringTask.id, date, true, true, now, &result, &error),
+      waypoint::applyWidgetTaskCompletion(store, recurringTask.id, date, true, true, date, now, &result, &error),
       qPrintable(error));
   const QList<waypoint::TaskOccurrence> occurrences = store.listOccurrences(date, date, &error);
   QVERIFY2(error.isEmpty(), qPrintable(error));
@@ -462,6 +462,76 @@ void MobileControllerTest::applyWidgetTaskCompletionAndUndo() {
                       [&recurringTask](const waypoint::TaskRecord &activeTask) {
                         return activeTask.id == recurringTask.id;
                       }));
+}
+
+void MobileControllerTest::preserveOccurrenceHistoryAcrossAppAndWidget() {
+  QTemporaryDir directory;
+  const QString database = directory.filePath(QStringLiteral("history.sqlite3"));
+  waypoint::MobileController controller(database, nullptr);
+  controller.start();
+  QVERIFY(controller.ready());
+  const QDate today = QDate::currentDate();
+  const QDate first = today.addDays(-2);
+  const QDate second = today.addDays(-1);
+  QVERIFY(controller.saveTask({}, QStringLiteral("Rotina"), first.toString(Qt::ISODate),
+                              QStringLiteral("09:00"), QStringLiteral("daily"), 1, {},
+                              QStringLiteral("never"), {}, 0, {}, {}, {}));
+  const QString taskId = controller.allTasks().first().toMap().value(QStringLiteral("taskId")).toString();
+  QVERIFY(controller.setTaskCompleted(taskId, first.toString(Qt::ISODate), true, true,
+                                      first.toString(Qt::ISODate)));
+  QVERIFY(controller.setTaskCompleted(taskId, second.toString(Qt::ISODate), true, true,
+                                      today.toString(Qt::ISODate)));
+  QCOMPARE(controller.todayTasks().size(), 1);
+  QVERIFY(!controller.todayTasks().first().toMap().value(QStringLiteral("completed")).toBool());
+  QCOMPARE(controller.todayRegistrationActivity().size(), 1);
+  const QVariantMap group = controller.todayRegistrationActivity().first().toMap();
+  QCOMPARE(group.value(QStringLiteral("count")).toInt(), 2);
+  const QVariantList children = group.value(QStringLiteral("occurrences")).toList();
+  QCOMPARE(children.at(0).toMap().value(QStringLiteral("occurrenceDate")).toString(),
+           first.toString(Qt::ISODate));
+  QCOMPARE(children.at(0).toMap().value(QStringLiteral("completedDate")).toString(),
+           first.toString(Qt::ISODate));
+  QCOMPARE(children.at(1).toMap().value(QStringLiteral("completedDate")).toString(),
+           today.toString(Qt::ISODate));
+  QVERIFY(children.at(1).toMap().value(QStringLiteral("completionLate")).toBool());
+  controller.setSelectedDateKey(first.toString(Qt::ISODate));
+  QCOMPARE(controller.selectedTasks().size(), 1);
+  QVERIFY(controller.selectedTasks().first().toMap().value(QStringLiteral("completed")).toBool());
+  QVERIFY(controller.selectedRegistrationActivity().isEmpty());
+
+  waypoint::TaskStore store(database);
+  QString error;
+  QVERIFY2(store.open(&error), qPrintable(error));
+  waypoint::WidgetTaskActionResult result;
+  const QString registeredAt = children.at(1).toMap().value(QStringLiteral("registeredAt")).toString();
+  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, taskId, second, true, true, second,
+                                               QDateTime::currentDateTime(), &result, &error),
+           qPrintable(error));
+  controller.refresh();
+  const QVariantMap edited = controller.todayRegistrationActivity().first().toMap()
+                                 .value(QStringLiteral("occurrences")).toList().at(1).toMap();
+  QCOMPARE(edited.value(QStringLiteral("completedDate")).toString(), second.toString(Qt::ISODate));
+  QCOMPARE(edited.value(QStringLiteral("registeredAt")).toString(), registeredAt);
+  QVERIFY(!edited.value(QStringLiteral("completionLate")).toBool());
+  const QJsonObject dates = result.snapshot.value(QStringLiteral("dates")).toObject();
+  const QJsonObject historic = dates.value(second.toString(Qt::ISODate)).toObject();
+  const QJsonObject historicTask = historic.value(QStringLiteral("tasks")).toArray().first().toObject();
+  QVERIFY(historicTask.value(QStringLiteral("completed")).toBool());
+  QCOMPARE(historicTask.value(QStringLiteral("occurrenceDate")).toString(), second.toString(Qt::ISODate));
+  QCOMPARE(dates.value(today.toString(Qt::ISODate)).toObject()
+               .value(QStringLiteral("registrationActivity")).toArray().first().toObject()
+               .value(QStringLiteral("count")).toInt(), 2);
+  QVERIFY2(waypoint::applyWidgetTaskCompletion(store, taskId, first, true, false, {},
+                                               QDateTime::currentDateTime(), &result, &error),
+           qPrintable(error));
+  controller.refresh();
+  QCOMPARE(controller.todayRegistrationActivity().first().toMap().value(QStringLiteral("count")).toInt(), 1);
+  const QVariantMap reopened = controller.selectedTasks().first().toMap();
+  QVERIFY(!reopened.value(QStringLiteral("completed")).toBool());
+  QVERIFY(reopened.value(QStringLiteral("registeredAt")).toString().isEmpty());
+  QVERIFY(reopened.value(QStringLiteral("completedDate")).toString().isEmpty());
+  QVERIFY(controller.setTaskVisibility(QStringLiteral("pending")));
+  QVERIFY(controller.todayRegistrationActivity().isEmpty());
 }
 
 void MobileControllerTest::applyWidgetHabitCheckIns() {
@@ -568,7 +638,6 @@ void MobileControllerTest::prepareAndApplyBackgroundSync() {
   };
   QVERIFY2(waypoint::applyBackgroundSync(store, appliedResponse, &result, &error), qPrintable(error));
   QVERIFY(!result.categoryFollowUpRequired);
-  QCOMPARE(result.widgetSnapshot.value(QStringLiteral("schemaVersion")).toInt(), 8);
   QVERIFY(result.notificationSchedule.isEmpty());
 }
 

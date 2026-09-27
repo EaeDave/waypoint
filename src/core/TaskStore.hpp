@@ -31,6 +31,8 @@ public:
                                                       QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listActionableOccurrences(const QDate &today,
                                                                 QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonObject registrationActivity(const QDate &from, const QDate &to,
+                                                 QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<HabitRecord> listActiveHabits(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<HabitEntry> listHabitEntries(const QString &habitId, const QDate &date,
                                                    QString *errorMessage = nullptr) const;
@@ -103,10 +105,12 @@ public:
                                 const RecurrenceRule &recurrence, const QList<int> &reminderMinutesBefore,
                                 const QString &emoji, const QString &categoryId,
                                 TaskRecord *createdTask = nullptr, QString *errorMessage = nullptr);
-  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, const QDateTime &changedAt,
+  [[nodiscard]] bool setTaskCompleted(const QString &taskId, bool completed, const QDate &completedDate,
+                                      const QDateTime &changedAt,
                                       QString *errorMessage = nullptr);
   [[nodiscard]] bool setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
-                                            bool completed, const QDateTime &changedAt,
+                                            bool completed, const QDate &completedDate,
+                                            const QDateTime &changedAt,
                                             QString *errorMessage = nullptr);
   [[nodiscard]] bool skipOccurrence(const QString &taskId, const QDate &occurrenceDate,
                                     QString *errorMessage = nullptr);
@@ -140,7 +144,8 @@ private:
                                      const QJsonObject &payload, QString *errorMessage);
   [[nodiscard]] bool validateTaskCategoryId(const QString &categoryId, QString *errorMessage) const;
   [[nodiscard]] bool setOccurrenceState(const QString &taskId, const QDate &occurrenceDate,
-                                        OccurrenceStatus status, const QDateTime &changedAt,
+                                        OccurrenceStatus status, const QDate &completedDate,
+                                        const QDateTime &changedAt,
                                         QString *errorMessage);
   [[nodiscard]] bool beginTransaction(QString *errorMessage);
   [[nodiscard]] bool commitTransaction(QString *errorMessage);

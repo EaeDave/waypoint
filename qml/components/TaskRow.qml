@@ -17,6 +17,10 @@ Rectangle {
     required property string categoryName
     required property string categoryColor
     required property bool completed
+    required property string completedDate
+    required property string registeredAt
+    required property string completionLabel
+    required property bool completionLate
     required property bool skipped
     required property bool overdue
     required property bool recurring
@@ -24,6 +28,7 @@ Rectangle {
     required property var recurrence
     required property var reminderMinutesBefore
     required property var controller
+    required property var completionActions
     property int weekdayMask: 0
     property bool definitionMode: false
 
@@ -33,8 +38,7 @@ Rectangle {
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: root.definitionMode || root.skipped || root.overdue || root.recurring
-                    || root.categoryName !== "" ? 62 : 50
+    implicitHeight: Math.max(root.completed ? 72 : 50, rowContent.implicitHeight + 16)
     radius: WaypointTheme.radius
     color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
     Rectangle {
@@ -49,6 +53,7 @@ Rectangle {
 
 
     RowLayout {
+        id: rowContent
         anchors.fill: parent
         anchors.leftMargin: 8
         anchors.rightMargin: 6
@@ -80,9 +85,8 @@ Rectangle {
             MouseArea {
                 anchors.fill: parent
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.controller.setOccurrenceCompleted(
-                               root.taskId, root.scheduledDateKey,
-                               root.skipped ? false : !root.completed)
+                onClicked: root.completionActions.toggle(root.taskId, root.scheduledDateKey,
+                    root.completed, root.skipped, root.overdue)
             }
         }
 
@@ -114,15 +118,17 @@ Rectangle {
             }
 
             Text {
-                visible: root.definitionMode || root.skipped || root.overdue || root.recurring
-                         || root.categoryName !== ""
+                Layout.fillWidth: true
+                visible: root.completed || root.definitionMode || root.skipped || root.overdue
+                         || root.recurring || root.categoryName !== ""
+                wrapMode: Text.WordWrap
                 text: {
                     const parts = [];
                     if (root.categoryName !== "")
                         parts.push(root.categoryName.toUpperCase());
+                    if (root.completed)
+                        parts.push(root.completionLabel);
                     if (root.definitionMode) {
-                        if (root.completed)
-                            parts.push("CONCLUÍDA");
                         parts.push(root.recurring ? root.recurrenceLabel : "ÚNICA");
                     } else if (root.skipped) {
                         parts.push("NÃO FEITA · " + root.portugueseLocale.toString(
@@ -135,7 +141,9 @@ Rectangle {
                         parts.push(root.recurrenceLabel);
                     return parts.join(" · ");
                 }
-                color: root.skipped || root.overdue ? WaypointTheme.urgent
+                color: root.completed
+                     ? (root.completionLate ? WaypointTheme.warning : WaypointTheme.subduedText)
+                     : root.skipped || root.overdue ? WaypointTheme.urgent
                      : root.categoryName !== "" ? root.categoryColor : WaypointTheme.accent
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
@@ -186,6 +194,23 @@ Rectangle {
                     text: "Editar"
                     onTriggered: root.openEditor()
                 }
+                AppMenuItem {
+                    visible: (!root.definitionMode || !root.recurring) && !root.completed && !root.skipped
+                    text: "Concluir"
+                    onTriggered: root.completionActions.toggle(root.taskId, root.scheduledDateKey,
+                        false, false, root.overdue)
+                }
+                AppMenuItem {
+                    visible: root.completed
+                    text: "Alterar data da conclusão"
+                    onTriggered: root.completionActions.choose(root.taskId, root.scheduledDateKey,
+                        root.completedDate, true)
+                }
+                AppMenuItem {
+                    visible: root.completed
+                    text: "Desfazer conclusão"
+                    onTriggered: root.completionActions.commit(root.taskId, root.scheduledDateKey, false, "")
+                }
                 MenuSeparator {
                     contentItem: Rectangle {
                         implicitHeight: 1
@@ -215,9 +240,7 @@ Rectangle {
                 AppMenuItem {
                     visible: !root.definitionMode && root.skipped
                     text: "Reabrir ocorrência"
-                    onTriggered: root.controller.setOccurrenceCompleted(root.taskId,
-                                                                        root.scheduledDateKey,
-                                                                        false)
+                    onTriggered: root.completionActions.commit(root.taskId, root.scheduledDateKey, false, "")
                 }
                 AppMenuItem {
                     visible: !root.definitionMode && root.recurring

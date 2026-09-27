@@ -62,9 +62,23 @@
                 android:value="-- %%INSERT_APP_ARGUMENTS%% --" />
         </activity>
 
+        <activity
+            android:name="org.eaedave.waypoint.WaypointWidgetCompletionActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/WidgetDialogTheme" />
+        <activity
+            android:name="org.eaedave.waypoint.WaypointWidgetHistoryActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/WidgetHistoryTheme" />
+
         <service
             android:name="org.eaedave.waypoint.WaypointWidgetActionService"
             android:exported="false"
+            android:process=":widget_actions"
             android:foregroundServiceType="shortService">
             <meta-data
                 android:name="android.app.lib_name"

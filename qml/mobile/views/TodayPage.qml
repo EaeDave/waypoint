@@ -19,6 +19,11 @@ Item {
         controller: root.controller
     }
 
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+    }
+
 
     ColumnLayout {
         anchors.fill: parent
@@ -192,8 +197,8 @@ Item {
 
                             Button {
                                 id: completionButton
-                                Layout.preferredWidth: 36
-                                Layout.preferredHeight: 36
+                                Layout.preferredWidth: MobileTheme.touchHeight
+                                Layout.preferredHeight: MobileTheme.touchHeight
                                 text: taskRow.modelData.completed ? "✓"
                                     : taskRow.modelData.skipped ? "×" : ""
                                 Accessible.id: "task-completion-" + taskRow.modelData.taskId
@@ -202,12 +207,7 @@ Item {
                                     : taskRow.modelData.skipped
                                       ? "Reabrir ocorrência " + taskRow.modelData.title
                                       : "Concluir tarefa " + taskRow.modelData.title
-                                onClicked: root.controller.setTaskCompleted(
-                                               taskRow.modelData.taskId,
-                                               taskRow.modelData.occurrenceDate,
-                                               taskRow.modelData.recurring,
-                                               taskRow.modelData.skipped ? false
-                                                                           : !taskRow.modelData.completed)
+                                onClicked: completionFlow.toggle(taskRow.modelData)
                                 background: Rectangle {
                                     radius: MobileTheme.radius
                                     color: taskRow.modelData.completed ? MobileTheme.success
@@ -284,10 +284,21 @@ Item {
                                     font.family: MobileTheme.fontFamily
                                     font.pixelSize: MobileTheme.captionSize
                                 }
+
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: taskRow.modelData.completed
+                                    text: taskRow.modelData.completionLabel
+                                    color: taskRow.modelData.completionLate
+                                           ? MobileTheme.warning : MobileTheme.subdued
+                                    font.family: MobileTheme.fontFamily
+                                    font.pixelSize: MobileTheme.captionSize
+                                    wrapMode: Text.Wrap
+                                }
                             }
 
                             MobileButton {
-                                Layout.preferredWidth: 44
+                                Layout.preferredWidth: MobileTheme.touchHeight
                                 text: "···"
                                 quiet: true
                                 onClicked: taskEditor.openForEdit(taskRow.modelData)
@@ -307,6 +318,12 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     Layout.topMargin: 10
                     Layout.bottomMargin: 10
+                }
+
+                RegistrationActivity {
+                    Layout.fillWidth: true
+                    groups: root.controller.todayRegistrationActivity
+                    completionActions: completionFlow
                 }
 
                 HabitProgressSection {

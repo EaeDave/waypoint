@@ -18,7 +18,9 @@ private slots:
   void holdOldestUnresolvedDueRecurringOccurrence();
   void keepSkippedOccurrenceVisibleWhileAdvancingRecurrence();
   void advanceCalendarMarkerAfterResolvedOccurrence();
-  void placeLateMonthlyCompletionOnCompletionDay();
+  void keepLateMonthlyCompletionOnDueDay();
+  void distinguishActualCompletionFromRegistration();
+  void decodeLegacyCompletionWithoutInventingActualDay();
   void isolateDailyCountsAcrossMidnightAndSeries();
   void sortActionableTasksByTimeWithCompletedLast();
 };
@@ -225,7 +227,7 @@ void RecurrenceTest::advanceCalendarMarkerAfterResolvedOccurrence() {
   QVERIFY(!afterSkip.at(2).calendarMarker);
 }
 
-void RecurrenceTest::placeLateMonthlyCompletionOnCompletionDay() {
+void RecurrenceTest::keepLateMonthlyCompletionOnDueDay() {
   waypoint::TaskRecord task;
   task.id = QStringLiteral("vivo-easy");
   task.title = QStringLiteral("Vivo Easy");
@@ -237,23 +239,25 @@ void RecurrenceTest::placeLateMonthlyCompletionOnCompletionDay() {
   completed.taskId = task.id;
   completed.occurrenceDate = QDate(2026, 9, 19);
   completed.status = waypoint::OccurrenceStatus::Completed;
-  completed.completedAt = QDateTime(QDate(2026, 9, 21), QTime(10, 30), QTimeZone::UTC);
+  completed.completedDate = QDate(2026, 9, 20);
+  completed.registeredAt = QDateTime(QDate(2026, 9, 21), QTime(12, 0));
 
   const QDate completionDay(2026, 9, 21);
   const auto calendarOccurrences = waypoint::assignCalendarMarkers(
-      waypoint::projectOccurrences({task}, {completed}, completionDay, completionDay), {task}, {completed},
+      waypoint::projectOccurrences({task}, {completed}, task.scheduledDate, completionDay), {task}, {completed},
       completionDay);
   QCOMPARE(calendarOccurrences.size(), 1);
   QCOMPARE(calendarOccurrences.first().occurrenceDate, QDate(2026, 9, 19));
-  QCOMPARE(calendarOccurrences.first().calendarDate, completionDay);
+  QCOMPARE(calendarOccurrences.first().calendarDate, task.scheduledDate);
   QVERIFY(calendarOccurrences.first().completed);
   QVERIFY(calendarOccurrences.first().calendarMarker);
 
   const auto todayOccurrences = waypoint::projectActionableOccurrences({task}, {completed}, completionDay);
-  QCOMPARE(todayOccurrences.size(), 1);
-  QCOMPARE(todayOccurrences.first().occurrenceDate, QDate(2026, 9, 19));
-  QCOMPARE(todayOccurrences.first().calendarDate, completionDay);
-  QVERIFY(todayOccurrences.first().completed);
+  QVERIFY(todayOccurrences.isEmpty());
+  QVERIFY(waypoint::projectOccurrences({task}, {completed}, completionDay, completionDay).isEmpty());
+  const auto dueDay = waypoint::projectActionableOccurrences({task}, {completed}, task.scheduledDate);
+  QCOMPARE(dueDay.first().completedDate, completed.completedDate);
+  QCOMPARE(dueDay.first().registeredAt, completed.registeredAt);
 
   const auto octoberOccurrences =
       waypoint::projectOccurrences({task}, {completed}, QDate(2026, 10, 19), QDate(2026, 10, 19));
@@ -261,6 +265,53 @@ void RecurrenceTest::placeLateMonthlyCompletionOnCompletionDay() {
   QCOMPARE(octoberOccurrences.first().occurrenceDate, QDate(2026, 10, 19));
   QCOMPARE(octoberOccurrences.first().calendarDate, QDate(2026, 10, 19));
   QVERIFY(!octoberOccurrences.first().completed);
+}
+
+void RecurrenceTest::distinguishActualCompletionFromRegistration() {
+  waypoint::TaskOccurrence occurrence;
+  occurrence.completed = true;
+  occurrence.occurrenceDate = QDate(2026, 12, 31);
+  occurrence.completedDate = occurrence.occurrenceDate;
+  occurrence.registeredAt = QDateTime(QDate(2027, 1, 2), QTime(12, 0));
+  QVERIFY(!occurrence.completionLate());
+  QVERIFY(occurrence.completionLabel().contains(QStringLiteral("31/12/2026")));
+  QVERIFY(occurrence.completionLabel().contains(QStringLiteral("REGISTRADA")));
+  occurrence.completedDate = QDate(2027, 1, 1);
+  QVERIFY(occurrence.completionLate());
+  QVERIFY(!occurrence.completionLabel().contains(QStringLiteral("REGISTRADA")));
+  occurrence.completedDate = {};
+  QVERIFY(!occurrence.completionLate());
+  QVERIFY(occurrence.completionLabel().contains(QStringLiteral("REGISTRADA")));
+  QCOMPARE(occurrence.toJson().value(QStringLiteral("completedDate")).toString(), QString());
+  occurrence.completed = false;
+  QVERIFY(occurrence.completionLabel().isEmpty());
+}
+
+void RecurrenceTest::decodeLegacyCompletionWithoutInventingActualDay() {
+  QJsonObject payload{
+      {QStringLiteral("completed"), true},
+      {QStringLiteral("status"), QStringLiteral("completed")},
+      {QStringLiteral("completedAt"), QStringLiteral("2026-09-21T12:00:00.000Z")},
+      {QStringLiteral("updatedAt"), QStringLiteral("2026-09-22T12:00:00.000Z")},
+  };
+  const QDateTime registered = QDateTime::fromString(payload.value(QStringLiteral("completedAt")).toString(), Qt::ISODateWithMs);
+  auto task = waypoint::TaskRecord::fromJson(payload);
+  auto state = waypoint::TaskOccurrenceState::fromJson(payload);
+  QCOMPARE(task.registeredAt, registered);
+  QCOMPARE(state.registeredAt, registered);
+  QVERIFY(!task.completedDate.isValid());
+  QVERIFY(!state.completedDate.isValid());
+  QVERIFY(!task.toJson().contains(QStringLiteral("completedAt")));
+  QVERIFY(!state.toJson().contains(QStringLiteral("completedAt")));
+  payload.insert(QStringLiteral("registeredAt"), QString());
+  task = waypoint::TaskRecord::fromJson(payload);
+  state = waypoint::TaskOccurrenceState::fromJson(payload);
+  QVERIFY(!task.registeredAt.isValid());
+  QVERIFY(!state.registeredAt.isValid());
+  payload.remove(QStringLiteral("registeredAt"));
+  payload.remove(QStringLiteral("completedAt"));
+  QVERIFY(!waypoint::TaskRecord::fromJson(payload).registeredAt.isValid());
+  QVERIFY(!waypoint::TaskOccurrenceState::fromJson(payload).registeredAt.isValid());
 }
 
 void RecurrenceTest::isolateDailyCountsAcrossMidnightAndSeries() {

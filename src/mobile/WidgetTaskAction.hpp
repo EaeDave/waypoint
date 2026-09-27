@@ -17,7 +17,8 @@ struct WidgetTaskActionResult final {
 
 [[nodiscard]] bool applyWidgetTaskCompletion(TaskStore &store, const QString &taskId,
                                              const QDate &occurrenceDate, bool recurring, bool completed,
-                                             const QDateTime &now, WidgetTaskActionResult *result,
+                                             const QDate &completedDate, const QDateTime &now,
+                                             WidgetTaskActionResult *result,
                                              QString *errorMessage = nullptr);
 [[nodiscard]] bool applyWidgetTaskVisibility(TaskStore &store, const QString &taskVisibility,
                                              const QDateTime &now, WidgetTaskActionResult *result,

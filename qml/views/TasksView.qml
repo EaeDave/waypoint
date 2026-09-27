@@ -11,6 +11,10 @@ Item {
     required property var controller
     property string filter: "all"
     property var collapsedGroups: ({})
+    CompletionActions {
+        id: completionFlow
+        controller: root.controller
+    }
     function groupKey(listId) {
         return listId === "" ? "__entrada__" : listId;
     }
@@ -293,14 +297,19 @@ Item {
                                     categoryColor: taskDelegate.modelData.categoryColor
                                                    || WaypointTheme.accent
                                     completed: taskDelegate.modelData.completed === true
+                                    completedDate: taskDelegate.modelData.completedDate || ""
+                                    registeredAt: taskDelegate.modelData.registeredAt || ""
+                                    completionLabel: taskDelegate.modelData.completionLabel || ""
+                                    completionLate: taskDelegate.modelData.completionLate === true
                                     skipped: false
-                                    overdue: false
+                                    overdue: taskDelegate.modelData.overdue === true
                                     recurring: taskDelegate.modelData.recurring === true
                                     recurrenceLabel: taskDelegate.modelData.recurrenceLabel || ""
                                     recurrence: taskDelegate.modelData.recurrence || ({})
                                     reminderMinutesBefore:
                                         taskDelegate.modelData.reminderMinutesBefore || []
                                     controller: root.controller
+                                    completionActions: completionFlow
                                     definitionMode: true
                                 }
                             }

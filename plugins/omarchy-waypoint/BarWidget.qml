@@ -16,8 +16,15 @@ BarWidget {
     property var selectedHabits: []
     property string requestedHabitDate: ""
     property string loadedHabitDate: ""
+    property var selectedRegistrationActivity: []
+    property string requestedActivityDate: ""
+    property string loadingActivityDate: ""
+    property bool activityRefreshPending: false
+    property var pendingCompletion: null
+    readonly property bool actionBusy: actionProcess.running
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
+    property string actionError: ""
     property string taskVisibility: "all"
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
@@ -61,13 +68,29 @@ BarWidget {
         habitProcess.command = ["waypointctl", "habits", "--date", requestedHabitDate];
         habitProcess.running = true;
     }
-
-
-    function runAction(arguments) {
-        if (actionProcess.running)
+    function refreshRegistrationActivity(dateKey) {
+        if (requestedActivityDate !== dateKey)
+            selectedRegistrationActivity = [];
+        requestedActivityDate = dateKey;
+        if (activityProcess.running) {
+            activityRefreshPending = true;
             return;
+        }
+        loadingActivityDate = dateKey;
+        activityProcess.command = ["waypointctl", "registration-activity",
+                                   "--from", dateKey, "--to", dateKey];
+        activityProcess.running = true;
+    }
+
+
+    function runAction(arguments, completion) {
+        if (actionProcess.running)
+            return false;
+        actionError = "";
+        pendingCompletion = completion || null;
         actionProcess.command = ["waypointctl"].concat(arguments);
         actionProcess.running = true;
+        return true;
     }
 
     function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji, categoryId) {
@@ -80,9 +103,18 @@ BarWidget {
                    "--category-id", categoryId || ""]);
     }
 
-    function setOccurrenceCompleted(taskId, occurrenceDate, completed) {
-        runAction([completed ? "complete" : "reopen", taskId,
-                   "--date", occurrenceDate]);
+    function setOccurrenceCompleted(taskId, occurrenceDate, completed, completedDate,
+                                    previousCompletedDate) {
+        const arguments = [completed ? "complete" : "reopen", taskId,
+                           "--date", occurrenceDate];
+        if (completed)
+            arguments.push("--completed-date", completedDate);
+        return runAction(arguments, {
+            taskId: taskId, occurrenceDate: occurrenceDate,
+            completed: completed, completedDate: completedDate,
+            previousCompletedDate: previousCompletedDate === undefined
+                                   ? null : previousCompletedDate
+        });
     }
     function skipOccurrence(taskId, occurrenceDate) {
         runAction(["skip", taskId, "--date", occurrenceDate]);
@@ -167,10 +199,11 @@ BarWidget {
         target.today = Qt.binding(() => new Date(Model.parseLocalDate(root.today.date)));
         target.todayTasks = Qt.binding(() => root.today.occurrences || []);
         target.selectedHabits = Qt.binding(() => root.selectedHabits);
+        target.selectedRegistrationActivity = Qt.binding(() => root.selectedRegistrationActivity);
         target.categories = Qt.binding(() => root.categories);
         target.holidays = Qt.binding(() => root.holidays);
         target.holidaySyncStatus = Qt.binding(() => root.holidaySyncStatus);
-        target.loadError = Qt.binding(() => root.loadError);
+        target.loadError = Qt.binding(() => root.actionError || root.loadError);
         target.taskVisibility = Qt.binding(() => root.taskVisibility);
         target.syncStatus = Qt.binding(() => root.syncStatus);
         target.updateStatus = Qt.binding(() => root.updateStatus);
@@ -255,6 +288,8 @@ BarWidget {
                     root.updateStatus = response.update || ({ state: "idle", currentVersion: "",
                                                               latestVersion: "", canInstall: false,
                                                               error: "" });
+                    if (root.requestedActivityDate !== "")
+                        root.refreshRegistrationActivity(root.requestedActivityDate);
                 } catch (error) {
                     root.loadError = String(error);
                 }
@@ -308,6 +343,39 @@ BarWidget {
             }
         }
     }
+    Process {
+        id: activityProcess
+        running: false
+        onExited: {
+            if (root.activityRefreshPending) {
+                root.activityRefreshPending = false;
+                Qt.callLater(() => root.refreshRegistrationActivity(root.requestedActivityDate));
+            }
+        }
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    const response = JSON.parse(String(text || "{}"));
+                    if (!response.ok)
+                        throw new Error(response.error || "Falha ao carregar conclusões");
+                    if (root.loadingActivityDate === root.requestedActivityDate)
+                        root.selectedRegistrationActivity =
+                            (response.dates || {})[root.loadingActivityDate] || [];
+                } catch (error) {
+                    root.loadError = String(error);
+                }
+            }
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                const message = String(text || "").trim();
+                if (message !== "")
+                    root.loadError = message;
+            }
+        }
+    }
 
 
     Process {
@@ -317,6 +385,30 @@ BarWidget {
             root.refresh();
             if (root.requestedHabitDate !== "")
                 root.refreshHabits(root.requestedHabitDate);
+        }
+        stdout: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                try {
+                    const response = JSON.parse(String(text || "{}"));
+                    if (!response.ok)
+                        throw new Error(response.error || "Não foi possível salvar");
+                    root.actionError = "";
+                    if (root.pendingCompletion && panelLoader.item)
+                        panelLoader.item.completionSaved(root.pendingCompletion);
+                } catch (error) {
+                    root.actionError = String(error);
+                }
+                root.pendingCompletion = null;
+            }
+        }
+        stderr: StdioCollector {
+            waitForEnd: true
+            onStreamFinished: {
+                const message = String(text || "").trim();
+                if (message !== "")
+                    root.actionError = message;
+            }
         }
     }
 

@@ -138,6 +138,15 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     }
     return {{QStringLiteral("ok"), true}, {QStringLiteral("categories"), categories}};
   }
+  if (command == QStringLiteral("registration-activity")) {
+    const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
+    const QDate to = QDate::fromString(request.value(QStringLiteral("to")).toString(), Qt::ISODate);
+    const QJsonObject dates = m_taskStore->registrationActivity(from, to, &error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
+    }
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("dates"), dates}};
+  }
   if (command == QStringLiteral("occurrences")) {
     const QDate from = QDate::fromString(request.value(QStringLiteral("from")).toString(), Qt::ISODate);
     const QDate to = QDate::fromString(request.value(QStringLiteral("to")).toString(), Qt::ISODate);
@@ -298,11 +307,13 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     const bool completed = request.value(QStringLiteral("completed")).toBool(true);
     const QString occurrenceDateKey = request.value(QStringLiteral("occurrenceDate")).toString();
     const QDateTime changedAt = QDateTime::currentDateTimeUtc();
+    const QDate completedDate =
+        QDate::fromString(request.value(QStringLiteral("completedDate")).toString(), Qt::ISODate);
     const bool succeeded =
         occurrenceDateKey.isEmpty()
-            ? m_taskStore->setTaskCompleted(taskId, completed, changedAt, &error)
+            ? m_taskStore->setTaskCompleted(taskId, completed, completedDate, changedAt, &error)
             : m_taskStore->setOccurrenceCompleted(taskId, QDate::fromString(occurrenceDateKey, Qt::ISODate),
-                                                  completed, changedAt, &error);
+                                                  completed, completedDate, changedAt, &error);
     if (!succeeded) {
       return protocol::errorResponse(error);
     }

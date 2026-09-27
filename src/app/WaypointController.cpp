@@ -72,6 +72,14 @@ QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
     value.insert(QStringLiteral("categoryColor"), task.categoryColor);
     value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
     value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
+    TaskOccurrence occurrence;
+    occurrence.occurrenceDate = task.scheduledDate;
+    occurrence.completed = task.completed;
+    occurrence.completedDate = task.completedDate;
+    occurrence.registeredAt = task.registeredAt;
+    value.insert(QStringLiteral("completionLabel"), occurrence.completionLabel());
+    value.insert(QStringLiteral("completionLate"), occurrence.completionLate());
+    value.insert(QStringLiteral("overdue"), !task.completed && task.scheduledDate < QDate::currentDate());
     values.append(value);
   }
   return values;
@@ -95,6 +103,8 @@ TaskListModel *WaypointController::selectedDateTasks() { return &m_selectedDateT
 
 QVariantList WaypointController::todayHabits() const { return m_todayHabits; }
 QVariantList WaypointController::selectedDateHabits() const { return m_selectedDateHabits; }
+QVariantList WaypointController::todayRegistrationActivity() const { return m_todayRegistrationActivity; }
+QVariantList WaypointController::selectedRegistrationActivity() const { return m_selectedRegistrationActivity; }
 QVariantList WaypointController::taskCategories() const { return m_taskCategories; }
 QVariantList WaypointController::allTasks() const { return m_allTasks; }
 
@@ -214,6 +224,20 @@ void WaypointController::refresh() {
     updateConnection(false, error);
     return;
   }
+  const QJsonObject activity = m_client.registrationActivity(
+      qMin(today, qMin(rangeStart, m_selectedDate)), qMax(today, qMax(rangeEnd, m_selectedDate)), &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
+  const QVariantList todayActivity = activity.value(today.toString(Qt::ISODate)).toArray().toVariantList();
+  const QVariantList selectedActivity =
+      activity.value(m_selectedDate.toString(Qt::ISODate)).toArray().toVariantList();
+  if (m_todayRegistrationActivity != todayActivity || m_selectedRegistrationActivity != selectedActivity) {
+    m_todayRegistrationActivity = todayActivity;
+    m_selectedRegistrationActivity = selectedActivity;
+    emit registrationActivityChanged();
+  }
   const QString taskVisibility = m_client.taskVisibility(&error);
   if (!error.isEmpty()) {
     updateConnection(false, error);
@@ -329,15 +353,34 @@ bool WaypointController::addTask(const QString &title, const QString &scheduledD
 }
 
 bool WaypointController::setOccurrenceCompleted(const QString &taskId, const QString &occurrenceDateKey,
-                                                const bool completed) {
+                                                const bool completed, const QString &completedDateKey) {
   const QDate occurrenceDate = QDate::fromString(occurrenceDateKey, Qt::ISODate);
+  const QDate completedDate = QDate::fromString(completedDateKey, Qt::ISODate);
+  if (completed) {
+    const QString dateError = completionDateError(completedDateKey);
+    if (!dateError.isEmpty()) {
+      updateConnection(m_online, dateError);
+      return false;
+    }
+  }
   QString error;
-  if (!m_client.setOccurrenceCompleted(taskId, occurrenceDate, completed, &error)) {
+  if (!m_client.setOccurrenceCompleted(taskId, occurrenceDate, completed, completedDate, &error)) {
     updateConnection(false, error);
     return false;
   }
   refresh();
   return true;
+}
+
+QString WaypointController::completionDateError(const QString &completedDateKey) const {
+  const QDate date = QDate::fromString(completedDateKey, Qt::ISODate);
+  if (!date.isValid() || date.toString(Qt::ISODate) != completedDateKey) {
+    return QStringLiteral("Informe uma data válida no formato AAAA-MM-DD.");
+  }
+  if (date > QDate::currentDate()) {
+    return QStringLiteral("A conclusão não pode estar no futuro.");
+  }
+  return {};
 }
 
 bool WaypointController::skipOccurrence(const QString &taskId, const QString &occurrenceDateKey) {

@@ -71,7 +71,8 @@ TaskRecord taskFromQuery(const QSqlQuery &query) {
   task.categoryId = query.value(16).toString();
   task.categoryName = query.value(17).toString();
   task.categoryColor = query.value(18).toString();
-  task.completedAt = QDateTime::fromString(query.value(19).toString(), Qt::ISODateWithMs);
+  task.registeredAt = QDateTime::fromString(query.value(19).toString(), Qt::ISODateWithMs);
+  task.completedDate = QDate::fromString(query.value(20).toString(), Qt::ISODate);
 
   QJsonArray weekdays;
   const QJsonDocument weekdayDocument = QJsonDocument::fromJson(query.value(9).toByteArray());
@@ -97,9 +98,10 @@ TaskOccurrenceState occurrenceStateFromQuery(const QSqlQuery &query) {
   state.status = status == QStringLiteral("skipped")   ? OccurrenceStatus::Skipped
                  : status == QStringLiteral("pending") ? OccurrenceStatus::Pending
                                                        : OccurrenceStatus::Completed;
-  state.completedAt = QDateTime::fromString(query.value(3).toString(), Qt::ISODateWithMs);
+  state.registeredAt = QDateTime::fromString(query.value(3).toString(), Qt::ISODateWithMs);
   state.updatedAt = QDateTime::fromString(query.value(4).toString(), Qt::ISODateWithMs);
   state.version = query.value(5).toLongLong();
+  state.completedDate = QDate::fromString(query.value(6).toString(), Qt::ISODate);
   return state;
 }
 
@@ -232,7 +234,7 @@ bool TaskStore::migrate(QString *errorMessage) {
       QStringLiteral("CREATE TABLE IF NOT EXISTS tasks ("
                      "id TEXT PRIMARY KEY, title TEXT NOT NULL CHECK(length(trim(title)) > 0), "
                      "scheduled_date TEXT, completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN (0, 1)), "
-                     "completed_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
+                     "registered_at TEXT, completed_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, "
                      "version INTEGER NOT NULL DEFAULT 1, "
                      "deleted_at TEXT, recurrence_frequency TEXT NOT NULL DEFAULT 'none', "
                      "recurrence_interval INTEGER NOT NULL DEFAULT 1, "
@@ -256,7 +258,7 @@ bool TaskStore::migrate(QString *errorMessage) {
                      "task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE, "
                      "occurrence_date TEXT NOT NULL, "
                      "status TEXT NOT NULL CHECK(status IN ('pending', 'completed', 'skipped')), "
-                     "completed_at TEXT, updated_at TEXT NOT NULL, "
+                     "registered_at TEXT, completed_date TEXT, updated_at TEXT NOT NULL, "
                      "version INTEGER NOT NULL DEFAULT 1, "
                      "PRIMARY KEY(task_id, occurrence_date))"),
       QStringLiteral("CREATE INDEX IF NOT EXISTS occurrence_states_date_idx "
@@ -382,7 +384,6 @@ bool TaskStore::migrate(QString *errorMessage) {
       {QStringLiteral("emoji"), QStringLiteral("TEXT NOT NULL DEFAULT ''")},
       {QStringLiteral("reminder_minutes_before"), QStringLiteral("TEXT NOT NULL DEFAULT '[0]'")},
       {QStringLiteral("category_id"), QStringLiteral("TEXT")},
-      {QStringLiteral("completed_at"), QStringLiteral("TEXT")},
   };
   for (const auto &[name, definition] : recurrenceColumns) {
     if (taskColumns.contains(name)) {
@@ -393,6 +394,35 @@ bool TaskStore::migrate(QString *errorMessage) {
       setError(errorMessage,
                queryFailure(QStringLiteral("Cannot add task recurrence column %1").arg(name), addColumn));
       return false;
+    }
+  }
+
+  // Legacy completed_at recorded the action instant, never the actual completion day.
+  for (const QString &table : {QStringLiteral("tasks"), QStringLiteral("task_occurrence_states")}) {
+    QSet<QString> columns;
+    QSqlQuery inspect(m_database);
+    if (!inspect.exec(QStringLiteral("PRAGMA table_info(%1)").arg(table))) {
+      setError(errorMessage, queryFailure(QStringLiteral("Cannot inspect completion schema"), inspect));
+      return false;
+    }
+    while (inspect.next()) {
+      columns.insert(inspect.value(1).toString());
+    }
+    QStringList migrations;
+    if (!columns.contains(QStringLiteral("registered_at"))) {
+      migrations.append(columns.contains(QStringLiteral("completed_at"))
+                            ? QStringLiteral("ALTER TABLE %1 RENAME COLUMN completed_at TO registered_at").arg(table)
+                            : QStringLiteral("ALTER TABLE %1 ADD COLUMN registered_at TEXT").arg(table));
+    }
+    if (!columns.contains(QStringLiteral("completed_date"))) {
+      migrations.append(QStringLiteral("ALTER TABLE %1 ADD COLUMN completed_date TEXT").arg(table));
+    }
+    for (const QString &statement : migrations) {
+      QSqlQuery migrateCompletion(m_database);
+      if (!migrateCompletion.exec(statement)) {
+        setError(errorMessage, queryFailure(QStringLiteral("Cannot migrate completion history"), migrateCompletion));
+        return false;
+      }
     }
   }
 
@@ -509,7 +539,7 @@ QList<TaskRecord> TaskStore::listActiveTasks(QString *errorMessage) const {
                      "t.version, t.recurrence_frequency, t.recurrence_interval, "
                      "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
                      "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
-                     "t.category_id, c.name, c.color, t.completed_at FROM tasks t "
+                     "t.category_id, c.name, c.color, t.registered_at, t.completed_date FROM tasks t "
                      "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
                      "WHERE t.deleted_at IS NULL "
                      "ORDER BY t.scheduled_date IS NULL, t.scheduled_date, t.completed, t.created_at"));
@@ -672,7 +702,7 @@ bool TaskStore::releaseHabitReminderDelivery(const QString &habitId, const QDate
 QList<TaskOccurrenceState> TaskStore::listOccurrenceStates(QString *errorMessage) const {
   QList<TaskOccurrenceState> states;
   QSqlQuery query(m_database);
-  query.prepare(QStringLiteral("SELECT task_id, occurrence_date, status, completed_at, updated_at, version "
+  query.prepare(QStringLiteral("SELECT task_id, occurrence_date, status, registered_at, updated_at, version, completed_date "
                                "FROM task_occurrence_states ORDER BY occurrence_date, task_id"));
   if (!query.exec()) {
     setError(errorMessage, queryFailure(QStringLiteral("Cannot list task occurrence states"), query));
@@ -703,6 +733,33 @@ QList<TaskOccurrence> TaskStore::listOccurrences(const QDate &from, const QDate 
   }
   return assignCalendarMarkers(projectOccurrences(tasks, states, from, to), tasks, states,
                                QDate::currentDate());
+}
+
+QJsonObject TaskStore::registrationActivity(const QDate &from, const QDate &to, QString *errorMessage) const {
+  if (!from.isValid() || !to.isValid() || from > to) {
+    setError(errorMessage, QStringLiteral("Registration range requires valid ordered dates"));
+    return {};
+  }
+  QString error;
+  const TaskVisibilityMode visibility = taskVisibilityMode(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
+  if (visibility == TaskVisibilityMode::Pending) {
+    return {};
+  }
+  const QList<TaskRecord> tasks = listActiveTasks(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
+  const QList<TaskOccurrenceState> states = listOccurrenceStates(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
+  return projectRegistrationActivity(tasks, states, from, to);
 }
 
 bool TaskStore::claimReminderDelivery(const QString &taskId, const QDate &occurrenceDate,
@@ -1350,7 +1407,7 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
 
   QSqlQuery query(m_database);
   query.prepare(QStringLiteral("INSERT INTO tasks "
-                               "(id, title, scheduled_date, completed, completed_at, created_at, "
+                               "(id, title, scheduled_date, completed, registered_at, created_at, "
                                "updated_at, version, recurrence_frequency, recurrence_interval, "
                                "recurrence_weekdays, recurrence_end_mode, recurrence_until, "
                                "recurrence_count, scheduled_time, emoji, reminder_minutes_before, "
@@ -1389,42 +1446,43 @@ bool TaskStore::createTask(const QString &title, const QDate &scheduledDate, con
   return true;
 }
 
-bool TaskStore::setTaskCompleted(const QString &taskId, const bool completed, const QDateTime &changedAt,
-                                 QString *errorMessage) {
-  if (!changedAt.isValid()) {
-    setError(errorMessage, QStringLiteral("Task completion time must be valid"));
+bool TaskStore::setTaskCompleted(const QString &taskId, const bool completed, const QDate &completedDate,
+                                 const QDateTime &changedAt, QString *errorMessage) {
+  if (!changedAt.isValid() ||
+      (completed && (!completedDate.isValid() || completedDate > changedAt.toLocalTime().date()))) {
+    setError(errorMessage, QStringLiteral("A conclusão exige uma data válida, não posterior a hoje"));
     return false;
   }
-  const QDateTime completedAt = completed ? changedAt.toUTC() : QDateTime();
   return mutateTask(taskId, QStringLiteral("upsert"),
                     {{QStringLiteral("completed"), completed},
-                     {QStringLiteral("completedAt"),
-                      completedAt.isValid() ? completedAt.toString(Qt::ISODateWithMs) : QString()}},
+                     {QStringLiteral("completedDate"), completed ? completedDate.toString(Qt::ISODate) : QString()},
+                     {QStringLiteral("registeredAt"), completed ? changedAt.toUTC().toString(Qt::ISODateWithMs) : QString()}},
                     errorMessage);
 }
 
 bool TaskStore::setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
-                                       const bool completed, const QDateTime &changedAt,
-                                       QString *errorMessage) {
+                                       const bool completed, const QDate &completedDate,
+                                       const QDateTime &changedAt, QString *errorMessage) {
   return setOccurrenceState(taskId, occurrenceDate,
-                            completed ? OccurrenceStatus::Completed : OccurrenceStatus::Pending, changedAt,
+                            completed ? OccurrenceStatus::Completed : OccurrenceStatus::Pending, completedDate, changedAt,
                             errorMessage);
 }
 
 bool TaskStore::skipOccurrence(const QString &taskId, const QDate &occurrenceDate, QString *errorMessage) {
-  return setOccurrenceState(taskId, occurrenceDate, OccurrenceStatus::Skipped,
+  return setOccurrenceState(taskId, occurrenceDate, OccurrenceStatus::Skipped, {},
                             QDateTime::currentDateTimeUtc(), errorMessage);
 }
 
 bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenceDate,
-                                   const OccurrenceStatus status, const QDateTime &changedAt,
-                                   QString *errorMessage) {
+                                   const OccurrenceStatus status, const QDate &completedDate,
+                                   const QDateTime &changedAt, QString *errorMessage) {
   if (!occurrenceDate.isValid()) {
     setError(errorMessage, QStringLiteral("Occurrence date must be a valid calendar date"));
     return false;
   }
-  if (!changedAt.isValid()) {
-    setError(errorMessage, QStringLiteral("Occurrence completion time must be valid"));
+  if (!changedAt.isValid() || (status == OccurrenceStatus::Completed &&
+      (!completedDate.isValid() || completedDate > changedAt.toLocalTime().date()))) {
+    setError(errorMessage, QStringLiteral("A conclusão exige uma data válida, não posterior a hoje"));
     return false;
   }
 
@@ -1434,7 +1492,7 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
                      "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
                      "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
                      "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
-                     "t.category_id, c.name, c.color, t.completed_at FROM tasks t "
+                     "t.category_id, c.name, c.color, t.registered_at, t.completed_date FROM tasks t "
                      "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
                      "WHERE t.id = ? AND t.deleted_at IS NULL"));
   selectTask.addBindValue(taskId);
@@ -1451,7 +1509,7 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
                                  .arg(taskId, occurrenceDate.toString(Qt::ISODate)));
       return false;
     }
-    return setTaskCompleted(taskId, status == OccurrenceStatus::Completed, changedAt, errorMessage);
+    return setTaskCompleted(taskId, status == OccurrenceStatus::Completed, completedDate, changedAt, errorMessage);
   }
   if (recurrenceDates(task.scheduledDate, task.recurrence, occurrenceDate, occurrenceDate).isEmpty()) {
     setError(
@@ -1461,9 +1519,10 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
   }
 
   qint64 version = 1;
+  QDateTime registeredAt = status == OccurrenceStatus::Completed ? changedAt.toUTC() : QDateTime();
   QSqlQuery current(m_database);
   current.prepare(
-      QStringLiteral("SELECT version FROM task_occurrence_states WHERE task_id = ? AND occurrence_date = ?"));
+      QStringLiteral("SELECT version, status, registered_at FROM task_occurrence_states WHERE task_id = ? AND occurrence_date = ?"));
   current.addBindValue(taskId);
   current.addBindValue(occurrenceDate.toString(Qt::ISODate));
   if (!current.exec()) {
@@ -1472,13 +1531,17 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
   }
   if (current.next()) {
     version = current.value(0).toLongLong() + 1;
+    if (status == OccurrenceStatus::Completed && current.value(1).toString() == QStringLiteral("completed")) {
+      registeredAt = QDateTime::fromString(current.value(2).toString(), Qt::ISODateWithMs);
+    }
   }
 
   TaskOccurrenceState state;
   state.taskId = taskId;
   state.occurrenceDate = occurrenceDate;
   state.status = status;
-  state.completedAt = status == OccurrenceStatus::Completed ? changedAt.toUTC() : QDateTime();
+  state.registeredAt = registeredAt;
+  state.completedDate = status == OccurrenceStatus::Completed ? completedDate : QDate();
   state.updatedAt = changedAt.toUTC();
   state.version = version;
 
@@ -1494,18 +1557,19 @@ bool TaskStore::setOccurrenceState(const QString &taskId, const QDate &occurrenc
   }
   QSqlQuery upsert(m_database);
   upsert.prepare(QStringLiteral("INSERT INTO task_occurrence_states "
-                                "(task_id, occurrence_date, status, completed_at, updated_at, version) "
-                                "VALUES (?, ?, ?, ?, ?, ?) "
+                                "(task_id, occurrence_date, status, registered_at, updated_at, version, completed_date) "
+                                "VALUES (?, ?, ?, ?, ?, ?, ?) "
                                 "ON CONFLICT(task_id, occurrence_date) DO UPDATE SET "
-                                "status=excluded.status, completed_at=excluded.completed_at, "
+                                "status=excluded.status, registered_at=excluded.registered_at, completed_date=excluded.completed_date, "
                                 "updated_at=excluded.updated_at, version=excluded.version"));
   upsert.addBindValue(state.taskId);
   upsert.addBindValue(state.occurrenceDate.toString(Qt::ISODate));
   upsert.addBindValue(statusText);
-  upsert.addBindValue(state.completedAt.isValid() ? state.completedAt.toString(Qt::ISODateWithMs)
+  upsert.addBindValue(state.registeredAt.isValid() ? state.registeredAt.toString(Qt::ISODateWithMs)
                                                   : QVariant());
   upsert.addBindValue(state.updatedAt.toString(Qt::ISODateWithMs));
   upsert.addBindValue(state.version);
+  upsert.addBindValue(state.completedDate.isValid() ? state.completedDate.toString(Qt::ISODate) : QVariant());
   if (!upsert.exec() ||
       !enqueueMutation(newIdentifier(), QStringLiteral("occurrence"),
                        occurrenceKey(state.taskId, state.occurrenceDate), QStringLiteral("upsert"),
@@ -1563,7 +1627,7 @@ bool TaskStore::deleteOccurrence(const QString &taskId, const QDate &occurrenceD
                      "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
                      "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
                      "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
-                     "t.category_id, c.name, c.color, t.completed_at FROM tasks t "
+                     "t.category_id, c.name, c.color, t.registered_at, t.completed_date FROM tasks t "
                      "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
                      "WHERE t.id = ? AND t.deleted_at IS NULL"));
   select.addBindValue(taskId);
@@ -1606,7 +1670,7 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
                      "t.updated_at, t.version, t.recurrence_frequency, t.recurrence_interval, "
                      "t.recurrence_weekdays, t.recurrence_end_mode, t.recurrence_until, "
                      "t.recurrence_count, t.scheduled_time, t.emoji, t.reminder_minutes_before, "
-                     "t.category_id, c.name, c.color, t.completed_at FROM tasks t "
+                     "t.category_id, c.name, c.color, t.registered_at, t.completed_date FROM tasks t "
                      "LEFT JOIN task_categories c ON c.id = t.category_id AND c.deleted_at IS NULL "
                      "WHERE t.id = ? AND t.deleted_at IS NULL"));
   select.addBindValue(taskId);
@@ -1626,11 +1690,19 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
     return false;
   }
   if (fields.contains(QStringLiteral("completed"))) {
-    task.completed = fields.value(QStringLiteral("completed")).toBool();
-  }
-  if (fields.contains(QStringLiteral("completedAt"))) {
-    task.completedAt =
-        QDateTime::fromString(fields.value(QStringLiteral("completedAt")).toString(), Qt::ISODateWithMs);
+    const bool completed = fields.value(QStringLiteral("completed")).toBool();
+    if (!completed) {
+      task.registeredAt = {};
+      task.completedDate = {};
+    } else {
+      if (!task.completed) {
+        task.registeredAt =
+            QDateTime::fromString(fields.value(QStringLiteral("registeredAt")).toString(), Qt::ISODateWithMs);
+      }
+      task.completedDate =
+          QDate::fromString(fields.value(QStringLiteral("completedDate")).toString(), Qt::ISODate);
+    }
+    task.completed = completed;
   }
   if (fields.contains(QStringLiteral("scheduledDate"))) {
     task.scheduledDate =
@@ -1684,7 +1756,7 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   }
   QSqlQuery update(m_database);
   update.prepare(
-      QStringLiteral("UPDATE tasks SET title = ?, scheduled_date = ?, completed = ?, completed_at = ?, "
+      QStringLiteral("UPDATE tasks SET title = ?, scheduled_date = ?, completed = ?, registered_at = ?, completed_date = ?, "
                      "updated_at = ?, version = ?, recurrence_frequency = ?, recurrence_interval = ?, "
                      "recurrence_weekdays = ?, recurrence_end_mode = ?, recurrence_until = ?, "
                      "recurrence_count = ?, scheduled_time = ?, emoji = ?, reminder_minutes_before = ?, "
@@ -1692,7 +1764,8 @@ bool TaskStore::mutateTask(const QString &taskId, const QString &operation, cons
   update.addBindValue(task.title);
   update.addBindValue(task.scheduledDate.isValid() ? task.scheduledDate.toString(Qt::ISODate) : QVariant());
   update.addBindValue(task.completed);
-  update.addBindValue(task.completedAt.isValid() ? task.completedAt.toString(Qt::ISODateWithMs) : QVariant());
+  update.addBindValue(task.registeredAt.isValid() ? task.registeredAt.toString(Qt::ISODateWithMs) : QVariant());
+  update.addBindValue(task.completedDate.isValid() ? task.completedDate.toString(Qt::ISODate) : QVariant());
   update.addBindValue(task.updatedAt.toString(Qt::ISODateWithMs));
   update.addBindValue(task.version);
   addRecurrenceBindValues(update, task.recurrence);
@@ -1801,12 +1874,25 @@ QJsonArray TaskStore::pendingMutations(const QStringList &entityTypes, const qsi
                                  .arg(query.value(0).toString(), parseError.errorString()));
       return {};
     }
+    QJsonObject normalizedPayload = payload.object();
+    const QString entityType = query.value(1).toString();
+    if (query.value(3).toString() == QStringLiteral("upsert") &&
+        (entityType == QStringLiteral("task") || entityType == QStringLiteral("occurrence"))) {
+      if (!normalizedPayload.contains(QStringLiteral("registeredAt"))) {
+        normalizedPayload.insert(QStringLiteral("registeredAt"),
+                                 normalizedPayload.value(QStringLiteral("completedAt")).toString());
+      }
+      normalizedPayload.remove(QStringLiteral("completedAt"));
+      if (!normalizedPayload.contains(QStringLiteral("completedDate"))) {
+        normalizedPayload.insert(QStringLiteral("completedDate"), QString());
+      }
+    }
     mutations.append(QJsonObject{
         {QStringLiteral("mutationId"), query.value(0).toString()},
         {QStringLiteral("entityType"), query.value(1).toString()},
         {QStringLiteral("entityId"), query.value(2).toString()},
         {QStringLiteral("operation"), query.value(3).toString()},
-        {QStringLiteral("payload"), payload.object()},
+        {QStringLiteral("payload"), normalizedPayload},
     });
   }
   return mutations;
@@ -2435,13 +2521,13 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
             "(id, title, scheduled_date, completed, created_at, updated_at, version, deleted_at, "
             "recurrence_frequency, recurrence_interval, recurrence_weekdays, "
             "recurrence_end_mode, recurrence_until, recurrence_count, scheduled_time, emoji, "
-            "reminder_minutes_before, category_id, completed_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "reminder_minutes_before, category_id, registered_at, completed_date) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET title=excluded.title, "
             "scheduled_date=excluded.scheduled_date, scheduled_time=excluded.scheduled_time, "
             "emoji=excluded.emoji, reminder_minutes_before=excluded.reminder_minutes_before, "
             "category_id=excluded.category_id, completed=excluded.completed, "
-            "completed_at=excluded.completed_at, updated_at=excluded.updated_at, "
+            "registered_at=excluded.registered_at, completed_date=excluded.completed_date, updated_at=excluded.updated_at, "
             "version=excluded.version, deleted_at=NULL, "
             "recurrence_frequency=excluded.recurrence_frequency, "
             "recurrence_interval=excluded.recurrence_interval, "
@@ -2464,8 +2550,9 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
         apply.addBindValue(task.emoji);
         apply.addBindValue(reminderMinutesBeforeJson(task.reminderMinutesBefore));
         apply.addBindValue(task.categoryId.isEmpty() ? QVariant() : task.categoryId);
-        apply.addBindValue(task.completedAt.isValid() ? task.completedAt.toUTC().toString(Qt::ISODateWithMs)
+        apply.addBindValue(task.registeredAt.isValid() ? task.registeredAt.toUTC().toString(Qt::ISODateWithMs)
                                                       : QVariant());
+        apply.addBindValue(task.completedDate.isValid() ? task.completedDate.toString(Qt::ISODate) : QVariant());
       }
     } else if (entityType == QStringLiteral("category")) {
       const QString categoryId = payload.value(QStringLiteral("id")).toString();
@@ -2552,19 +2639,20 @@ bool TaskStore::applyRemoteChanges(const QJsonArray &changes, const QString &nex
           status = QStringLiteral("skipped");
         }
         apply.prepare(QStringLiteral("INSERT INTO task_occurrence_states "
-                                     "(task_id, occurrence_date, status, completed_at, updated_at, version) "
-                                     "VALUES (?, ?, ?, ?, ?, ?) "
+                                     "(task_id, occurrence_date, status, registered_at, updated_at, version, completed_date) "
+                                     "VALUES (?, ?, ?, ?, ?, ?, ?) "
                                      "ON CONFLICT(task_id, occurrence_date) DO UPDATE SET "
-                                     "status=excluded.status, completed_at=excluded.completed_at, "
+                                     "status=excluded.status, registered_at=excluded.registered_at, completed_date=excluded.completed_date, "
                                      "updated_at=excluded.updated_at, version=excluded.version "
                                      "WHERE excluded.version >= task_occurrence_states.version"));
         apply.addBindValue(state.taskId);
         apply.addBindValue(state.occurrenceDate.toString(Qt::ISODate));
         apply.addBindValue(status);
-        apply.addBindValue(state.completedAt.isValid() ? state.completedAt.toUTC().toString(Qt::ISODateWithMs)
+        apply.addBindValue(state.registeredAt.isValid() ? state.registeredAt.toUTC().toString(Qt::ISODateWithMs)
                                                        : QVariant());
         apply.addBindValue(state.updatedAt.toUTC().toString(Qt::ISODateWithMs));
         apply.addBindValue(state.version);
+        apply.addBindValue(state.completedDate.isValid() ? state.completedDate.toString(Qt::ISODate) : QVariant());
       }
     } else if (entityType == QStringLiteral("habit")) {
       const QString habitId = payload.value(QStringLiteral("id")).toString();

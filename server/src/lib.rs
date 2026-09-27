@@ -314,6 +314,12 @@ async fn sync(
             &mut payload,
             current_entity.as_ref().map(|(_, payload)| &payload.0),
         );
+        normalize_completion_history(
+            entity_type,
+            &mutation.operation,
+            &mut payload,
+            current_entity.as_ref().map(|(_, payload)| &payload.0),
+        );
         payload["version"] = Value::Number(server_version.into());
         let deleted = mutation.operation == "delete";
 
@@ -523,6 +529,70 @@ fn preserve_legacy_task_category(
     if let Some(category_id) = current_payload.and_then(|value| value.get("categoryId")) {
         payload["categoryId"] = category_id.clone();
     }
+}
+
+fn has_completed(entity_type: &str, payload: &Value) -> bool {
+    if entity_type == "task" {
+        payload.get("completed").and_then(Value::as_bool) == Some(true)
+    } else {
+        payload.get("status").and_then(Value::as_str) == Some("completed")
+    }
+}
+
+fn normalize_completion_history(
+    entity_type: &str,
+    operation: &str,
+    payload: &mut Value,
+    current_payload: Option<&Value>,
+) {
+    if !["task", "occurrence"].contains(&entity_type) || operation != "upsert" {
+        return;
+    }
+    if has_completed(entity_type, payload) {
+        let current = current_payload.filter(|value| has_completed(entity_type, value));
+        let registration = current
+            .and_then(|value| value.get("registeredAt").or_else(|| value.get("completedAt")))
+            .or_else(|| payload.get("registeredAt"))
+            .or_else(|| payload.get("completedAt"))
+            .cloned()
+            .unwrap_or_else(|| json!(""));
+        payload["registeredAt"] = registration;
+        if payload.get("completedDate").is_none() {
+            payload["completedDate"] = current
+                .and_then(|value| value.get("completedDate"))
+                .cloned()
+                .unwrap_or_else(|| json!(""));
+        }
+    } else {
+        payload["registeredAt"] = json!("");
+        payload["completedDate"] = json!("");
+    }
+    if let Some(object) = payload.as_object_mut() {
+        object.remove("completedAt");
+    }
+}
+
+fn validate_completion_history(payload: &Value) -> Result<(), ApiError> {
+    if let Some(value) = payload.get("completedDate") {
+        let date = value.as_str()
+            .ok_or_else(|| ApiError::bad_request("completedDate must be a floating calendar date"))?;
+        if !date.is_empty() {
+            NaiveDate::parse_from_str(date, "%Y-%m-%d")
+                .map_err(|_| ApiError::bad_request("completedDate must use YYYY-MM-DD"))?;
+            if date.len() != 10 {
+                return Err(ApiError::bad_request("completedDate must use YYYY-MM-DD"));
+            }
+        }
+    }
+    if let Some(value) = payload.get("registeredAt") {
+        let instant = value.as_str()
+            .ok_or_else(|| ApiError::bad_request("registeredAt must be an RFC 3339 instant"))?;
+        if !instant.is_empty() {
+            DateTime::parse_from_rfc3339(instant)
+                .map_err(|_| ApiError::bad_request("registeredAt must be an RFC 3339 instant"))?;
+        }
+    }
+    Ok(())
 }
 
 fn validate_request(request: &SyncRequest) -> Result<(), ApiError> {
@@ -736,6 +806,7 @@ fn validate_task_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
             seen.push(minutes);
         }
     }
+    validate_completion_history(&mutation.payload)?;
 
     let Some(recurrence) = mutation.payload.get("recurrence") else {
         return Ok(());
@@ -834,7 +905,7 @@ fn validate_occurrence_mutation(mutation: &SyncMutation) -> Result<(), ApiError>
     if !["pending", "completed", "skipped"].contains(&status) {
         return Err(ApiError::bad_request("invalid occurrence status"));
     }
-    Ok(())
+    validate_completion_history(&mutation.payload)
 }
 
 fn validate_habit_mutation(mutation: &SyncMutation) -> Result<(), ApiError> {
@@ -1064,6 +1135,46 @@ mod tests {
             preference_mutation: None,
             supported_entity_types: Vec::new(),
         }
+    }
+
+    #[test]
+    fn completion_history_keeps_registration_while_editing_and_clears_on_undo() {
+        for entity_type in ["task", "occurrence"] {
+            let current = json!({
+                "completed": true, "status": "completed",
+                "registeredAt": "2026-09-21T14:00:00.000Z", "completedDate": "2026-09-19"
+            });
+            let mut edited = json!({
+                "completed": true, "status": "completed",
+                "registeredAt": "2026-09-22T14:00:00.000Z", "completedDate": "2026-09-20"
+            });
+            normalize_completion_history(entity_type, "upsert", &mut edited, Some(&current));
+            assert_eq!(edited["registeredAt"], current["registeredAt"]);
+            assert_eq!(edited["completedDate"], "2026-09-20");
+
+            let mut legacy = json!({
+                "completed": true, "status": "completed", "completedAt": "2026-09-21T14:00:00.000Z"
+            });
+            normalize_completion_history(entity_type, "upsert", &mut legacy, None);
+            assert_eq!(legacy["registeredAt"], current["registeredAt"]);
+            assert_eq!(legacy["completedDate"], "");
+            assert!(legacy.get("completedAt").is_none());
+            legacy.as_object_mut().unwrap().remove("completedDate");
+            normalize_completion_history(entity_type, "upsert", &mut legacy, Some(&current));
+            assert_eq!(legacy["completedDate"], current["completedDate"]);
+
+            let mut undo = json!({"completed": false, "status": "pending"});
+            normalize_completion_history(entity_type, "upsert", &mut undo, Some(&current));
+            assert_eq!(undo["registeredAt"], "");
+            assert_eq!(undo["completedDate"], "");
+        }
+    }
+
+    #[test]
+    fn completion_history_rejects_timestamp_as_actual_day() {
+        assert!(validate_completion_history(&json!({"completedDate": "2026-09-19T00:00:00Z"})).is_err());
+        assert!(validate_completion_history(&json!({"completedDate": "2026-02-30"})).is_err());
+        assert!(validate_completion_history(&json!({"registeredAt": "2026-09-21"})).is_err());
     }
 
     #[test]

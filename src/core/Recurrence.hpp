@@ -35,7 +35,8 @@ struct TaskOccurrenceState final {
   QString taskId;
   QDate occurrenceDate;
   OccurrenceStatus status = OccurrenceStatus::Completed;
-  QDateTime completedAt;
+  QDate completedDate;
+  QDateTime registeredAt;
   QDateTime updatedAt;
   qint64 version = 0;
 
@@ -55,6 +56,8 @@ struct TaskOccurrence final {
   QString categoryName;
   QString categoryColor;
   bool completed = false;
+  QDate completedDate;
+  QDateTime registeredAt;
   bool skipped = false;
   bool recurring = false;
   bool calendarMarker = true;
@@ -63,6 +66,8 @@ struct TaskOccurrence final {
 
   [[nodiscard]] QString key() const;
   [[nodiscard]] QDate effectiveCalendarDate() const;
+  [[nodiscard]] QString completionLabel() const;
+  [[nodiscard]] bool completionLate() const;
   [[nodiscard]] QJsonObject toJson() const;
 };
 
@@ -84,6 +89,9 @@ struct OccurrenceSummary final {
 [[nodiscard]] QList<TaskOccurrence> projectActionableOccurrences(const QList<TaskRecord> &tasks,
                                                                  const QList<TaskOccurrenceState> &states,
                                                                  const QDate &today);
+[[nodiscard]] QJsonObject projectRegistrationActivity(const QList<TaskRecord> &tasks,
+                                                      const QList<TaskOccurrenceState> &states,
+                                                      const QDate &from, const QDate &to);
 
 [[nodiscard]] OccurrenceSummary summarizeOccurrences(const QList<TaskOccurrence> &occurrences,
                                                      const QDate &today);

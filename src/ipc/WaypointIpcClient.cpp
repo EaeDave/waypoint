@@ -36,6 +36,10 @@ TaskOccurrence occurrenceFromJson(const QJsonObject &json) {
   if (!occurrence.calendarDate.isValid()) {
     occurrence.calendarDate = occurrence.occurrenceDate;
   }
+  occurrence.completedDate =
+      QDate::fromString(json.value(QStringLiteral("completedDate")).toString(), Qt::ISODate);
+  occurrence.registeredAt =
+      QDateTime::fromString(json.value(QStringLiteral("registeredAt")).toString(), Qt::ISODateWithMs);
   occurrence.scheduledTime =
       QTime::fromString(json.value(QStringLiteral("scheduledTime")).toString(), QStringLiteral("HH:mm"));
   occurrence.reminderMinutesBefore =
@@ -173,6 +177,18 @@ QList<TaskOccurrence> WaypointIpcClient::listActionableOccurrences(const QDate &
   return occurrences;
 }
 
+QJsonObject WaypointIpcClient::registrationActivity(const QDate &from, const QDate &to,
+                                                  QString *errorMessage) const {
+  const QJsonObject response = request(
+      {{QStringLiteral("command"), QStringLiteral("registration-activity")},
+       {QStringLiteral("from"), from.toString(Qt::ISODate)},
+       {QStringLiteral("to"), to.toString(Qt::ISODate)}}, errorMessage);
+  if (!responseSucceeded(response, errorMessage)) {
+    return {};
+  }
+  return response.value(QStringLiteral("dates")).toObject();
+}
+
 QList<HabitProgress> WaypointIpcClient::listHabitProgress(const QDate &date, QString *errorMessage) const {
   const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("habits")},
                                         {QStringLiteral("date"), date.toString(Qt::ISODate)}},
@@ -278,25 +294,29 @@ bool WaypointIpcClient::addTask(const QString &title, const QDate &scheduledDate
   return responseSucceeded(response, errorMessage);
 }
 
-bool WaypointIpcClient::setTaskCompleted(const QString &taskId, bool completed, QString *errorMessage) const {
+bool WaypointIpcClient::setTaskCompleted(const QString &taskId, bool completed, const QDate &completedDate,
+                                       QString *errorMessage) const {
   const QJsonObject response = request(
       {
           {QStringLiteral("command"), QStringLiteral("complete")},
           {QStringLiteral("taskId"), taskId},
           {QStringLiteral("completed"), completed},
+          {QStringLiteral("completedDate"), completedDate.toString(Qt::ISODate)},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);
 }
 
 bool WaypointIpcClient::setOccurrenceCompleted(const QString &taskId, const QDate &occurrenceDate,
-                                               const bool completed, QString *errorMessage) const {
+                                               const bool completed, const QDate &completedDate,
+                                               QString *errorMessage) const {
   const QJsonObject response = request(
       {
           {QStringLiteral("command"), QStringLiteral("complete")},
           {QStringLiteral("taskId"), taskId},
           {QStringLiteral("occurrenceDate"), occurrenceDate.toString(Qt::ISODate)},
           {QStringLiteral("completed"), completed},
+          {QStringLiteral("completedDate"), completedDate.toString(Qt::ISODate)},
       },
       errorMessage);
   return responseSucceeded(response, errorMessage);
