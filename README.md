@@ -38,6 +38,7 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
 - Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
+- Linux completion actions play the desktop notification sound from both the main app and the Omarchy panel.
 
 #### Completion history
 

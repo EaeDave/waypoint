@@ -19,12 +19,26 @@ namespace {
 constexpr auto completionSoundName = "complete";
 
 void playCompletionSound(const QString &description) {
-  const QString soundPlayer = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
-  if (soundPlayer.isEmpty()) {
-    return;
+  const QString soundFile = QStandardPaths::locate(QStandardPaths::GenericDataLocation,
+                                                   QStringLiteral("sounds/freedesktop/stereo/complete.oga"));
+  if (!soundFile.isEmpty()) {
+    const QString pipeWirePlayer = QStandardPaths::findExecutable(QStringLiteral("pw-play"));
+    if (!pipeWirePlayer.isEmpty() &&
+        QProcess::startDetached(
+            pipeWirePlayer, {QStringLiteral("--media-role"), QStringLiteral("Notification"), soundFile})) {
+      return;
+    }
+    const QString pulseAudioPlayer = QStandardPaths::findExecutable(QStringLiteral("paplay"));
+    if (!pulseAudioPlayer.isEmpty() && QProcess::startDetached(pulseAudioPlayer, {soundFile})) {
+      return;
+    }
   }
-  QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(completionSoundName),
-                                        QStringLiteral("-d"), description});
+
+  const QString soundPlayer = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
+  if (!soundPlayer.isEmpty()) {
+    QProcess::startDetached(soundPlayer, {QStringLiteral("-i"), QString::fromLatin1(completionSoundName),
+                                          QStringLiteral("-d"), description});
+  }
 }
 
 QList<TaskOccurrence> visibleOccurrences(const QList<TaskOccurrence> &occurrences,
