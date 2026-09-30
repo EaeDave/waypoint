@@ -20,7 +20,7 @@ public:
   explicit WaypointIpcClient(QObject *parent = nullptr);
 
   [[nodiscard]] bool ping(QString *errorMessage = nullptr) const;
-  [[nodiscard]] QList<TaskRecord> listTasks(QString *errorMessage = nullptr) const;
+  [[nodiscard]] QJsonArray listTasks(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskCategory> listTaskCategories(QString *errorMessage = nullptr) const;
   [[nodiscard]] QList<TaskOccurrence> listOccurrences(const QDate &from, const QDate &to,
                                                       QString *errorMessage = nullptr) const;

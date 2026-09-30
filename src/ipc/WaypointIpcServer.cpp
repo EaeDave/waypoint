@@ -128,18 +128,16 @@ QJsonObject WaypointIpcServer::handleRequest(const QJsonObject &request) {
     return {{QStringLiteral("ok"), true}, {QStringLiteral("status"), QStringLiteral("ready")}};
   }
   if (command == QStringLiteral("list")) {
-    QJsonArray tasks;
     const QList<TaskRecord> records = m_taskStore->listActiveTasks(&error);
     if (!error.isEmpty()) {
       return protocol::errorResponse(error);
     }
-    for (const TaskRecord &task : records) {
-      QJsonObject value = task.toJson();
-      value.insert(QStringLiteral("categoryName"), task.categoryName);
-      value.insert(QStringLiteral("categoryColor"), task.categoryColor);
-      tasks.append(value);
+    const QList<TaskOccurrenceState> states = m_taskStore->listOccurrenceStates(&error);
+    if (!error.isEmpty()) {
+      return protocol::errorResponse(error);
     }
-    return {{QStringLiteral("ok"), true}, {QStringLiteral("tasks"), tasks}};
+    return {{QStringLiteral("ok"), true},
+            {QStringLiteral("tasks"), projectTaskDefinitions(records, states, QDate::currentDate())}};
   }
   if (command == QStringLiteral("categories")) {
     QJsonArray categories;

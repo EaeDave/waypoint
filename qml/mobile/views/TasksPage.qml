@@ -348,20 +348,28 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             text: {
-                                                const parts = [root.portugueseLocale.toString(
-                                                    new Date(taskRow.modelData.scheduledDate
-                                                             + "T00:00:00"), "dd MMM"),
+                                                const dateKey = taskRow.modelData.recurring
+                                                    ? String(taskRow.modelData.pendingDate || "")
+                                                    : taskRow.modelData.scheduledDate;
+                                                const parts = [dateKey !== ""
+                                                    ? root.portugueseLocale.toString(
+                                                        new Date(dateKey + "T00:00:00"), "dd MMM")
+                                                    : "SEM PENDÊNCIAS",
                                                     taskRow.modelData.scheduledTime];
                                                 parts.push(taskRow.modelData.recurring
                                                            ? taskRow.modelData.recurrenceLabel
                                                            : "ÚNICA");
+                                                if (taskRow.modelData.overdue)
+                                                    parts.push("ATRASADA");
                                                 return parts.join(" · ");
                                             }
                                             color: taskRow.modelData.completed
-                                                   ? MobileTheme.disabled : MobileTheme.subdued
+                                                   ? MobileTheme.disabled
+                                                   : taskRow.modelData.overdue
+                                                     ? MobileTheme.urgent : MobileTheme.subdued
                                             font.family: MobileTheme.fontFamily
                                             font.pixelSize: MobileTheme.captionSize
-                                            elide: Text.ElideRight
+                                            wrapMode: Text.Wrap
                                         }
 
                                         Text {

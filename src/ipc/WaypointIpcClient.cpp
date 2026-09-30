@@ -103,22 +103,12 @@ bool WaypointIpcClient::ping(QString *errorMessage) const {
   return responseSucceeded(response, errorMessage);
 }
 
-QList<TaskRecord> WaypointIpcClient::listTasks(QString *errorMessage) const {
+QJsonArray WaypointIpcClient::listTasks(QString *errorMessage) const {
   const QJsonObject response = request({{QStringLiteral("command"), QStringLiteral("list")}}, errorMessage);
   if (!responseSucceeded(response, errorMessage)) {
     return {};
   }
-  QList<TaskRecord> tasks;
-  const QJsonArray taskValues = response.value(QStringLiteral("tasks")).toArray();
-  tasks.reserve(taskValues.size());
-  for (const QJsonValue &value : taskValues) {
-    const QJsonObject json = value.toObject();
-    TaskRecord task = TaskRecord::fromJson(json);
-    task.categoryName = json.value(QStringLiteral("categoryName")).toString();
-    task.categoryColor = json.value(QStringLiteral("categoryColor")).toString();
-    tasks.append(task);
-  }
-  return tasks;
+  return response.value(QStringLiteral("tasks")).toArray();
 }
 QList<TaskCategory> WaypointIpcClient::listTaskCategories(QString *errorMessage) const {
   QString categoryError;

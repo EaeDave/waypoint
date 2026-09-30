@@ -62,29 +62,6 @@ QList<QTime> habitReminderTimes(const QVariantList &values) {
   return times;
 }
 
-QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
-  QVariantList values;
-  values.reserve(tasks.size());
-  for (const TaskRecord &task : tasks) {
-    QVariantMap value = task.toJson().toVariantMap();
-    value.insert(QStringLiteral("taskId"), task.id);
-    value.insert(QStringLiteral("categoryName"), task.categoryName);
-    value.insert(QStringLiteral("categoryColor"), task.categoryColor);
-    value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
-    value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
-    TaskOccurrence occurrence;
-    occurrence.occurrenceDate = task.scheduledDate;
-    occurrence.completed = task.completed;
-    occurrence.completedDate = task.completedDate;
-    occurrence.registeredAt = task.registeredAt;
-    value.insert(QStringLiteral("completionLabel"), occurrence.completionLabel());
-    value.insert(QStringLiteral("completionLate"), occurrence.completionLate());
-    value.insert(QStringLiteral("overdue"), !task.completed && task.scheduledDate < QDate::currentDate());
-    values.append(value);
-  }
-  return values;
-}
-
 } // namespace
 
 WaypointController::WaypointController(QObject *parent)
@@ -194,7 +171,7 @@ void WaypointController::refresh() {
     startDaemonOnce();
     return;
   }
-  const QList<TaskRecord> tasks = m_client.listTasks(&error);
+  const QJsonArray tasks = m_client.listTasks(&error);
   if (!error.isEmpty()) {
     updateConnection(false, error);
     return;
@@ -268,7 +245,7 @@ void WaypointController::refresh() {
   for (const TaskOccurrence &occurrence : rangeOccurrences) {
     rangeValues.append(occurrence.toJson());
   }
-  const QVariantList taskValues = taskDefinitionValues(tasks);
+  const QVariantList taskValues = tasks.toVariantList();
   const QByteArray signature =
       QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
                                 {QStringLiteral("todayHabits"), habitValues},

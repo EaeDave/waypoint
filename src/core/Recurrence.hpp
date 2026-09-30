@@ -2,6 +2,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QList>
 #include <QString>
@@ -79,6 +80,9 @@ struct OccurrenceSummary final {
 [[nodiscard]] QString occurrenceKey(const QString &taskId, const QDate &occurrenceDate);
 [[nodiscard]] QList<QDate> recurrenceDates(const QDate &anchorDate, const RecurrenceRule &rule,
                                            const QDate &from, const QDate &to);
+[[nodiscard]] QJsonArray projectTaskDefinitions(const QList<TaskRecord> &tasks,
+                                               const QList<TaskOccurrenceState> &states,
+                                               const QDate &today);
 [[nodiscard]] QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,
                                                        const QList<TaskOccurrenceState> &states,
                                                        const QDate &from, const QDate &to);

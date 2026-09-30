@@ -77,27 +77,6 @@ QVariantList occurrenceValues(const QList<TaskOccurrence> &occurrences,
   return result;
 }
 
-QVariantList taskDefinitionValues(const QList<TaskRecord> &tasks) {
-  QVariantList result;
-  result.reserve(tasks.size());
-  for (const TaskRecord &task : tasks) {
-    QVariantMap value = task.toJson().toVariantMap();
-    value.insert(QStringLiteral("taskId"), task.id);
-    value.insert(QStringLiteral("categoryName"), task.categoryName);
-    value.insert(QStringLiteral("categoryColor"), task.categoryColor);
-    value.insert(QStringLiteral("recurring"), task.recurrence.frequency != RecurrenceFrequency::None);
-    value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
-    TaskOccurrence occurrence;
-    occurrence.occurrenceDate = task.scheduledDate;
-    occurrence.completed = task.completed;
-    occurrence.completedDate = task.completedDate;
-    occurrence.registeredAt = task.registeredAt;
-    value.insert(QStringLiteral("completionLabel"), occurrence.completionLabel());
-    value.insert(QStringLiteral("completionLate"), occurrence.completionLate());
-    result.append(value);
-  }
-  return result;
-}
 
 QList<TaskOccurrence> visibleOccurrences(const QList<TaskOccurrence> &occurrences,
                                          const TaskVisibilityMode mode) {
@@ -287,6 +266,11 @@ void MobileController::refresh() {
     publishError(error);
     return;
   }
+  const QList<TaskOccurrenceState> states = m_store.listOccurrenceStates(&error);
+  if (!error.isEmpty()) {
+    publishError(error);
+    return;
+  }
   const QList<TaskOccurrence> month =
       visibleOccurrences(m_store.listOccurrences(monthStart, monthEnd, &error), visibility);
   if (!error.isEmpty()) {
@@ -357,7 +341,7 @@ void MobileController::refresh() {
   m_selectedDateHabits = habitValues(selectedDateHabits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
   m_taskCategories = categoryValues(categories);
-  m_allTasks = taskDefinitionValues(activeTasks);
+  m_allTasks = projectTaskDefinitions(activeTasks, states, today).toVariantList();
   m_allHabits = habitRecordValues(activeHabits);
   m_monthHolidays = holidays.toVariantList();
   if (m_taskVisibility != visibility) {

@@ -36,6 +36,7 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Optional color-coded categories carried across recurring task series and shown on task rows and calendar days in the desktop app, Android app, home-screen widget, and Omarchy panel.
 - Recurrence by interval and weekday, with end-by-date and end-after-count rules.
 - Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
+- Desktop and Android task lists show the earliest unresolved occurrence of each recurring series, not its original start date. Completing or skipping an occurrence advances the displayed date; only an unresolved past occurrence is overdue. Finished series show **SEM PENDÊNCIAS**, while editing retains the original series start date.
 - Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
 - Linux completion actions play the desktop notification sound from both the main app and the Omarchy panel.

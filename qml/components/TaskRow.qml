@@ -31,6 +31,7 @@ Rectangle {
     required property var completionActions
     property int weekdayMask: 0
     property bool definitionMode: false
+    property string pendingDate: ""
 
     readonly property var portugueseLocale: Qt.locale("pt_BR")
     readonly property date scheduledDateValue: {
@@ -130,6 +131,10 @@ Rectangle {
                         parts.push(root.completionLabel);
                     if (root.definitionMode) {
                         parts.push(root.recurring ? root.recurrenceLabel : "ÚNICA");
+                        if (root.overdue)
+                            parts.push("ATRASADA");
+                        else if (root.recurring && root.pendingDate === "")
+                            parts.push("SEM PENDÊNCIAS");
                     } else if (root.skipped) {
                         parts.push("NÃO FEITA · " + root.portugueseLocale.toString(
                             root.scheduledDateValue, "dd MMM"));
@@ -155,10 +160,19 @@ Rectangle {
         Text {
             readonly property int reminderCount:
                 (root.reminderMinutesBefore || []).length
-            text: (root.definitionMode
-                   ? root.portugueseLocale.toString(root.scheduledDateValue, "dd MMM") + " · " : "")
-                  + root.scheduledTimeKey
-                  + (reminderCount > 0 ? " · 󰂚 " + reminderCount : "")
+            text: {
+                const parts = [];
+                if (root.definitionMode) {
+                    const dateKey = root.recurring ? root.pendingDate : root.scheduledDateKey;
+                    if (dateKey !== "")
+                        parts.push(root.portugueseLocale.toString(
+                            new Date(dateKey + "T00:00:00"), "dd MMM"));
+                }
+                parts.push(root.scheduledTimeKey);
+                if (reminderCount > 0)
+                    parts.push("󰂚 " + reminderCount);
+                return parts.join(" · ");
+            }
             color: root.completed ? WaypointTheme.disabledText
                  : root.skipped ? WaypointTheme.urgent : WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily

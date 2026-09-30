@@ -23,7 +23,147 @@ private slots:
   void decodeLegacyCompletionWithoutInventingActualDay();
   void isolateDailyCountsAcrossMidnightAndSeries();
   void sortActionableTasksByTimeWithCompletedLast();
+  void projectMonthlyDefinitionWithoutMovingAnchor();
+  void projectDefinitionPendingDate_data();
+  void projectDefinitionPendingDate();
+  void preserveNonRecurringDefinitionCompletion();
 };
+
+void RecurrenceTest::projectMonthlyDefinitionWithoutMovingAnchor() {
+  waypoint::TaskRecord task;
+  task.id = QStringLiteral("rent");
+  task.scheduledDate = QDate(2026, 9, 3);
+  task.recurrence.frequency = waypoint::RecurrenceFrequency::Monthly;
+  waypoint::TaskOccurrenceState september;
+  september.taskId = task.id;
+  september.occurrenceDate = task.scheduledDate;
+  september.status = waypoint::OccurrenceStatus::Completed;
+  september.completedDate = QDate(2026, 9, 3);
+  const QDate today(2026, 9, 30);
+
+  const auto paid = waypoint::projectTaskDefinitions({task}, {september}, today).first().toObject();
+  QCOMPARE(paid.value(QStringLiteral("scheduledDate")).toString(), QStringLiteral("2026-09-03"));
+  QCOMPARE(paid.value(QStringLiteral("pendingDate")).toString(), QStringLiteral("2026-10-03"));
+  QVERIFY(!paid.value(QStringLiteral("overdue")).toBool());
+  QVERIFY(!paid.value(QStringLiteral("completed")).toBool());
+
+  september.status = waypoint::OccurrenceStatus::Pending;
+  const auto reopened = waypoint::projectTaskDefinitions({task}, {september}, today).first().toObject();
+  QCOMPARE(reopened.value(QStringLiteral("pendingDate")).toString(), QStringLiteral("2026-09-03"));
+  QVERIFY(reopened.value(QStringLiteral("overdue")).toBool());
+  september.status = waypoint::OccurrenceStatus::Skipped;
+  const auto skipped = waypoint::projectTaskDefinitions({task}, {september}, today).first().toObject();
+  QCOMPARE(skipped.value(QStringLiteral("pendingDate")).toString(), QStringLiteral("2026-10-03"));
+  QVERIFY(!skipped.value(QStringLiteral("overdue")).toBool());
+}
+
+void RecurrenceTest::projectDefinitionPendingDate_data() {
+  QTest::addColumn<QString>("frequency");
+  QTest::addColumn<QDate>("anchor");
+  QTest::addColumn<int>("interval");
+  QTest::addColumn<QList<int>>("weekdays");
+  QTest::addColumn<QList<QDate>>("resolvedDates");
+  QTest::addColumn<QString>("endMode");
+  QTest::addColumn<QDate>("until");
+  QTest::addColumn<int>("count");
+  QTest::addColumn<QDate>("today");
+  QTest::addColumn<QDate>("pending");
+
+  QTest::newRow("daily-interval-future-resolved")
+      << QStringLiteral("daily") << QDate(2026, 9, 29) << 2 << QList<int>{}
+      << QList<QDate>{QDate(2026, 9, 29), QDate(2026, 10, 1), QDate(2026, 10, 3)}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(2026, 10, 5);
+  QTest::newRow("weekly-interval-partial-first-week")
+      << QStringLiteral("weekly") << QDate(2026, 9, 30) << 2 << QList<int>{1, 3}
+      << QList<QDate>{QDate(2026, 9, 30), QDate(2026, 10, 12)}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(2026, 10, 14);
+  QTest::newRow("monthly-end-restores-anchor")
+      << QStringLiteral("monthly") << QDate(2025, 1, 31) << 1 << QList<int>{}
+      << QList<QDate>{QDate(2025, 1, 31), QDate(2025, 2, 28)}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2025, 3, 1) << QDate(2025, 3, 31);
+  QTest::newRow("monthly-interval")
+      << QStringLiteral("monthly") << QDate(2026, 7, 31) << 2 << QList<int>{}
+      << QList<QDate>{QDate(2026, 7, 31), QDate(2026, 9, 30)}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(2026, 11, 30);
+  QTest::newRow("yearly-leap-anchor")
+      << QStringLiteral("yearly") << QDate(2024, 2, 29) << 2 << QList<int>{}
+      << QList<QDate>{QDate(2024, 2, 29), QDate(2026, 2, 28)}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(2028, 2, 29);
+  QTest::newRow("finite-count-resolved")
+      << QStringLiteral("monthly") << QDate(2026, 9, 3) << 1 << QList<int>{}
+      << QList<QDate>{QDate(2026, 9, 3), QDate(2026, 10, 3)}
+      << QStringLiteral("afterCount") << QDate{} << 2 << QDate(2026, 9, 30) << QDate{};
+  QTest::newRow("finite-until-resolved")
+      << QStringLiteral("monthly") << QDate(2026, 9, 3) << 1 << QList<int>{}
+      << QList<QDate>{QDate(2026, 9, 3)}
+      << QStringLiteral("onDate") << QDate(2026, 9, 3) << 0 << QDate(2026, 9, 30) << QDate{};
+  QTest::newRow("ended-but-unresolved")
+      << QStringLiteral("daily") << QDate(2026, 9, 1) << 1 << QList<int>{}
+      << QList<QDate>{QDate(2026, 9, 1), QDate(2026, 9, 3)}
+      << QStringLiteral("onDate") << QDate(2026, 9, 3) << 0 << QDate(2026, 9, 30) << QDate(2026, 9, 2);
+  QTest::newRow("ancient-open-series")
+      << QStringLiteral("daily") << QDate(1900, 1, 1) << 1 << QList<int>{} << QList<QDate>{}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(1900, 1, 1);
+  QTest::newRow("future-unresolved")
+      << QStringLiteral("monthly") << QDate(2027, 1, 3) << 1 << QList<int>{} << QList<QDate>{}
+      << QStringLiteral("never") << QDate{} << 0 << QDate(2026, 9, 30) << QDate(2027, 1, 3);
+}
+
+void RecurrenceTest::projectDefinitionPendingDate() {
+  QFETCH(QString, frequency);
+  QFETCH(QDate, anchor);
+  QFETCH(int, interval);
+  QFETCH(QList<int>, weekdays);
+  QFETCH(QList<QDate>, resolvedDates);
+  QFETCH(QString, endMode);
+  QFETCH(QDate, until);
+  QFETCH(int, count);
+  QFETCH(QDate, today);
+  QFETCH(QDate, pending);
+  waypoint::TaskRecord task;
+  task.id = QStringLiteral("series");
+  task.scheduledDate = anchor;
+  task.recurrence = waypoint::RecurrenceRule::fromJson({
+      {QStringLiteral("frequency"), frequency},
+      {QStringLiteral("interval"), interval},
+      {QStringLiteral("endMode"), endMode},
+      {QStringLiteral("untilDate"), until.toString(Qt::ISODate)},
+      {QStringLiteral("occurrenceCount"), count},
+  });
+  task.recurrence.weekdays = weekdays;
+  QList<waypoint::TaskOccurrenceState> states;
+  for (const QDate &date : resolvedDates) {
+    waypoint::TaskOccurrenceState state;
+    state.taskId = task.id;
+    state.occurrenceDate = date;
+    state.status = states.size() % 2 == 0 ? waypoint::OccurrenceStatus::Completed
+                                        : waypoint::OccurrenceStatus::Skipped;
+    state.completedDate = today;
+    states.append(state);
+  }
+  const auto value = waypoint::projectTaskDefinitions({task}, states, today).first().toObject();
+  QCOMPARE(value.value(QStringLiteral("pendingDate")).toString(), pending.toString(Qt::ISODate));
+  QCOMPARE(value.value(QStringLiteral("overdue")).toBool(), pending.isValid() && pending < today);
+  QCOMPARE(value.value(QStringLiteral("scheduledDate")).toString(), anchor.toString(Qt::ISODate));
+  QVERIFY(!value.value(QStringLiteral("completed")).toBool());
+}
+
+void RecurrenceTest::preserveNonRecurringDefinitionCompletion() {
+  waypoint::TaskRecord task;
+  task.id = QStringLiteral("once");
+  task.scheduledDate = QDate(2026, 9, 3);
+  const QDate today(2026, 9, 30);
+  const auto pending = waypoint::projectTaskDefinitions({task}, {}, today).first().toObject();
+  QCOMPARE(pending.value(QStringLiteral("pendingDate")).toString(), QStringLiteral("2026-09-03"));
+  QVERIFY(pending.value(QStringLiteral("overdue")).toBool());
+  task.completed = true;
+  task.completedDate = QDate(2026, 9, 4);
+  const auto completed = waypoint::projectTaskDefinitions({task}, {}, today).first().toObject();
+  QVERIFY(completed.value(QStringLiteral("completed")).toBool());
+  QVERIFY(completed.value(QStringLiteral("completionLate")).toBool());
+  QVERIFY(completed.value(QStringLiteral("pendingDate")).toString().isEmpty());
+  QVERIFY(!completed.value(QStringLiteral("overdue")).toBool());
+}
 
 void RecurrenceTest::serializeTypedRule() {
   waypoint::RecurrenceRule expected;

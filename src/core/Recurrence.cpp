@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <utility>
+#include <limits>
 
 namespace waypoint {
 namespace {
@@ -145,9 +146,19 @@ QDate nextRecurrenceSearchEnd(const TaskRecord &task, const QDate &today) {
 
 QDate firstUnresolvedDueDate(const TaskRecord &task,
                              const QHash<QString, TaskOccurrenceState> &stateByOccurrence,
-                             const QDate &today) {
+                             const QDate &today,
+                             const int candidateLimit = std::numeric_limits<int>::max()) {
+  RecurrenceRule rule = task.recurrence;
+  QDate searchEnd = today;
+  if (rule.endMode == RecurrenceEndMode::OnDate) {
+    searchEnd = std::min(searchEnd, rule.untilDate);
+  }
+  rule.occurrenceCount = rule.endMode == RecurrenceEndMode::AfterCount
+                             ? std::min(rule.occurrenceCount, candidateLimit)
+                             : candidateLimit;
+  rule.endMode = RecurrenceEndMode::AfterCount;
   const QList<QDate> dueDates =
-      recurrenceDates(task.scheduledDate, task.recurrence, task.scheduledDate, today);
+      recurrenceDates(task.scheduledDate, rule, task.scheduledDate, searchEnd);
   for (const QDate &date : dueDates) {
     const auto state = stateByOccurrence.constFind(occurrenceKey(task.id, date));
     if (state == stateByOccurrence.cend() || state->status == OccurrenceStatus::Pending) {
@@ -444,6 +455,50 @@ QList<QDate> recurrenceDates(const QDate &anchorDate, const RecurrenceRule &rule
     break;
   }
   return dates;
+}
+
+QJsonArray projectTaskDefinitions(const QList<TaskRecord> &tasks,
+                                  const QList<TaskOccurrenceState> &states, const QDate &today) {
+  QHash<QString, TaskOccurrenceState> stateByOccurrence;
+  QHash<QString, QDate> lastResolvedDate;
+  QHash<QString, int> resolvedCounts;
+  for (const TaskOccurrenceState &state : states) {
+    stateByOccurrence.insert(occurrenceKey(state.taskId, state.occurrenceDate), state);
+    if (state.status != OccurrenceStatus::Pending) {
+      lastResolvedDate[state.taskId] = std::max(lastResolvedDate.value(state.taskId), state.occurrenceDate);
+      ++resolvedCounts[state.taskId];
+    }
+  }
+
+  QJsonArray result;
+  for (const TaskRecord &task : tasks) {
+    QDate pendingDate = task.completed ? QDate{} : task.scheduledDate;
+    if (task.recurrence.isRecurring()) {
+      // At most N resolved occurrences can precede the first unresolved one.
+      // Bound generation by stored history, not by the age of an open-ended series.
+      pendingDate = firstUnresolvedDueDate(
+          task, stateByOccurrence,
+          nextRecurrenceSearchEnd(task, lastResolvedDate.value(task.id, task.scheduledDate)),
+          resolvedCounts.value(task.id) + 1);
+    }
+    QJsonObject value = task.toJson();
+    value.insert(QStringLiteral("taskId"), task.id);
+    value.insert(QStringLiteral("categoryName"), task.categoryName);
+    value.insert(QStringLiteral("categoryColor"), task.categoryColor);
+    value.insert(QStringLiteral("recurring"), task.recurrence.isRecurring());
+    value.insert(QStringLiteral("recurrenceLabel"), task.recurrence.label());
+    TaskOccurrence occurrence;
+    occurrence.occurrenceDate = task.scheduledDate;
+    occurrence.completed = task.completed;
+    occurrence.completedDate = task.completedDate;
+    occurrence.registeredAt = task.registeredAt;
+    value.insert(QStringLiteral("completionLabel"), occurrence.completionLabel());
+    value.insert(QStringLiteral("completionLate"), occurrence.completionLate());
+    value.insert(QStringLiteral("pendingDate"), pendingDate.toString(Qt::ISODate));
+    value.insert(QStringLiteral("overdue"), pendingDate.isValid() && pendingDate < today);
+    result.append(value);
+  }
+  return result;
 }
 
 QList<TaskOccurrence> projectOccurrences(const QList<TaskRecord> &tasks,

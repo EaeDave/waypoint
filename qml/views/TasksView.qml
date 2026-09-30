@@ -291,6 +291,7 @@ Item {
                                     taskId: taskDelegate.modelData.taskId
                                     title: taskDelegate.modelData.title
                                     scheduledDateKey: taskDelegate.modelData.scheduledDate
+                                    pendingDate: taskDelegate.modelData.pendingDate || ""
                                     scheduledTimeKey: taskDelegate.modelData.scheduledTime
                                     emoji: taskDelegate.modelData.emoji || ""
                                     categoryId: taskDelegate.modelData.categoryId || ""
