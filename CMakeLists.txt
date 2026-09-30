@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.18 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.19 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -124,6 +124,7 @@ if(ANDROID)
             qml/mobile/components/MobileComboBox.qml
             qml/mobile/components/MobileCheck.qml
             qml/mobile/components/MobileField.qml
+            qml/mobile/components/MobileDatePicker.qml
             qml/mobile/components/MobileIcon.qml
             qml/mobile/components/SectionCard.qml
             qml/mobile/components/TaskEditor.qml
@@ -227,6 +228,7 @@ else()
             qml/components/AppMenuItem.qml
             qml/components/AppTextField.qml
             qml/components/AppTimePicker.qml
+            qml/components/AppDatePicker.qml
             qml/components/AppReminderPicker.qml
             qml/components/AppEmojiPicker.qml
             qml/components/AppHabitReminderPicker.qml

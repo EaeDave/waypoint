@@ -10,6 +10,7 @@ Item {
     property alias text: pickerInput.text
     property bool showInlineButton: true
     property bool focusAcceptOnOpen: false
+    property bool embedded: false
     readonly property bool acceptableInput: pickerInput.acceptableInput
     property int pendingHour: 0
     property int pendingMinute: 0
@@ -18,8 +19,8 @@ Item {
 
     signal selectionAccepted(string selectedTime)
 
-    implicitWidth: showInlineButton ? 132 : 0
-    implicitHeight: showInlineButton ? WaypointTheme.controlHeight : 0
+    implicitWidth: embedded ? 420 : showInlineButton ? 132 : 0
+    implicitHeight: embedded ? selectionContent.implicitHeight : showInlineButton ? WaypointTheme.controlHeight : 0
 
     function pad(value) {
         return String(value).padStart(2, "0");
@@ -57,7 +58,10 @@ Item {
             pendingMinute = now.minute;
             updateTextFromSelection();
         }
-        picker.open();
+        if (embedded)
+            pickerInput.forceActiveFocus();
+        else
+            picker.open();
     }
 
     function selectCurrentTime() {
@@ -86,15 +90,16 @@ Item {
         if (!pickerInput.acceptableInput)
             return;
         syncSelectionFromText();
-        committing = true;
-        const selectedTime = pickerInput.text;
-        picker.close();
-        root.selectionAccepted(selectedTime);
+        if (!embedded) {
+            committing = true;
+            picker.close();
+        }
+        root.selectionAccepted(pickerInput.text);
     }
 
     AppButton {
         anchors.fill: parent
-        visible: root.showInlineButton
+        visible: root.showInlineButton && !root.embedded
         text: root.acceptableInput ? pickerInput.text + "  ◷" : "Selecionar horário  ◷"
         onClicked: root.openPicker()
     }
@@ -129,10 +134,17 @@ Item {
             border.color: WaypointTheme.activeBorder
         }
 
-        contentItem: ColumnLayout {
+        contentHeight: selectionContent.implicitHeight
+    }
+
+    ColumnLayout {
+            id: selectionContent
+            parent: root.embedded ? root : picker.contentItem
+            width: parent.width
             spacing: WaypointTheme.controlGap
 
             Text {
+                visible: !root.embedded
                 text: "SELECIONAR HORÁRIO"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
@@ -159,7 +171,7 @@ Item {
                     regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
                 }
                 background: Item {}
-                onTextEdited: root.syncSelectionFromText()
+                onTextChanged: root.syncSelectionFromText()
                 onAccepted: root.applySelection()
             }
 
@@ -173,7 +185,7 @@ Item {
 
             GridLayout {
                 Layout.alignment: Qt.AlignHCenter
-                columns: 6
+                columns: root.embedded ? 8 : 6
                 columnSpacing: 4
                 rowSpacing: 4
 
@@ -200,7 +212,7 @@ Item {
 
             GridLayout {
                 Layout.alignment: Qt.AlignHCenter
-                columns: 10
+                columns: root.embedded ? 12 : 10
                 columnSpacing: 4
                 rowSpacing: 4
 
@@ -231,10 +243,12 @@ Item {
                 }
                 AppButton {
                     text: "Cancelar"
+                    visible: !root.embedded
                     onClicked: root.cancelSelection()
                 }
                 AppButton {
                     id: acceptButton
+                    visible: !root.embedded
                     text: "Concluir"
                     selected: true
                     enabled: root.acceptableInput
@@ -242,5 +256,4 @@ Item {
                 }
             }
         }
-    }
 }

@@ -21,7 +21,9 @@ BarWidget {
     property string loadingActivityDate: ""
     property bool activityRefreshPending: false
     property var pendingCompletion: null
-    readonly property bool actionBusy: actionProcess.running
+    property bool actionPending: false
+    property bool pendingTaskCreation: false
+    readonly property bool actionBusy: actionPending || actionProcess.running
     property var holidaySyncStatus: ({ state: "local-only", lastError: "" })
     property string loadError: ""
     property string actionError: ""
@@ -83,24 +85,68 @@ BarWidget {
     }
 
 
-    function runAction(arguments, completion) {
-        if (actionProcess.running)
+    function runAction(arguments, completion, createsTask) {
+        if (actionBusy)
             return false;
         actionError = "";
         pendingCompletion = completion || null;
+        pendingTaskCreation = createsTask === true;
+        actionPending = true;
         actionProcess.command = ["waypointctl"].concat(arguments);
         actionProcess.running = true;
         return true;
     }
 
-    function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji, categoryId) {
-        const time = scheduledTime || Qt.formatTime(new Date(), "HH:mm");
+    function addTask(title, date, scheduledTime, reminderMinutesBefore, emoji, categoryId,
+                     recurrence) {
         const reminders = reminderMinutesBefore.length === 0
             ? "none" : reminderMinutesBefore.join(",");
-        runAction(["add", "--date", Model.dateKey(date),
-                   "--time", time, "--reminders", reminders,
-                   "--title", title, "--emoji", emoji || "",
-                   "--category-id", categoryId || ""]);
+        const arguments = ["add", "--date", Model.dateKey(date),
+                           "--time", scheduledTime, "--reminders", reminders,
+                           "--title", title, "--emoji", emoji || "",
+                           "--category-id", categoryId || ""];
+        appendRecurrenceArguments(arguments, recurrence);
+        return runAction(arguments, null, true);
+    }
+
+    function appendRecurrenceArguments(arguments, recurrence) {
+        arguments.push("--frequency", recurrence.frequency || "none",
+                       "--interval", String(recurrence.interval || 1),
+                       "--end-mode", recurrence.endMode || "never",
+                       "--count", String(recurrence.occurrenceCount || 0));
+        const weekdays = (recurrence.weekdays || []).join(",");
+        if (weekdays !== "")
+            arguments.push("--weekdays", weekdays);
+        if (recurrence.untilDate)
+            arguments.push("--until", recurrence.untilDate);
+    }
+
+    function finishAction(exitCode) {
+        let succeeded = false;
+        try {
+            const response = JSON.parse(String(actionOutput.text || "{}"));
+            if (exitCode !== 0 || !response.ok)
+                throw new Error(response.error || String(actionErrors.text || "").trim()
+                                || "Não foi possível salvar");
+            succeeded = true;
+            actionError = "";
+        } catch (error) {
+            actionError = String(error);
+        }
+        const createdTask = pendingTaskCreation;
+        const completion = pendingCompletion;
+        pendingTaskCreation = false;
+        pendingCompletion = null;
+        actionPending = false;
+        if (panelLoader.item) {
+            if (createdTask)
+                panelLoader.item.taskCreationFinished(succeeded);
+            else if (succeeded && completion)
+                panelLoader.item.completionSaved(completion);
+        }
+        refresh();
+        if (requestedHabitDate !== "")
+            refreshHabits(requestedHabitDate);
     }
 
     function setOccurrenceCompleted(taskId, occurrenceDate, completed, completedDate,
@@ -128,16 +174,8 @@ BarWidget {
             ? "none" : reminderMinutesBefore.join(",");
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
                            "--reminders", reminders, "--emoji", emoji || "",
-                           "--category-id", categoryId || "",
-                           "--frequency", recurrence.frequency || "none",
-                           "--interval", String(recurrence.interval || 1),
-                           "--end-mode", recurrence.endMode || "never",
-                           "--count", String(recurrence.occurrenceCount || 0)];
-        const weekdays = (recurrence.weekdays || []).join(",");
-        if (weekdays !== "")
-            arguments.push("--weekdays", weekdays);
-        if (recurrence.untilDate)
-            arguments.push("--until", recurrence.untilDate);
+                           "--category-id", categoryId || ""];
+        appendRecurrenceArguments(arguments, recurrence);
         runAction(arguments);
     }
 
@@ -381,34 +419,14 @@ BarWidget {
     Process {
         id: actionProcess
         running: false
-        onExited: {
-            root.refresh();
-            if (root.requestedHabitDate !== "")
-                root.refreshHabits(root.requestedHabitDate);
-        }
+        onExited: (exitCode, exitStatus) => Qt.callLater(() => root.finishAction(exitCode))
         stdout: StdioCollector {
+            id: actionOutput
             waitForEnd: true
-            onStreamFinished: {
-                try {
-                    const response = JSON.parse(String(text || "{}"));
-                    if (!response.ok)
-                        throw new Error(response.error || "Não foi possível salvar");
-                    root.actionError = "";
-                    if (root.pendingCompletion && panelLoader.item)
-                        panelLoader.item.completionSaved(root.pendingCompletion);
-                } catch (error) {
-                    root.actionError = String(error);
-                }
-                root.pendingCompletion = null;
-            }
         }
         stderr: StdioCollector {
+            id: actionErrors
             waitForEnd: true
-            onStreamFinished: {
-                const message = String(text || "").trim();
-                if (message !== "")
-                    root.actionError = message;
-            }
         }
     }
 

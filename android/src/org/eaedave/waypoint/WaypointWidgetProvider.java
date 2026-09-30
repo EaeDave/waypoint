@@ -709,6 +709,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     intent.putExtra(EXTRA_OPEN_PAGE, "tasks");
     if (!taskId.isEmpty()) {
       intent.putExtra(EXTRA_TASK_ID, taskId);
+    } else {
+      intent.putExtra("waypoint.scheduledDate", selectedDate(context, appWidgetId, LocalDate.now()).toString());
     }
     intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
     return PendingIntent.getActivity(context, appWidgetId * 100 + 120 + requestOffset, intent,

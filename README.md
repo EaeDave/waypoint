@@ -40,6 +40,17 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
 - Linux completion actions play the desktop notification sound from both the main app and the Omarchy panel.
 
+Task creation starts with a compact title field or **+ Tarefa**. In the task list, continue through **date → time → Create**; a list's **+** opens a dimmed modal with that list already selected. Today, the calendar, the Omarchy panel, and the Android widget supply their selected day and skip the required date step, while keeping the date editable. The widget passes its selected day to the Android editor instead of defaulting to today.
+
+Emoji, list, reminders, and recurrence remain available in the draft; secondary options are collapsed under **Mais opções** with a summary. Nothing is saved until the final confirmation. Going back or cancelling does not create a task, and a failed save keeps the draft available. Desktop and Android date selectors use a calendar rather than requiring ISO-date input.
+
+The CLI also accepts recurrence when creating tasks, for example:
+
+```bash
+waypointctl add --title "Planejar a semana" --date 2026-10-05 --time 09:30 \
+  --frequency weekly --weekdays 1,3 --end-mode afterCount --count 6 --reminders 30,0
+```
+
 #### Completion history
 
 Desktop, Android, the home-screen widget, and the Omarchy panel keep each completed occurrence on its **original scheduled date**. The **actual completion date** is a separate floating calendar day; **registered at** records when the action was entered. Completing an overdue task asks **Hoje**, **Na data prevista**, or **Escolher data**. Same-day completion remains a single action.

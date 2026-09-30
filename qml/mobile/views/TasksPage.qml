@@ -78,8 +78,8 @@ Item {
         return false;
     }
 
-    function createTask(listId) {
-        taskEditor.openForCreate(controller.todayKey, listId || "");
+    function createTask(listId, dateKey) {
+        taskEditor.openForCreate(dateKey || "", listId || "");
     }
 
     TaskEditor {
@@ -331,6 +331,7 @@ Item {
                                         Text {
                                             Layout.fillWidth: true
                                             text: taskRow.modelData.title
+                                            Accessible.name: text
                                             color: taskRow.modelData.completed
                                                    ? MobileTheme.disabled
                                                    : taskRow.modelData.categoryName !== ""

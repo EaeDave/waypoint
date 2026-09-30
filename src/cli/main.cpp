@@ -49,6 +49,36 @@ std::optional<QList<int>> parseReminderMinutesBefore(const QString &value, QStri
   return reminders;
 }
 
+std::optional<waypoint::RecurrenceRule> recurrenceFromOptions(const QCommandLineParser &parser,
+                                                              QString *errorMessage) {
+  const QString frequency = parser.value(QStringLiteral("frequency"));
+  const QStringList frequencies{QStringLiteral("none"), QStringLiteral("daily"), QStringLiteral("weekly"),
+                                QStringLiteral("monthly"), QStringLiteral("yearly")};
+  if (!frequencies.contains(frequency)) {
+    *errorMessage = QStringLiteral("--frequency must be none, daily, weekly, monthly, or yearly");
+    return std::nullopt;
+  }
+  QJsonArray weekdays;
+  const QStringList weekdayValues =
+      parser.value(QStringLiteral("weekdays")).split(QLatin1Char(','), Qt::SkipEmptyParts);
+  for (const QString &weekdayValue : weekdayValues) {
+    bool validWeekday = false;
+    const int weekday = weekdayValue.toInt(&validWeekday);
+    if (!validWeekday || weekday < 1 || weekday > 7) {
+      *errorMessage = QStringLiteral("--weekdays must contain values from 1 through 7");
+      return std::nullopt;
+    }
+    weekdays.append(weekday);
+  }
+  return waypoint::RecurrenceRule::fromJson(
+      {{QStringLiteral("frequency"), frequency},
+       {QStringLiteral("interval"), parser.value(QStringLiteral("interval")).toInt()},
+       {QStringLiteral("weekdays"), weekdays},
+       {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
+       {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
+       {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
+}
+
 std::optional<waypoint::HabitRecord> habitFromOptions(const QCommandLineParser &parser,
                                                       QString *errorMessage) {
   waypoint::HabitRecord habit;
@@ -440,9 +470,13 @@ int main(int argc, char *argv[]) {
     if (!reminders.has_value()) {
       return printError(error);
     }
-    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, {}, *reminders,
-                        parser.value(QStringLiteral("emoji")),
-                        parser.value(QStringLiteral("category-id")), &error)) {
+    const auto recurrence = recurrenceFromOptions(parser, &error);
+    if (!recurrence.has_value()) {
+      return printError(error);
+    }
+    if (!client.addTask(parser.value(QStringLiteral("title")), date, time, *recurrence, *reminders,
+                        parser.value(QStringLiteral("emoji")), parser.value(QStringLiteral("category-id")),
+                        &error)) {
       return printError(error);
     }
     printJson({{QStringLiteral("ok"), true}});
@@ -649,33 +683,13 @@ int main(int argc, char *argv[]) {
   } else if (command == QStringLiteral("edit")) {
     const QString title = parser.value(QStringLiteral("title")).trimmed();
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));
-    const QString frequency = parser.value(QStringLiteral("frequency"));
-    const QStringList frequencies{QStringLiteral("none"), QStringLiteral("daily"), QStringLiteral("weekly"),
-                                  QStringLiteral("monthly"), QStringLiteral("yearly")};
     if (title.isEmpty() || !time.isValid()) {
       return printError(QStringLiteral("edit requires --title and --time HH:mm"));
     }
-    if (!frequencies.contains(frequency)) {
-      return printError(QStringLiteral("--frequency must be none, daily, weekly, monthly, or yearly"));
+    const auto recurrence = recurrenceFromOptions(parser, &error);
+    if (!recurrence.has_value()) {
+      return printError(error);
     }
-    QJsonArray weekdays;
-    const QStringList weekdayValues =
-        parser.value(QStringLiteral("weekdays")).split(QLatin1Char(','), Qt::SkipEmptyParts);
-    for (const QString &weekdayValue : weekdayValues) {
-      bool validWeekday = false;
-      const int weekday = weekdayValue.toInt(&validWeekday);
-      if (!validWeekday || weekday < 1 || weekday > 7) {
-        return printError(QStringLiteral("--weekdays must contain values from 1 through 7"));
-      }
-      weekdays.append(weekday);
-    }
-    const waypoint::RecurrenceRule recurrence = waypoint::RecurrenceRule::fromJson(
-        {{QStringLiteral("frequency"), frequency},
-         {QStringLiteral("interval"), parser.value(QStringLiteral("interval")).toInt()},
-         {QStringLiteral("weekdays"), weekdays},
-         {QStringLiteral("endMode"), parser.value(QStringLiteral("end-mode"))},
-         {QStringLiteral("untilDate"), parser.value(QStringLiteral("until"))},
-         {QStringLiteral("occurrenceCount"), parser.value(QStringLiteral("count")).toInt()}});
     std::optional<QList<int>> reminders;
     if (parser.isSet(QStringLiteral("reminders"))) {
       const auto parsedReminders =
@@ -689,7 +703,7 @@ int main(int argc, char *argv[]) {
         parser.isSet(QStringLiteral("category-id"))
             ? std::optional<QString>(parser.value(QStringLiteral("category-id")))
             : std::nullopt;
-    succeeded = client.editTask(taskId, title, time, recurrence, reminders,
+    succeeded = client.editTask(taskId, title, time, *recurrence, reminders,
                                 parser.value(QStringLiteral("emoji")), categoryId, &error);
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);

@@ -136,7 +136,7 @@ signals:
   void municipalitiesChanged();
   void syncConfigurationChanged();
   void syncStatusChanged();
-  void taskEditorRequested(const QString &taskId);
+  void taskEditorRequested(const QString &taskId, const QString &scheduledDateKey);
   void updateStatusChanged();
 
 private:

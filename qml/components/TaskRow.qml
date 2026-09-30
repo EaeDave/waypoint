@@ -327,7 +327,7 @@ Rectangle {
 
     function openEditor() {
         editTitle.text = root.title;
-        editDate.text = root.scheduledDateKey;
+        editDate.dateKey = root.scheduledDateKey;
         editTime.text = root.scheduledTimeKey;
         editEmoji.emoji = root.emoji;
         editReminders.setMinutesBefore(root.reminderMinutesBefore || [0]);
@@ -343,7 +343,7 @@ Rectangle {
             root.weekdayMask = 1 << root.anchorWeekdayIndex();
         customEnding.currentIndex = Math.max(
             0, customEnding.indexOfValue(String(root.recurrence.endMode || "never")));
-        customUntilDate.text = String(root.recurrence.untilDate || root.scheduledDateKey);
+        customUntilDate.dateKey = String(root.recurrence.untilDate || root.scheduledDateKey);
         customOccurrenceCount.value = Math.max(1, Number(root.recurrence.occurrenceCount || 10));
         recurrenceInput.currentIndex = root.recurrencePresetIndex();
         editPopup.open();
@@ -354,16 +354,16 @@ Rectangle {
     function saveEdit() {
         const normalizedTitle = editTitle.text.trim();
         const normalizedTime = editTime.text.trim();
-        if (normalizedTitle === "" || !editTime.acceptableInput)
+        if (normalizedTitle === "" || !editDate.acceptableInput || !editTime.acceptableInput)
             return;
 
         const custom = recurrenceInput.currentIndex === 5;
         const frequency = root.selectedFrequency();
         const endMode = custom ? customEnding.currentValue : "never";
         if (root.controller.editTask(
-                root.taskId, editDate.text.trim(), normalizedTitle, normalizedTime,
+                root.taskId, editDate.dateKey, normalizedTitle, normalizedTime,
                 frequency, custom ? customInterval.value : 1, root.selectedWeekdays(),
-                endMode, endMode === "onDate" ? customUntilDate.text.trim() : "",
+                endMode, endMode === "onDate" ? customUntilDate.dateKey : "",
                 endMode === "afterCount" ? customOccurrenceCount.value : 0,
                 editReminders.minutesBefore, editEmoji.emoji,
                 editCategory.currentValue))
@@ -426,13 +426,9 @@ Rectangle {
                 }
             }
 
-            AppTextField {
+            AppDatePicker {
                 id: editDate
                 Layout.fillWidth: true
-                placeholderText: "AAAA-MM-DD"
-                validator: RegularExpressionValidator {
-                    regularExpression: /\d{4}-\d{2}-\d{2}/
-                }
             }
 
             AppTimePicker {
@@ -581,11 +577,10 @@ Rectangle {
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.bodySmallSize
                 }
-                AppTextField {
+                AppDatePicker {
                     id: customUntilDate
                     visible: customEnding.currentValue === "onDate"
                     Layout.fillWidth: true
-                    placeholderText: "AAAA-MM-DD"
                 }
 
                 Text {

@@ -48,16 +48,16 @@ Panel {
     property bool timePickerVisible: false
     property bool reminderPickerVisible: false
     property var timePickerTarget: null
-    property bool timePickerCreatesTask: false
     property bool timePickerAddsHabitReminder: false
-    property bool reminderPickerCreatesTask: false
-    property string pendingQuickTitle: ""
+    property bool creatingTask: false
+    property bool creationPending: false
+    property bool taskMoreOptions: false
+    property var quickDraft: null
     property date pendingQuickDate: new Date()
-    property string quickEmoji: ""
-    property string pendingQuickEmoji: ""
-    property string pendingQuickTime: ""
+    property bool taskDatePickerVisible: false
+    property date taskPickerMonth: new Date()
+    property bool taskDatePickerForEnding: false
     property string editingEmoji: ""
-    property string quickCategoryId: ""
     property string editingCategoryId: ""
     property string emojiPickerTarget: ""
     property int pickerHour: 0
@@ -259,15 +259,13 @@ Panel {
         timePickerInput.text = padTimePart(pickerHour) + ":" + padTimePart(pickerMinute);
     }
 
-    function openTimePicker(target, initialTime, createsTask) {
+    function openTimePicker(target, initialTime) {
         timePickerTarget = target;
-        timePickerCreatesTask = createsTask === true;
         timePickerAddsHabitReminder = false;
         timePickerInput.text = initialTime || currentTimeKey();
         syncPickerSelectionFromText();
         timePickerVisible = true;
-        if (timePickerCreatesTask)
-            Qt.callLater(() => timePickerConfirm.forceActiveFocus());
+        Qt.callLater(() => timePickerConfirm.forceActiveFocus());
     }
 
     function selectCurrentPickerTime() {
@@ -290,8 +288,6 @@ Panel {
     function closeTimePicker() {
         timePickerVisible = false;
         timePickerTarget = null;
-        timePickerCreatesTask = false;
-        pendingQuickTitle = "";
         timePickerAddsHabitReminder = false;
     }
 
@@ -301,9 +297,7 @@ Panel {
     }
 
     function applyEmoji(selectedEmoji) {
-        if (emojiPickerTarget === "quick")
-            quickEmoji = selectedEmoji;
-        else if (emojiPickerTarget === "edit")
+        if (emojiPickerTarget === "edit")
             editingEmoji = selectedEmoji;
         else if (emojiPickerTarget === "habit")
             editingHabitEmoji = selectedEmoji;
@@ -314,20 +308,15 @@ Panel {
         if (!timePickerInput.acceptableInput)
             return;
         const selectedTime = timePickerInput.text;
+        if (creatingTask && taskEditorVisible) {
+            taskTimeInput.text = selectedTime;
+            saveTaskEdit();
+            return;
+        }
         if (timePickerAddsHabitReminder) {
             addHabitReminder(selectedTime);
             timePickerVisible = false;
             timePickerAddsHabitReminder = false;
-            return;
-        }
-        if (timePickerCreatesTask) {
-            pendingQuickTime = selectedTime;
-            timePickerVisible = false;
-            timePickerTarget = null;
-            timePickerCreatesTask = false;
-            setEditingReminders([0]);
-            reminderPickerCreatesTask = true;
-            reminderPickerVisible = true;
             return;
         }
         if (timePickerTarget)
@@ -337,15 +326,19 @@ Panel {
 
     function beginQuickTask() {
         const title = quickAdd.text.trim();
-        if (title === "" || !hostWidget)
+        if (title === "" || !hostWidget || creationPending || hostWidget.actionBusy)
             return;
-        pendingQuickTitle = title;
-        pendingQuickDate = new Date(selectedDate.getTime());
-        pendingQuickEmoji = quickEmoji;
-        openTimePicker(null, currentTimeKey(), true);
+        if (!quickDraft)
+            pendingQuickDate = new Date(selectedDate.getTime());
+        const draft = quickDraft || { scheduledTime: currentTimeKey() };
+        draft.title = title;
+        openTaskEditor(draft, true);
+        timePickerInput.text = taskTimeInput.text;
+        timePickerAddsHabitReminder = false;
+        syncPickerSelectionFromText();
     }
     function taskAnchorWeekdayIndex() {
-        return (selectedDate.getDay() + 6) % 7;
+        return ((creatingTask ? pendingQuickDate : selectedDate).getDay() + 6) % 7;
     }
 
     function taskRecurrencePresetValue() {
@@ -424,32 +417,34 @@ Panel {
 
     function closeReminderPicker() {
         reminderPickerVisible = false;
-        if (reminderPickerCreatesTask) {
-            pendingQuickTitle = "";
-            pendingQuickTime = "";
-            pendingQuickEmoji = "";
-        }
-        reminderPickerCreatesTask = false;
     }
 
-    function applyReminderPicker() {
-        if (reminderPickerCreatesTask) {
-            if (!hostWidget)
-                return;
-            hostWidget.addTask(pendingQuickTitle, pendingQuickDate,
-                               pendingQuickTime, editingReminderMinutesBefore,
-                               pendingQuickEmoji, quickCategoryId);
-            quickAdd.text = "";
-            quickEmoji = "";
-            closeReminderPicker();
-            quickAdd.forceActiveFocus();
+    function preserveQuickDraft() {
+        if (timePickerInput.acceptableInput)
+            taskTimeInput.text = timePickerInput.text;
+        quickAdd.text = taskTitleInput.text;
+        quickDraft = {
+            title: taskTitleInput.text, scheduledTime: taskTimeInput.text,
+            emoji: editingEmoji, categoryId: editingCategoryId,
+            reminderMinutesBefore: editingReminderMinutesBefore.slice(),
+            recurrence: taskEditorRecurrence()
+        };
+    }
+
+    function taskCreationFinished(succeeded) {
+        creationPending = false;
+        if (!succeeded)
             return;
-        }
-        closeReminderPicker();
+        taskEditorVisible = false;
+        creatingTask = false;
+        quickDraft = null;
+        quickAdd.text = "";
+        Qt.callLater(() => quickAdd.forceActiveFocus());
     }
 
-
-    function openTaskEditor(task) {
+    function openTaskEditor(task, createsTask) {
+        creatingTask = createsTask === true;
+        taskMoreOptions = !creatingTask;
         editedTask = task;
         editingTaskId = String(task.taskId || "");
         editingOccurrenceDate = String(task.occurrenceDate || "");
@@ -472,31 +467,37 @@ Panel {
         if (frequency === "weekly" && editingWeekdayMask === 0)
             editingWeekdayMask = 1 << taskAnchorWeekdayIndex();
         taskCustomEnding.value = String(editingRecurrence.endMode || "never");
-        taskCustomUntilDate.text = String(editingRecurrence.untilDate || Model.dateKey(selectedDate));
+        taskCustomUntilDate.text = String(editingRecurrence.untilDate
+                                         || Model.dateKey(creatingTask ? pendingQuickDate : selectedDate));
         taskCustomOccurrenceCount.value =
             Math.max(1, Number(editingRecurrence.occurrenceCount || 10));
         taskRecurrenceInput.value = taskRecurrencePresetValue();
         editingRecurringTask = task.recurring === true;
         taskEditorVisible = true;
         Qt.callLater(() => {
-            taskTitleInput.forceActiveFocus();
-            taskTitleInput.selectAll();
+            if (creatingTask) {
+                timePickerConfirm.forceActiveFocus();
+            } else {
+                taskTitleInput.forceActiveFocus();
+                taskTitleInput.selectAll();
+            }
         });
     }
 
     function closeTaskEditor() {
+        if (creationPending)
+            return;
+        if (creatingTask)
+            preserveQuickDraft();
+        taskDatePickerVisible = false;
         taskEditorVisible = false;
     }
 
-    function saveTaskEdit() {
-        const title = taskTitleInput.text.trim();
-        const time = taskTimeInput.text.trim();
-        if (title === "" || !taskTimeInput.acceptableInput || !hostWidget)
-            return;
+    function taskEditorRecurrence() {
         const custom = taskRecurrenceInput.value === "custom";
         const frequency = custom ? taskCustomFrequency.value : taskRecurrenceInput.value;
         const endMode = custom ? taskCustomEnding.value : "never";
-        const recurrence = {
+        return {
             frequency: frequency,
             interval: custom ? taskCustomInterval.value : 1,
             weekdays: selectedTaskWeekdays(),
@@ -504,6 +505,62 @@ Panel {
             untilDate: endMode === "onDate" ? taskCustomUntilDate.text.trim() : "",
             occurrenceCount: endMode === "afterCount" ? taskCustomOccurrenceCount.value : 0
         };
+    }
+
+    function taskOptionsSummary() {
+        const list = categoryOptions().find(option => option.value === editingCategoryId);
+        const recurrence = taskEditorRecurrence();
+        const labels = { none: "Não repetir", daily: "Diária", weekly: "Semanal",
+                         monthly: "Mensal", yearly: "Anual" };
+        let repeat = labels[recurrence.frequency];
+        if (recurrence.frequency !== "none") {
+            repeat += " · intervalo " + recurrence.interval;
+            if (recurrence.weekdays.length)
+                repeat += " · " + recurrence.weekdays.map(day =>
+                    ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"][day - 1]).join(", ");
+            if (recurrence.endMode === "onDate")
+                repeat += " · até " + portugueseLocale.toString(
+                    Model.parseLocalDate(recurrence.untilDate), "dd/MM/yyyy");
+            else if (recurrence.endMode === "afterCount")
+                repeat += " · " + recurrence.occurrenceCount + " ocorrências";
+        }
+        const reminders = editingReminderMinutesBefore.length
+            ? editingReminderMinutesBefore.map(value => reminderLabel(value)).join(", ")
+            : "Sem notificações";
+        return (editingEmoji ? editingEmoji + " · " : "")
+            + (list ? list.label : "Entrada") + "\n" + reminders + "\n" + repeat;
+    }
+
+    function openTaskDatePicker(forEnding) {
+        taskDatePickerForEnding = forEnding;
+        const date = forEnding ? Model.parseLocalDate(taskCustomUntilDate.text) : pendingQuickDate;
+        taskPickerMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+        taskDatePickerVisible = true;
+    }
+
+    function chooseTaskDate(date) {
+        if (taskDatePickerForEnding)
+            taskCustomUntilDate.text = Model.dateKey(date);
+        else
+            pendingQuickDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        taskDatePickerVisible = false;
+        if (creatingTask)
+            Qt.callLater(() => timePickerConfirm.forceActiveFocus());
+    }
+
+    function saveTaskEdit() {
+        const title = taskTitleInput.text.trim();
+        const time = taskTimeInput.text.trim();
+        if (title === "" || !taskTimeInput.acceptableInput || !hostWidget
+                || hostWidget.actionBusy || creationPending)
+            return;
+        const recurrence = taskEditorRecurrence();
+        if (creatingTask) {
+            preserveQuickDraft();
+            creationPending = hostWidget.addTask(title, pendingQuickDate, time,
+                editingReminderMinutesBefore, editingEmoji, editingCategoryId, recurrence);
+            return;
+        }
         hostWidget.editTask(editingTaskId, title, time, recurrence,
                             editingReminderMinutesBefore, editingEmoji, editingCategoryId);
         closeTaskEditor();
@@ -567,7 +624,6 @@ Panel {
 
     function openHabitReminderTimePicker() {
         timePickerTarget = null;
-        timePickerCreatesTask = false;
         timePickerAddsHabitReminder = true;
         timePickerInput.text = currentTimeKey();
         syncPickerSelectionFromText();
@@ -657,18 +713,30 @@ Panel {
         centerOnBar: true
         focusTarget: keyCatcher
         contentWidth: popup.fittedContentWidth(Style.space(1120))
-        contentHeight: popup.fittedContentHeight(contentColumn.implicitHeight)
+        contentHeight: popup.fittedContentHeight(Math.max(contentColumn.implicitHeight,
+            root.taskEditorVisible ? taskEditorColumn.implicitHeight + Style.space(64) : 0))
 
         PanelKeyCatcher {
             id: keyCatcher
             anchors.fill: parent
             onMoveRequested: function (dx, dy) {
-                if (dx !== 0)
+                if (dx !== 0 && !root.taskEditorVisible)
                     root.moveMonth(dx);
             }
-            onActivateRequested: quickAdd.forceActiveFocus()
+            onActivateRequested: {
+                if (!root.taskEditorVisible)
+                    quickAdd.forceActiveFocus();
+            }
             onCloseRequested: {
-                if (root.completionPickerVisible)
+                if (root.taskDatePickerVisible)
+                    root.taskDatePickerVisible = false;
+                else if (root.reminderPickerVisible)
+                    root.closeReminderPicker();
+                else if (root.timePickerVisible)
+                    root.closeTimePicker();
+                else if (root.taskEditorVisible)
+                    root.closeTaskEditor();
+                else if (root.completionPickerVisible)
                     root.completionPickerVisible = false;
                 else
                     root.close();
@@ -1281,36 +1349,13 @@ Panel {
                             anchors.rightMargin: Style.space(10)
                             spacing: Style.space(4)
 
-                            Button {
-                                text: root.quickEmoji === "" ? "☺" : root.quickEmoji
-                                tooltipText: "Escolher emoji"
-                                foreground: root.foreground
-                                accent: Color.accent
-                                bordered: false
-                                fontFamily: root.quickEmoji === ""
-                                            ? root.fontFamily : "Noto Color Emoji"
-                                horizontalPadding: Style.space(6)
-                                onClicked: root.openEmojiPicker("quick", root.quickEmoji)
-                            }
-
-
-                            Dropdown {
-                                Layout.preferredWidth: Style.space(150)
-                                showLabel: false
-                                foreground: root.foreground
-                                background: Color.popups.background
-                                accent: Color.accent
-                                options: root.categoryOptions()
-                                value: root.quickCategoryId
-                                onChanged: function(value) {
-                                    root.quickCategoryId = String(value || "");
-                                }
-                            }
-
                             TextField {
                                 id: quickAdd
+                                objectName: "waypointQuickTaskTitle"
                                 Layout.fillWidth: true
-                                placeholderText: "Nova tarefa em " + root.portugueseLocale.toString(root.selectedDate, "d 'de' MMM") + "…"
+                                placeholderText: "Nova tarefa em " + root.portugueseLocale.toString(
+                                    root.quickDraft ? root.pendingQuickDate : root.selectedDate,
+                                    "d 'de' MMM") + "…"
                                 color: root.foreground
                                 placeholderTextColor: Qt.darker(root.foreground, 1.8)
                                 font.family: root.fontFamily
@@ -2131,7 +2176,8 @@ Panel {
                     id: taskEditorCard
                     anchors.centerIn: parent
                     width: Math.min(parent.width - Style.space(32), Style.space(460))
-                    height: contentTopInset + contentBottomInset + taskEditorColumn.implicitHeight
+                    height: Math.min(parent.height - Style.space(24),
+                        contentTopInset + contentBottomInset + taskEditorColumn.implicitHeight)
                     padding: Style.space(18)
                     radius: Style.cornerRadius
                     color: Color.popups.background
@@ -2143,17 +2189,27 @@ Panel {
                         anchors.fill: parent
                     }
 
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.topMargin: taskEditorCard.contentTopInset
+                        anchors.bottomMargin: taskEditorCard.contentBottomInset
+                        contentHeight: taskEditorColumn.implicitHeight
+                        contentWidth: width
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        enabled: !root.creationPending
+                        ScrollBar.vertical: ScrollBar {}
                     ColumnLayout {
                         id: taskEditorColumn
                         anchors.left: parent.left
                         anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.top: parent.top
                         anchors.leftMargin: taskEditorCard.contentLeftInset
                         anchors.rightMargin: taskEditorCard.contentRightInset
                         spacing: Style.space(10)
 
                         Text {
-                            text: "EDITAR TAREFA"
+                            text: root.creatingTask ? "NOVA TAREFA · HORÁRIO" : "EDITAR TAREFA"
                             color: Color.popups.text
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -2166,6 +2222,7 @@ Panel {
                             spacing: Style.space(8)
 
                             Button {
+                                visible: !root.creatingTask || root.taskMoreOptions
                                 text: root.editingEmoji === "" ? "☺" : root.editingEmoji
                                 tooltipText: "Escolher emoji"
                                 foreground: Color.popups.text
@@ -2184,11 +2241,27 @@ Panel {
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selectByMouse: true
-                                onAccepted: root.openTimePicker(taskTimeInput,
-                                                               taskTimeInput.text, false)
+                                onAccepted: {
+                                    if (root.creatingTask) {
+                                        timePickerConfirm.forceActiveFocus();
+                                    } else {
+                                        root.openTimePicker(taskTimeInput, taskTimeInput.text);
+                                    }
+                                }
                             }
                         }
 
+                        Button {
+                            visible: root.creatingTask
+                            Layout.fillWidth: true
+                            text: root.portugueseLocale.toString(root.pendingQuickDate,
+                                                                "ddd, dd 'de' MMMM 'de' yyyy")
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            tooltipText: "Alterar data"
+                            onClicked: root.openTaskDatePicker(false)
+                        }
                         TextField {
                             id: taskTimeInput
                             visible: false
@@ -2200,6 +2273,7 @@ Panel {
                         }
 
                         Button {
+                            visible: !root.creatingTask
                             Layout.fillWidth: true
                             text: (taskTimeInput.acceptableInput
                                    ? taskTimeInput.text
@@ -2208,11 +2282,31 @@ Panel {
                             accent: Color.accent
                             bordered: true
                             tooltipText: "Selecionar horário"
-                            onClicked: root.openTimePicker(taskTimeInput, taskTimeInput.text, false)
+                            onClicked: root.openTimePicker(taskTimeInput, taskTimeInput.text)
+                        }
+
+                        Text {
+                            visible: root.creatingTask
+                            Layout.fillWidth: true
+                            text: root.taskOptionsSummary()
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            wrapMode: Text.Wrap
+                        }
+                        Button {
+                            visible: root.creatingTask
+                            Layout.fillWidth: true
+                            text: root.taskMoreOptions ? "Menos opções" : "Mais opções"
+                            foreground: Color.popups.text
+                            accent: Color.accent
+                            bordered: true
+                            onClicked: root.taskMoreOptions = !root.taskMoreOptions
                         }
 
                         Dropdown {
                             id: taskCategoryInput
+                            visible: !root.creatingTask || root.taskMoreOptions
                             Layout.fillWidth: true
                             showLabel: false
                             foreground: Color.popups.text
@@ -2226,20 +2320,19 @@ Panel {
                         }
 
                         Button {
+                            visible: !root.creatingTask || root.taskMoreOptions
                             Layout.fillWidth: true
                             text: "Notificações · " + root.editingReminderMinutesBefore.length
                             foreground: Color.popups.text
                             accent: Color.accent
                             bordered: true
                             tooltipText: "Configurar até 5 notificações"
-                            onClicked: {
-                                root.reminderPickerCreatesTask = false;
-                                root.reminderPickerVisible = true;
-                            }
+                            onClicked: root.reminderPickerVisible = true
                         }
 
                         Dropdown {
                             id: taskRecurrenceInput
+                            visible: !root.creatingTask || root.taskMoreOptions
                             Layout.fillWidth: true
                             showLabel: false
                             foreground: Color.popups.text
@@ -2256,7 +2349,8 @@ Panel {
                         }
 
                         GridLayout {
-                            visible: taskRecurrenceInput.value === "custom"
+                            visible: (!root.creatingTask || root.taskMoreOptions)
+                                     && taskRecurrenceInput.value === "custom"
                             Layout.fillWidth: true
                             columns: 2
                             columnSpacing: Style.space(10)
@@ -2373,11 +2467,17 @@ Panel {
                             }
                             TextField {
                                 id: taskCustomUntilDate
+                                visible: false
+                            }
+                            Button {
                                 visible: taskCustomEnding.value === "onDate"
                                 Layout.fillWidth: true
-                                placeholderText: "AAAA-MM-DD"
+                                text: root.portugueseLocale.toString(
+                                    Model.parseLocalDate(taskCustomUntilDate.text), "dd/MM/yyyy")
                                 foreground: Color.popups.text
                                 accent: Color.accent
+                                bordered: true
+                                onClicked: root.openTaskDatePicker(true)
                             }
 
                             Text {
@@ -2398,7 +2498,15 @@ Panel {
                             }
                         }
 
+                        Item {
+                            id: creationTimePickerSlot
+                            visible: root.creatingTask
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: timePickerColumn.implicitHeight
+                        }
+
                         RowLayout {
+                            visible: !root.creatingTask
                             Layout.fillWidth: true
                             Button {
                                 text: root.editingCompleted ? "Alterar data da conclusão" : "Concluir"
@@ -2424,10 +2532,12 @@ Panel {
                         }
 
                         RowLayout {
+                            visible: !root.creatingTask
                             Layout.fillWidth: true
                             spacing: Style.space(8)
 
                             Button {
+                                visible: !root.creatingTask
                                 text: root.editingRecurringTask ? "Excluir série" : "Excluir tarefa"
                                 foreground: Color.urgent
                                 accent: Color.urgent
@@ -2435,7 +2545,7 @@ Panel {
                                 onClicked: root.deleteEditedTask()
                             }
                             Button {
-                                visible: root.editingRecurringTask
+                                visible: !root.creatingTask && root.editingRecurringTask
                                          && !root.editingCompleted && !root.editingSkipped
                                 text: "Marcar não feita"
                                 foreground: Color.popups.text
@@ -2444,7 +2554,7 @@ Panel {
                                 onClicked: root.skipEditedOccurrence()
                             }
                             Button {
-                                visible: root.editingSkipped
+                                visible: !root.creatingTask && root.editingSkipped
                                 text: "Reabrir ocorrência"
                                 foreground: Color.popups.text
                                 accent: Color.accent
@@ -2463,10 +2573,154 @@ Panel {
                             }
                             Button {
                                 text: "Salvar"
+                                focusable: true
+                                enabled: taskTitleInput.text.trim() !== ""
+                                         && taskTimeInput.acceptableInput
+                                         && root.hostWidget && !root.hostWidget.actionBusy
+                                         && !root.creationPending
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
                                 onClicked: root.saveTaskEdit()
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            visible: root.creatingTask && text !== ""
+                            text: root.hostWidget ? root.hostWidget.actionError : ""
+                            color: Color.urgent
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            wrapMode: Text.Wrap
+                        }
+                    }
+                    }
+                }
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                z: 220
+                visible: root.taskDatePickerVisible
+                color: Color.menu.scrim
+
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: root.taskDatePickerVisible = false
+                }
+                BorderSurface {
+                    id: taskDatePickerCard
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - Style.space(32), Style.space(400))
+                    height: contentTopInset + contentBottomInset + taskDatePickerColumn.implicitHeight
+                    padding: Style.space(18)
+                    radius: Style.cornerRadius
+                    color: Color.popups.background
+                    borderSpec: Border.localOrSurfaceSpec(
+                        "popups", "border", Color.popups.border,
+                        Color.popups.border, Style.normalBorderWidth)
+
+                    MouseArea { anchors.fill: parent }
+                    ColumnLayout {
+                        id: taskDatePickerColumn
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        anchors.leftMargin: taskDatePickerCard.contentLeftInset
+                        anchors.rightMargin: taskDatePickerCard.contentRightInset
+                        spacing: Style.space(8)
+
+                        Text {
+                            text: root.taskDatePickerForEnding ? "DATA FINAL" : "DATA DA TAREFA"
+                            color: Color.popups.text
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button {
+                                text: "‹"
+                                tooltipText: "Mês anterior"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                onClicked: root.taskPickerMonth = new Date(
+                                    root.taskPickerMonth.getFullYear(),
+                                    root.taskPickerMonth.getMonth() - 1, 1)
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                text: root.portugueseLocale.toString(root.taskPickerMonth, "MMMM yyyy")
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.body
+                            }
+                            Button {
+                                text: "›"
+                                tooltipText: "Próximo mês"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                onClicked: root.taskPickerMonth = new Date(
+                                    root.taskPickerMonth.getFullYear(),
+                                    root.taskPickerMonth.getMonth() + 1, 1)
+                            }
+                        }
+                        DayOfWeekRow {
+                            id: taskWeekdayRow
+                            Layout.fillWidth: true
+                            locale: root.portugueseLocale
+                            delegate: Text {
+                                required property var model
+                                text: model.shortName
+                                width: (taskWeekdayRow.availableWidth - 6 * taskWeekdayRow.spacing) / 7
+                                horizontalAlignment: Text.AlignHCenter
+                                color: Color.popups.text
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.caption
+                            }
+                        }
+                        MonthGrid {
+                            id: taskDateGrid
+                            objectName: "waypointDraftCalendar"
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: Style.space(210)
+                            month: root.taskPickerMonth.getMonth()
+                            year: root.taskPickerMonth.getFullYear()
+                            locale: root.portugueseLocale
+                            onClicked: date => root.chooseTaskDate(date)
+                            delegate: Text {
+                                required property var model
+                                text: model.day
+                                width: (taskDateGrid.availableWidth - 6 * taskDateGrid.spacing) / 7
+                                height: (taskDateGrid.availableHeight - 5 * taskDateGrid.spacing) / 6
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: Model.dateKey(model.date) === (root.taskDatePickerForEnding
+                                    ? taskCustomUntilDate.text : Model.dateKey(root.pendingQuickDate))
+                                    ? Color.accent : Color.popups.text
+                                opacity: model.month === taskDateGrid.month ? 1 : 0.4
+                                font.family: root.fontFamily
+                                font.pixelSize: Style.font.body
+                                font.bold: model.today
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Button {
+                                text: "Hoje"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.chooseTaskDate(new Date())
+                            }
+                            Item { Layout.fillWidth: true }
+                            Button {
+                                text: "Voltar"
+                                foreground: Color.popups.text
+                                accent: Color.accent
+                                bordered: true
+                                onClicked: root.taskDatePickerVisible = false
                             }
                         }
                     }
@@ -2619,7 +2873,7 @@ Panel {
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
-                                onClicked: root.applyReminderPicker()
+                                onClicked: root.closeReminderPicker()
                             }
                         }
                     }
@@ -2655,11 +2909,13 @@ Panel {
 
                     ColumnLayout {
                         id: timePickerColumn
+                        readonly property bool embedded: root.creatingTask && root.taskEditorVisible
+                        parent: embedded ? creationTimePickerSlot : timePickerCard
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: timePickerCard.contentLeftInset
-                        anchors.rightMargin: timePickerCard.contentRightInset
+                        anchors.leftMargin: embedded ? 0 : timePickerCard.contentLeftInset
+                        anchors.rightMargin: embedded ? 0 : timePickerCard.contentRightInset
                         spacing: Style.space(8)
 
                         Text {
@@ -2672,6 +2928,7 @@ Panel {
 
                         TextInput {
                             id: timePickerInput
+                            objectName: "waypointDraftTime"
                             Layout.fillWidth: true
                             Layout.alignment: Qt.AlignHCenter
                             text: root.currentTimeKey()
@@ -2775,16 +3032,26 @@ Panel {
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 bordered: true
-                                onClicked: root.closeTimePicker()
+                                onClicked: {
+                                    if (root.creatingTask && root.taskEditorVisible)
+                                        root.closeTaskEditor();
+                                    else
+                                        root.closeTimePicker();
+                                }
                             }
                             Button {
                                 id: timePickerConfirm
-                                text: "Concluir"
+                                objectName: "waypointDraftCreate"
+                                text: timePickerColumn.embedded
+                                      ? (root.creationPending ? "Criando…" : "Criar") : "Concluir"
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
                                 focusable: true
                                 enabled: timePickerInput.acceptableInput
+                                    && (!timePickerColumn.embedded
+                                        || (taskTitleInput.text.trim() !== "" && root.hostWidget
+                                            && !root.hostWidget.actionBusy && !root.creationPending))
                                 onClicked: root.applyTimePicker()
                             }
                         }

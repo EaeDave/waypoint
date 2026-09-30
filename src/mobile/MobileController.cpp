@@ -709,11 +709,15 @@ void MobileController::consumeLaunchRequest() {
   const QJniObject taskKey = QJniObject::fromString(QStringLiteral("waypoint.taskId"));
   const QJniObject taskValue = intent.callObjectMethod(
       "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", taskKey.object<jstring>());
-  intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",
-                          pageKey.object<jstring>());
-  intent.callObjectMethod("removeExtra", "(Ljava/lang/String;)Landroid/content/Intent;",
-                          taskKey.object<jstring>());
-  emit taskEditorRequested(taskValue.isValid() ? taskValue.toString() : QString{});
+  const QJniObject dateKey = QJniObject::fromString(QStringLiteral("waypoint.scheduledDate"));
+  const QJniObject dateValue = intent.callObjectMethod(
+      "getStringExtra", "(Ljava/lang/String;)Ljava/lang/String;", dateKey.object<jstring>());
+  const QDate scheduledDate = QDate::fromString(dateValue.toString(), Qt::ISODate);
+  intent.callMethod<void>("removeExtra", "(Ljava/lang/String;)V", pageKey.object<jstring>());
+  intent.callMethod<void>("removeExtra", "(Ljava/lang/String;)V", taskKey.object<jstring>());
+  intent.callMethod<void>("removeExtra", "(Ljava/lang/String;)V", dateKey.object<jstring>());
+  emit taskEditorRequested(taskValue.isValid() ? taskValue.toString() : QString{},
+                           scheduledDate.isValid() ? scheduledDate.toString(Qt::ISODate) : QString{});
 #endif
 }
 

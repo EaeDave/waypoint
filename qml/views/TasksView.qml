@@ -129,6 +129,7 @@ Item {
             Layout.topMargin: 24
             controller: root.controller
             scheduledDateKey: Qt.formatDate(new Date(), "yyyy-MM-dd")
+            contextualDate: false
             placeholderText: "Nova tarefa…"
         }
 

@@ -82,3 +82,12 @@ add_test(NAME waypoint_mobile_tests COMMAND waypoint_mobile_tests -o -,txt)
 set_tests_properties(waypoint_mobile_tests PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+qt_add_executable(waypoint_cli_creation_tests CliCreationTest.cpp)
+target_link_libraries(waypoint_cli_creation_tests PRIVATE Qt6::Core Qt6::Test)
+target_compile_definitions(waypoint_cli_creation_tests PRIVATE
+    WAYPOINT_DAEMON_PATH="$<TARGET_FILE:waypointd>"
+    WAYPOINT_CLI_PATH="$<TARGET_FILE:waypointctl>"
+)
+add_dependencies(waypoint_cli_creation_tests waypointd waypointctl)
+add_test(NAME waypoint_cli_creation_tests COMMAND waypoint_cli_creation_tests -o -,txt)

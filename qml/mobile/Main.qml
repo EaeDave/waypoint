@@ -38,10 +38,10 @@ ApplicationWindow {
     Connections {
         target: root.controller
 
-        function onTaskEditorRequested(taskId) {
+        function onTaskEditorRequested(taskId, scheduledDateKey) {
             root.currentPage = 1;
             if (taskId === "")
-                tasksPage.createTask();
+                tasksPage.createTask("", scheduledDateKey);
             else
                 tasksPage.openTask(taskId);
         }

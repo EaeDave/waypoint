@@ -13,16 +13,137 @@ Popup {
     property bool editingDefinition: false
     property var selectedWeekdays: []
     property var selectedReminders: [0]
+    property string scheduledDate: ""
+    property string scheduledTime: ""
+    property string untilDate: ""
+    property string picker: ""
+    property int step: 0
+    property bool contextualDate: false
+    property bool moreOptions: false
+    property bool saving: false
+    property bool committed: false
+    property string validationMessage: ""
+    property var creationDraft: null
+    property string createContext: ""
+    readonly property var portugueseLocale: Qt.locale("pt_BR")
+    readonly property bool auxiliaryPicker: picker === "until" || (step === 3 && picker !== "") || (step === 2 && picker === "date")
+    readonly property string actionLabel: auxiliaryPicker ? "OK" : step < 2 ? "PRÓXIMO" : editingTask.taskId ? "SALVAR" : "CRIAR"
+    readonly property real safeTop: parent ? parent.SafeArea.margins.top : 0
+    readonly property real safeHeight: parent ? Math.max(0, parent.height - safeTop - parent.SafeArea.margins.bottom) : 0
 
     parent: Overlay.overlay
-    x: 0
-    y: 0
-    width: parent ? parent.width : 0
-    height: parent ? parent.height : 0
+    x: parent ? (parent.width - width) / 2 : 0
+    y: safeTop + (safeHeight - height) / 2
+    width: parent ? Math.min(parent.width, 560) : 0
+    height: Math.min(safeHeight, step === 0 && !moreOptions && picker === "" ? 440 : 760)
     modal: true
     focus: true
-    closePolicy: Popup.CloseOnEscape
+    closePolicy: Popup.NoAutoClose
     padding: 0
+    onClosed: {
+        if (!committed && !editingTask.taskId)
+            creationDraft = snapshot();
+    }
+
+    function snapshot() {
+        return {
+            context: createContext,
+            title: titleField.text, emoji: emojiField.text, date: scheduledDate, time: scheduledTime,
+            frequency: frequencyField.currentIndex, interval: intervalField.value,
+            weekdays: selectedWeekdays.slice(), end: endField.currentIndex, until: untilDate,
+            count: countField.value, reminders: selectedReminders.slice(),
+            listId: categoryField.currentValue || "", step: step, contextual: contextualDate
+        };
+    }
+
+    function restoreDraft() {
+        const draft = creationDraft;
+        if (editingTask.taskId || !draft || draft.context !== createContext)
+            return;
+        titleField.text = draft.title;
+        emojiField.text = draft.emoji;
+        scheduledDate = draft.date;
+        scheduledTime = draft.time;
+        frequencyField.currentIndex = draft.frequency;
+        intervalField.value = draft.interval;
+        selectedWeekdays = draft.weekdays;
+        endField.currentIndex = draft.end;
+        untilDate = draft.until;
+        countField.value = draft.count;
+        selectedReminders = draft.reminders;
+        categoryField.currentIndex = categoryIndex(draft.listId);
+        step = draft.step;
+        contextualDate = draft.contextual;
+    }
+
+    function displayDate(dateKey) {
+        if (!dateKey)
+            return "Escolher data";
+        const parts = dateKey.split("-");
+        return portugueseLocale.toString(new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])), "dd/MM/yyyy");
+    }
+
+    function showPicker(value) {
+        picker = value;
+        Qt.inputMethod.hide();
+        if (value === "date" || value === "until")
+            datePicker.show(value === "until" ? untilDate : scheduledDate);
+        if (value === "time") {
+            const parts = scheduledTime.split(":");
+            hourField.currentIndex = Number(parts[0]);
+            minuteField.currentIndex = Number(parts[1]);
+        }
+        primaryAction.forceActiveFocus();
+        Qt.callLater(() => {
+            if (value !== "")
+                editorScroll.contentItem.contentY = Math.max(0, (value === "time" ? timePicker.y : datePicker.y) - 12);
+            else
+                editorScroll.contentItem.contentY = 0;
+        });
+    }
+
+    function advance() {
+        if (saving || committed || !titleField.text.trim())
+            return;
+        if (auxiliaryPicker) {
+            showPicker(step === 1 ? "date" : step === 2 ? "time" : "");
+            return;
+        }
+        if (step === 0)
+            step = contextualDate ? 2 : 1;
+        else if (step === 1)
+            step = 2;
+        else {
+            save();
+            return;
+        }
+        showPicker(step === 1 ? "date" : step === 2 ? "time" : "");
+    }
+
+    function back() {
+        if (auxiliaryPicker) {
+            showPicker(step === 1 ? "date" : step === 2 ? "time" : "");
+        } else if (!editingTask.taskId && step > 0) {
+            step = step === 2 && contextualDate ? 0 : step - 1;
+            showPicker(step === 1 ? "date" : step === 2 ? "time" : "");
+        } else {
+            close();
+        }
+    }
+
+    function present() {
+        committed = false;
+        saving = false;
+        validationMessage = "";
+        moreOptions = false;
+        picker = "";
+        restoreDraft();
+        open();
+        if (step === 1 || step === 2)
+            showPicker(step === 1 ? "date" : "time");
+        else
+            titleField.forceActiveFocus();
+    }
 
     function frequencyIndex(value) {
         const values = ["none", "daily", "weekly", "monthly", "yearly"];
@@ -68,22 +189,24 @@ Popup {
     }
 
     function openForCreate(dateKey, listId) {
+        createContext = "create:" + (listId || "") + ":" + (dateKey || "");
         editingTask = ({});
         editingDefinition = false;
         emojiField.text = "";
         titleField.text = "";
-        dateField.text = dateKey;
-        timeField.text = Qt.formatTime(new Date(), "HH:mm");
+        scheduledDate = dateKey || controller.todayKey;
+        scheduledTime = Qt.formatTime(new Date(), "HH:mm");
+        contextualDate = !!dateKey;
+        step = 0;
         frequencyField.currentIndex = 0;
         intervalField.value = 1;
         selectedWeekdays = [];
         endField.currentIndex = 0;
-        untilField.text = dateKey;
+        untilDate = scheduledDate;
         countField.value = 10;
         selectedReminders = [0];
         categoryField.currentIndex = categoryIndex(listId || "");
-        open();
-        titleField.forceActiveFocus();
+        present();
     }
 
     function openForEdit(task) {
@@ -92,26 +215,38 @@ Popup {
         const recurrence = task.recurrence || {};
         emojiField.text = task.emoji || "";
         titleField.text = task.title || "";
-        dateField.text = task.scheduledDate || task.occurrenceDate || "";
-        timeField.text = task.scheduledTime || "";
+        scheduledDate = task.scheduledDate || task.occurrenceDate || "";
+        scheduledTime = task.scheduledTime || Qt.formatTime(new Date(), "HH:mm");
+        contextualDate = true;
+        step = 3;
         frequencyField.currentIndex = frequencyIndex(recurrence.frequency || "none");
         intervalField.value = recurrence.interval || 1;
         selectedWeekdays = recurrence.weekdays || [];
         endField.currentIndex = endIndex(recurrence.endMode || "never");
-        untilField.text = recurrence.untilDate || dateField.text;
+        untilDate = recurrence.untilDate || scheduledDate || controller.todayKey;
         countField.value = recurrence.occurrenceCount || 10;
         selectedReminders = task.reminderMinutesBefore || [];
         categoryField.currentIndex = categoryIndex(task.categoryId || "");
-        open();
-        titleField.forceActiveFocus();
+        present();
     }
 
     function save() {
+        if (saving || committed || step < 2 || !titleField.text.trim())
+            return;
+        saving = true;
+        validationMessage = "";
         const frequencies = ["none", "daily", "weekly", "monthly", "yearly"];
         const ends = ["never", "onDate", "afterCount"];
-        const succeeded = controller.saveTask(editingTask.taskId || "", titleField.text, dateField.text, timeField.text, frequencies[frequencyField.currentIndex], intervalField.value, selectedWeekdays, ends[endField.currentIndex], untilField.text, countField.value, selectedReminders, emojiField.text, categoryField.currentValue || "");
-        if (succeeded)
+        const succeeded = controller.saveTask(editingTask.taskId || "", titleField.text, scheduledDate, scheduledTime, frequencies[frequencyField.currentIndex], intervalField.value, selectedWeekdays, ends[endField.currentIndex], untilDate, countField.value, selectedReminders, emojiField.text, categoryField.currentValue || "");
+        saving = false;
+        if (succeeded) {
+            committed = true;
+            if (!editingTask.taskId)
+                creationDraft = null;
             close();
+        } else {
+            validationMessage = controller.errorMessage || "Não foi possível salvar. Seu rascunho foi mantido.";
+        }
     }
 
     CompletionActions {
@@ -120,14 +255,6 @@ Popup {
         onCommitted: root.close()
     }
 
-    TaskListManager {
-        id: listManager
-        controller: root.controller
-        selectedListId: categoryField.currentValue || ""
-        onListSelected: function(listId) {
-            categoryField.currentIndex = root.categoryIndex(listId);
-        }
-    }
 
     Overlay.modal: Rectangle {
         color: MobileTheme.scrim
@@ -135,10 +262,13 @@ Popup {
 
     background: Rectangle {
         color: MobileTheme.background
+        radius: root.width < (root.parent ? root.parent.width : 0) ? MobileTheme.radius : 0
     }
 
     contentItem: ColumnLayout {
         spacing: 0
+        Keys.onEscapePressed: root.back()
+        Keys.onBackPressed: root.back()
 
         Rectangle {
             Layout.fillWidth: true
@@ -163,8 +293,8 @@ Popup {
                     Layout.preferredWidth: 44
                     text: "‹"
                     quiet: true
-                    Accessible.name: "Fechar editor de tarefa"
-                    onClicked: root.close()
+                    Accessible.name: "Voltar sem perder o rascunho"
+                    onClicked: root.back()
                 }
 
                 Text {
@@ -178,12 +308,13 @@ Popup {
                 }
 
                 MobileButton {
-                    Layout.preferredWidth: 86
-                    text: "SALVAR"
+                    id: primaryAction
+                    Layout.preferredWidth: 108
+                    text: root.actionLabel
                     accent: true
                     Accessible.id: "task-editor-save"
-                    enabled: titleField.text.trim().length > 0
-                    onClicked: root.save()
+                    enabled: titleField.text.trim().length > 0 && !root.saving
+                    onClicked: root.advance()
                 }
             }
         }
@@ -221,7 +352,8 @@ Popup {
                         placeholderText: "O que precisa acontecer?"
                         Accessible.id: "task-editor-title"
                         Accessible.name: "Título da tarefa"
-                        onAccepted: root.save()
+                        EnterKey.type: Qt.EnterKeyGo
+                        onAccepted: root.advance()
                     }
                 }
 
@@ -249,13 +381,6 @@ Popup {
                         Accessible.name: "Lista da tarefa"
                     }
 
-                    MobileButton {
-                        Layout.preferredWidth: 92
-                        text: "LISTAS"
-                        quiet: true
-                        Accessible.id: "task-editor-manage-lists"
-                        onClicked: listManager.openManager()
-                    }
                 }
 
                 Text {
@@ -271,20 +396,133 @@ Popup {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    MobileField {
-                        id: dateField
+                    MobileButton {
                         Layout.fillWidth: true
-                        placeholderText: "AAAA-MM-DD"
-                        inputMethodHints: Qt.ImhDate
+                        text: root.displayDate(root.scheduledDate)
+                        Accessible.name: "Data da tarefa"
+                        Accessible.id: "task-editor-date"
+                        onClicked: root.showPicker("date")
                     }
 
-                    MobileField {
-                        id: timeField
+                    MobileButton {
                         Layout.preferredWidth: 100
-                        placeholderText: "HH:mm"
-                        inputMethodHints: Qt.ImhTime
+                        text: root.scheduledTime
+                        Accessible.name: "Hora da tarefa"
+                        Accessible.id: "task-editor-time"
+                        onClicked: root.showPicker("time")
                     }
                 }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: !root.editingTask.taskId
+                    text: root.step === 0 ? "Escreva o título e avance."
+                          : root.step === 1 ? "Escolha a data e avance para o horário."
+                          : "Escolha o horário. Toque em CRIAR para confirmar."
+                    color: MobileTheme.subdued
+                    font.pixelSize: MobileTheme.captionSize
+                    wrapMode: Text.Wrap
+                }
+
+                MobileDatePicker {
+                    id: datePicker
+                    Layout.fillWidth: true
+                    visible: root.picker === "date" || root.picker === "until"
+                    onDateSelected: function(dateKey) {
+                        if (root.picker === "until")
+                            root.untilDate = dateKey;
+                        else
+                            root.scheduledDate = dateKey;
+                    }
+                }
+
+                RowLayout {
+                    id: timePicker
+                    Layout.fillWidth: true
+                    visible: root.picker === "time"
+                    spacing: 8
+                    Tumbler {
+                        id: hourField
+                        Layout.fillWidth: true
+                        implicitHeight: 144
+                        visibleItemCount: 3
+                        model: 24
+                        Accessible.name: "Horas"
+                        onCurrentIndexChanged: {
+                            if (root.picker === "time" && currentIndex >= 0)
+                                root.scheduledTime = String(currentIndex).padStart(2, "0") + ":" + root.scheduledTime.split(":")[1];
+                        }
+                        delegate: Label {
+                            required property int modelData
+                            text: String(modelData).padStart(2, "0")
+                            color: MobileTheme.foreground
+                            opacity: 1 - Math.abs(Tumbler.displacement) / 3
+                            font.pixelSize: 24
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                    Label {
+                        text: ":"
+                        color: MobileTheme.foreground
+                        font.pixelSize: 24
+                    }
+                    Tumbler {
+                        id: minuteField
+                        Layout.fillWidth: true
+                        implicitHeight: 144
+                        visibleItemCount: 3
+                        model: 60
+                        Accessible.name: "Minutos"
+                        onCurrentIndexChanged: {
+                            if (root.picker === "time" && currentIndex >= 0)
+                                root.scheduledTime = root.scheduledTime.split(":")[0] + ":" + String(currentIndex).padStart(2, "0");
+                        }
+                        delegate: Label {
+                            required property int modelData
+                            text: String(modelData).padStart(2, "0")
+                            color: MobileTheme.foreground
+                            opacity: 1 - Math.abs(Tumbler.displacement) / 3
+                            font.pixelSize: 24
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                    }
+                }
+
+                MobileButton {
+                    Layout.fillWidth: true
+                    text: root.moreOptions ? "MENOS OPÇÕES" : "MAIS OPÇÕES"
+                    Accessible.id: "task-editor-more-options"
+                    onClicked: root.moreOptions = !root.moreOptions
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: {
+                        let summary = frequencyField.currentText;
+                        if (frequencyField.currentIndex > 0) {
+                            summary += " · intervalo " + intervalField.value;
+                            if (frequencyField.currentIndex === 2 && root.selectedWeekdays.length)
+                                summary += " · " + root.selectedWeekdays.map(day => ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"][day - 1]).join(", ");
+                            if (endField.currentIndex === 1)
+                                summary += " · até " + root.displayDate(root.untilDate);
+                            else if (endField.currentIndex === 2)
+                                summary += " · " + countField.value + " ocorrências";
+                        }
+                        return summary + " · " + (root.selectedReminders.length
+                            ? root.selectedReminders.map(minutes => minutes === 0 ? "na hora" : minutes % 1440 === 0 ? minutes / 1440 + " dia(s) antes" : minutes % 60 === 0 ? minutes / 60 + " h antes" : minutes + " min antes").join(", ")
+                            : "Sem lembrete");
+                    }
+                    color: MobileTheme.subdued
+                    font.pixelSize: MobileTheme.captionSize
+                    wrapMode: Text.Wrap
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: root.moreOptions
+                    spacing: 12
 
                 Rectangle {
                     Layout.fillWidth: true
@@ -364,12 +602,12 @@ Popup {
                     model: ["Sem término", "Até uma data", "Após ocorrências"]
                 }
 
-                MobileField {
-                    id: untilField
+                MobileButton {
                     Layout.fillWidth: true
                     visible: frequencyField.currentIndex > 0 && endField.currentIndex === 1
-                    placeholderText: "Última data AAAA-MM-DD"
-                    inputMethodHints: Qt.ImhDate
+                    text: "Até " + root.displayDate(root.untilDate)
+                    Accessible.name: "Última data da repetição"
+                    onClicked: root.showPicker("until")
                 }
 
                 SpinBox {
@@ -431,6 +669,17 @@ Popup {
                             onClicked: root.toggleReminder(modelData.value)
                         }
                     }
+                }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.validationMessage !== ""
+                    text: root.validationMessage
+                    color: MobileTheme.urgent
+                    font.pixelSize: MobileTheme.bodySize
+                    wrapMode: Text.Wrap
+                    Accessible.name: text
                 }
 
                 Text {

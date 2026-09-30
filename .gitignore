@@ -13,3 +13,4 @@
 /firebase-service-account*.json
 /android/google-services.json
 /aqtinstall.log
+/.codegraph/

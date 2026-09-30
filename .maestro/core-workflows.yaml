@@ -9,9 +9,30 @@ appId: org.eaedave.waypoint
 - pasteText
 - tapOn:
     id: "task-editor-save"
+- tapOn:
+    id: "task-editor-save"
 - assertVisible: "Tarefa de teste automatizado"
 - tapOn: "Concluir tarefa Tarefa de teste automatizado"
 - assertVisible: "Reabrir tarefa Tarefa de teste automatizado"
+- extendedWaitUntil:
+    notVisible: "Desfazer"
+    timeout: 10000
+
+- tapOn:
+    id: "navigation-tasks"
+- tapOn:
+    id: "tasks-create-task"
+- tapOn:
+    id: "task-editor-title"
+- inputText: "Tarefa criada pela lista"
+- pressKey: Enter
+- assertVisible:
+    id: "task-date-.*"
+- tapOn:
+    id: "task-editor-save"
+- tapOn:
+    id: "task-editor-save"
+- assertVisible: "Tarefa criada pela lista"
 
 - tapOn:
     id: "navigation-habits"
