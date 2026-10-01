@@ -9,8 +9,10 @@
 #include <QByteArray>
 #include <QDate>
 #include <QObject>
+#include <QSettings>
 #include <QTimer>
 #include <QVariantList>
+#include <optional>
 
 namespace waypoint {
 
@@ -32,6 +34,8 @@ class MobileController final : public QObject {
   Q_PROPERTY(QVariantList taskCategories READ taskCategories NOTIFY dataChanged)
   Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY dataChanged)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
+  Q_PROPERTY(bool calendarListFilterActive READ calendarListFilterActive NOTIFY calendarListFilterChanged)
+  Q_PROPERTY(QStringList calendarListIds READ calendarListIds NOTIFY calendarListFilterChanged)
   Q_PROPERTY(QVariantList allHabits READ allHabits NOTIFY dataChanged)
   Q_PROPERTY(QVariantList monthHolidays READ monthHolidays NOTIFY dataChanged)
   Q_PROPERTY(QVariantMap holidayPreferences READ holidayPreferences NOTIFY holidayPreferencesChanged)
@@ -71,6 +75,8 @@ public:
   [[nodiscard]] QVariantList taskCategories() const;
   [[nodiscard]] QVariantList allTasks() const;
   [[nodiscard]] QString taskVisibility() const;
+  [[nodiscard]] bool calendarListFilterActive() const;
+  [[nodiscard]] QStringList calendarListIds() const;
   [[nodiscard]] QVariantList monthHolidays() const;
   [[nodiscard]] QVariantList allHabits() const;
   [[nodiscard]] QVariantList selectedDateHolidays() const;
@@ -104,6 +110,8 @@ public:
   Q_INVOKABLE bool skipTaskOccurrence(const QString &taskId, const QString &occurrenceDateKey);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
+  Q_INVOKABLE void setCalendarListFilter(const QStringList &listIds);
+  Q_INVOKABLE void clearCalendarListFilter();
   Q_INVOKABLE bool saveTaskCategory(const QString &categoryId, const QString &name, const QString &color);
   Q_INVOKABLE bool deleteTaskCategory(const QString &categoryId);
 
@@ -132,6 +140,7 @@ signals:
   void visibleMonthChanged();
   void dataChanged();
   void taskVisibilityChanged();
+  void calendarListFilterChanged();
   void holidayPreferencesChanged();
   void municipalitiesChanged();
   void syncConfigurationChanged();
@@ -149,6 +158,8 @@ private:
   void refreshWidgetSnapshot(const QDate &today);
   void consumeLaunchRequest();
 
+  QSettings m_calendarSettings;
+  std::optional<QStringList> m_calendarListIds;
   TaskStore m_store;
   SyncEngine m_syncEngine;
   HolidaySyncEngine m_holidaySyncEngine;

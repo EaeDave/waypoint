@@ -36,6 +36,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static final String ACTION_MOVE_MONTH = "org.eaedave.waypoint.widget.MOVE_MONTH";
   private static final String ACTION_SELECT_DATE = "org.eaedave.waypoint.widget.SELECT_DATE";
   private static final String ACTION_TOGGLE_HISTORY = "org.eaedave.waypoint.widget.TOGGLE_HISTORY";
+  private static final String ACTION_CLEAR_LIST_FILTER = "org.eaedave.waypoint.widget.CLEAR_LIST_FILTER";
   private static final String EXTRA_HISTORY_TASK = "historyTask";
   private static final String EXTRA_MONTH_DELTA = "monthDelta";
   private static final String EXTRA_DATE = "date";
@@ -101,6 +102,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
       editor.remove(SELECTED_DATE_PREFIX + appWidgetId);
       editor.remove(SELECTED_ON_PREFIX + appWidgetId);
       WaypointWidgetHistoryState.remove(context, appWidgetId);
+      WaypointWidgetListFilterState.clear(context, appWidgetId);
     }
     editor.apply();
   }
@@ -108,6 +110,19 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   @Override
   public void onReceive(Context context, Intent intent) {
     String action = intent.getAction();
+    if (WaypointWidgetBridge.ACTION_SNAPSHOT_CHANGED.equals(action)) {
+      updateAll(context);
+      return;
+    }
+    if (ACTION_CLEAR_LIST_FILTER.equals(action)) {
+      int appWidgetId =
+          intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
+      if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+        WaypointWidgetListFilterState.clear(context, appWidgetId);
+        updateWidget(context, AppWidgetManager.getInstance(context), appWidgetId);
+      }
+      return;
+    }
     if (ACTION_TOGGLE_HISTORY.equals(action)) {
       int appWidgetId =
           intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID);
@@ -155,29 +170,33 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     LocalDate today = LocalDate.now();
     LocalDate selectedDate = selectedDate(context, appWidgetId, today);
     JSONObject snapshot = snapshot(context);
+    Set<String> listIds = WaypointWidgetListFilterState.read(context, appWidgetId);
     JSONObject dates = snapshot.optJSONObject("dates");
     if (dates == null) {
       dates = new JSONObject();
     }
     boolean snapshotCurrent = today.toString().equals(snapshot.optString("today", "")) &&
-                              snapshot.optInt("schemaVersion", 0) >= 9;
+                              snapshot.optInt("schemaVersion", 0) >= 10;
     JSONObject selectedDateData = snapshotCurrent ? dates.optJSONObject(selectedDate.toString()) : null;
     JSONArray habits = selectedDateData == null ? null : selectedDateData.optJSONArray("habits");
     String taskVisibility = snapshot.optString("taskVisibility", "all");
     RemoteViews views = new RemoteViews(context.getPackageName(), R.layout.waypoint_widget);
-    JSONArray activity = selectedDateData == null ? null : selectedDateData.optJSONArray("registrationActivity");
+    JSONArray activity = WaypointWidgetListFilterState.filter(
+        selectedDateData == null ? null : selectedDateData.optJSONArray("registrationActivity"), listIds);
     boolean hasActivity = activity != null && activity.length() > 0;
     int[] detailLimits = detailLimits(context, manager, appWidgetId, habits == null ? 0 : habits.length(), hasActivity);
-    JSONArray tasks = selectedDateData == null ? null : selectedDateData.optJSONArray("tasks");
+    JSONArray tasks = WaypointWidgetListFilterState.filter(
+        selectedDateData == null ? null : selectedDateData.optJSONArray("tasks"), listIds);
     int taskCount = tasks == null ? 0 : tasks.length();
     boolean historyExpanded = WaypointWidgetHistoryState.isExpanded(context, appWidgetId,
                                                                     selectedDate.toString(), "");
     int historyLimit = hasActivity && historyExpanded
                            ? Math.max(0, detailLimits[0] - Math.min(1, taskCount)) : 0;
 
-    renderCalendar(context, views, appWidgetId, selectedDate, today, dates);
+    renderListFilter(context, views, appWidgetId, listIds, snapshot.optJSONArray("taskCategories"));
+    renderCalendar(context, views, appWidgetId, selectedDate, today, dates, listIds);
     renderTasks(context, views, appWidgetId, selectedDate, dates, taskVisibility, snapshotCurrent,
-                detailLimits[0] - historyLimit);
+                detailLimits[0] - historyLimit, listIds);
     renderHistory(context, views, appWidgetId, selectedDate.toString(), activity, historyLimit);
     renderHabits(context, views, appWidgetId, habits, detailLimits[1]);
 
@@ -188,7 +207,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     views.setOnClickPendingIntent(R.id.widget_selected_date,
                                   WaypointWidgetHistoryActivity.pendingIntent(context, appWidgetId,
                                                                              selectedDate.toString()));
-    views.setContentDescription(R.id.widget_selected_date, "Ver todas as tarefas e conclusões deste dia");
+    views.setContentDescription(R.id.widget_selected_date, "Ver tarefas e conclusões das listas selecionadas deste dia");
     views.setOnClickPendingIntent(R.id.widget_day_details,
                                   WaypointWidgetHistoryActivity.pendingIntent(context, appWidgetId,
                                                                              selectedDate.toString()));
@@ -197,8 +216,33 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     manager.updateAppWidget(appWidgetId, views);
   }
 
+  private static void renderListFilter(Context context, RemoteViews views, int appWidgetId,
+                                       Set<String> listIds, JSONArray categories) {
+    boolean active = listIds != null;
+    String label = WaypointWidgetListFilterState.label(listIds, categories);
+    views.setTextViewText(R.id.widget_list_filter, label);
+    views.setTextColor(R.id.widget_list_filter, active ? COLOR_ACCENT : COLOR_SUBDUED);
+    views.setInt(R.id.widget_list_filter, "setBackgroundResource",
+                 active ? R.drawable.waypoint_widget_selected_day : android.R.color.transparent);
+    views.setContentDescription(R.id.widget_list_filter, label + ". Selecionar listas deste widget");
+    views.setOnClickPendingIntent(R.id.widget_list_filter,
+                                  WaypointWidgetListFilterActivity.pendingIntent(context, appWidgetId));
+    views.setViewVisibility(R.id.widget_list_filter_reset, active ? View.VISIBLE : View.GONE);
+    views.setOnClickPendingIntent(R.id.widget_list_filter_reset, clearListFilterIntent(context, appWidgetId));
+  }
+
+  private static PendingIntent clearListFilterIntent(Context context, int appWidgetId) {
+    Intent intent = new Intent(context, WaypointWidgetProvider.class).setAction(ACTION_CLEAR_LIST_FILTER)
+        .setData(new Uri.Builder().scheme("waypoint").authority("widget")
+                     .appendPath(Integer.toString(appWidgetId)).appendPath("clear-lists").build())
+        .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId);
+    return PendingIntent.getBroadcast(context, 0, intent,
+        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+  }
+
   private static void renderCalendar(Context context, RemoteViews views, int appWidgetId,
-                                     LocalDate selectedDate, LocalDate today, JSONObject dates) {
+                                     LocalDate selectedDate, LocalDate today, JSONObject dates,
+                                     Set<String> listIds) {
     YearMonth displayedMonth = YearMonth.from(selectedDate);
     String monthName =
         displayedMonth.getMonth().getDisplayName(TextStyle.FULL, PORTUGUESE).toUpperCase(PORTUGUESE);
@@ -208,7 +252,8 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     for (int index = 0; index < DAY_IDS.length; ++index) {
       LocalDate date = firstCell.plusDays(index);
       JSONObject dateData = dates.optJSONObject(date.toString());
-      JSONArray dateTasks = dateData == null ? null : dateData.optJSONArray("tasks");
+      JSONArray dateTasks = WaypointWidgetListFilterState.filter(
+          dateData == null ? null : dateData.optJSONArray("tasks"), listIds);
       LinkedHashMap<String, Integer> categoryColors = new LinkedHashMap<>();
       LinkedHashMap<String, String> categoryNames = new LinkedHashMap<>();
       Set<String> urgentCategories = new HashSet<>();
@@ -219,7 +264,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
           continue;
         }
         hasSkippedTasks = hasSkippedTasks || task.optBoolean("skipped", false);
-        String categoryId = task.optString("categoryId", "");
+        String categoryId = WaypointWidgetListFilterState.categoryId(task);
         String markerId = categoryId.isEmpty() ? "__uncategorized" : categoryId;
         categoryColors.putIfAbsent(markerId, colorValue(task.optString("categoryColor", ""), COLOR_ACCENT));
         categoryNames.putIfAbsent(markerId, task.optString("categoryName", "").isEmpty()
@@ -297,7 +342,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                   android.content.res.Configuration.ORIENTATION_LANDSCAPE
                               ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
                               : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT;
-    int remaining = Math.max(0, options.getInt(heightOption, 455) - 322 - (includeHistory ? 40 : 0));
+    int remaining = Math.max(0, options.getInt(heightOption, 455) - 370 - (includeHistory ? 40 : 0));
     int habitLimit = remaining >= 136 ? Math.min(habitCount, Math.min(4, (remaining - 100) / 72)) : 0;
     int taskLimit = Math.min(4, Math.max(0, remaining - (habitLimit > 0 ? 36 + habitLimit * 36 : 0)) / 64);
     return new int[] {taskLimit, habitLimit};
@@ -305,7 +350,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
 
   private static void renderTasks(Context context, RemoteViews views, int appWidgetId, LocalDate selectedDate,
                                   JSONObject dates, String taskVisibility, boolean snapshotCurrent,
-                                  int taskLimit) {
+                                  int taskLimit, Set<String> listIds) {
     String dateLabel = selectedDate.format(DATE_LABEL);
     views.setTextViewText(R.id.widget_selected_date,
                           dateLabel.substring(0, 1).toUpperCase(PORTUGUESE) + dateLabel.substring(1));
@@ -323,13 +368,19 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
         R.id.widget_task_visibility,
         taskVisibilityIntent(context, appWidgetId, pendingOnly ? "all" : "pending"));
 
-    JSONArray tasks = dateData == null ? null : dateData.optJSONArray("tasks");
+    JSONArray tasks = WaypointWidgetListFilterState.filter(
+        dateData == null ? null : dateData.optJSONArray("tasks"), listIds);
     int taskCount = tasks == null ? 0 : tasks.length();
     String emptyText = !hasSnapshot(context) ? "Abra o Waypoint para carregar suas tarefas."
-                       : snapshotCurrent ? "Nada marcado para este dia." : "Atualizando…";
+                       : !snapshotCurrent ? "Atualizando…"
+                       : listIds != null ? WaypointWidgetListFilterState.emptyText(listIds)
+                                         : "Nada marcado para este dia.";
     views.setTextViewText(R.id.widget_empty_tasks, emptyText);
+    views.setOnClickPendingIntent(R.id.widget_empty_tasks,
+                                  listIds == null ? null : clearListFilterIntent(context, appWidgetId));
     views.setViewVisibility(R.id.widget_empty_tasks,
-                            taskLimit > 0 && taskCount == 0 && holidayCount == 0 ? View.VISIBLE : View.GONE);
+                            taskCount == 0 && (listIds != null || (taskLimit > 0 && holidayCount == 0))
+                                ? View.VISIBLE : View.GONE);
     views.removeAllViews(R.id.widget_task_rows);
     for (int index = 0; index < taskLimit && index < taskCount; ++index) {
       JSONObject task = tasks.optJSONObject(index);
@@ -385,7 +436,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
     views.setOnClickPendingIntent(R.id.widget_history_toggle, toggleHistoryIntent(context, appWidgetId, date, ""));
     PendingIntent all = WaypointWidgetHistoryActivity.pendingIntent(context, appWidgetId, date);
     views.setOnClickPendingIntent(R.id.widget_history_all, all);
-    views.setContentDescription(R.id.widget_history_all, "Ver todas as tarefas e conclusões; alterar data ou desfazer");
+    views.setContentDescription(R.id.widget_history_all, "Ver tarefas e conclusões das listas selecionadas; alterar data ou desfazer");
     if (!expanded) {
       return;
     }
@@ -435,7 +486,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
                                       PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
   }
 
-  private static int colorValue(String value, int fallback) {
+  static int colorValue(String value, int fallback) {
     if (value == null || value.isEmpty()) {
       return fallback;
     }
@@ -580,7 +631,7 @@ public final class WaypointWidgetProvider extends AppWidgetProvider {
   private static void requestRefreshIfSnapshotStale(Context context) {
     JSONObject snapshot = snapshot(context);
     if (!LocalDate.now().toString().equals(snapshot.optString("today", "")) ||
-        snapshot.optInt("schemaVersion", 0) < 9) {
+        snapshot.optInt("schemaVersion", 0) < 10) {
       WaypointBackgroundSyncScheduler.requestLocalWidgetRefresh(context);
     }
   }

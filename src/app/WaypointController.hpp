@@ -8,7 +8,11 @@
 #include <QJsonArray>
 #include <QObject>
 #include <QTimer>
+#include <QSettings>
+#include <QStringList>
 #include <QVariantList>
+
+#include <optional>
 
 namespace waypoint {
 
@@ -24,6 +28,8 @@ class WaypointController final : public QObject {
   Q_PROPERTY(QVariantList allTasks READ allTasks NOTIFY tasksChanged)
   Q_PROPERTY(CalendarModel *calendar READ calendar CONSTANT)
   Q_PROPERTY(QString taskVisibility READ taskVisibility NOTIFY taskVisibilityChanged)
+  Q_PROPERTY(bool calendarListFilterActive READ calendarListFilterActive NOTIFY calendarListFilterChanged)
+  Q_PROPERTY(QStringList calendarListIds READ calendarListIds NOTIFY calendarListFilterChanged)
   Q_PROPERTY(
       QString selectedDateKey READ selectedDateKey WRITE setSelectedDateKey NOTIFY selectedDateKeyChanged)
   Q_PROPERTY(bool online READ online NOTIFY connectionChanged)
@@ -64,6 +70,8 @@ public:
   [[nodiscard]] QVariantList allTasks() const;
   [[nodiscard]] CalendarModel *calendar();
   [[nodiscard]] QString taskVisibility() const;
+  [[nodiscard]] bool calendarListFilterActive() const;
+  [[nodiscard]] QStringList calendarListIds() const;
   [[nodiscard]] QString selectedDateKey() const;
   void setSelectedDateKey(const QString &dateKey);
   [[nodiscard]] bool online() const;
@@ -113,6 +121,8 @@ public:
                             const QString &emoji, const QString &categoryId);
   Q_INVOKABLE bool deleteTask(const QString &taskId);
   Q_INVOKABLE bool setTaskVisibility(const QString &taskVisibility);
+  Q_INVOKABLE void setCalendarListFilter(const QStringList &listIds);
+  Q_INVOKABLE void clearCalendarListFilter();
   Q_INVOKABLE bool saveHabit(const QString &habitId, const QString &title, qint64 targetAmount,
                              const QString &unit, const QString &checkInMode, qint64 incrementAmount,
                              const QVariantList &weekdays, const QVariantList &reminderTimes,
@@ -140,6 +150,7 @@ signals:
   void categoriesChanged();
   void tasksChanged();
   void taskVisibilityChanged();
+  void calendarListFilterChanged();
   void connectionChanged();
   void errorMessageChanged();
   void syncConfigurationChanged();
@@ -152,8 +163,9 @@ signals:
 
 private:
   void updateConnection(bool online, const QString &errorMessage = {});
-  void publishOccurrences(const QList<TaskOccurrence> &todayOccurrences,
-                          const QList<TaskOccurrence> &rangeOccurrences);
+  void publishCalendarOccurrences();
+  void publishSelectedRegistrationActivity();
+  void saveCalendarListFilter();
   void startDaemonOnce();
   bool refreshSyncDetails(QString *errorMessage);
   bool refreshHolidayDetails(QString *errorMessage);
@@ -164,6 +176,12 @@ private:
   TaskListModel m_todayTasks;
   TaskListModel m_selectedDateTasks;
   CalendarModel m_calendar;
+  QSettings m_calendarSettings;
+  std::optional<QStringList> m_calendarListIds;
+  QList<TaskOccurrence> m_rangeOccurrences;
+  QList<TaskOccurrence> m_selectedOccurrences;
+  bool m_selectedOccurrencesSeparate = false;
+  QJsonArray m_selectedActivityGroups;
   QVariantList m_todayHabits;
   QVariantList m_selectedDateHabits;
   QVariantList m_todayRegistrationActivity;

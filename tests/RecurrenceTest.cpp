@@ -1,5 +1,6 @@
 #include "core/Recurrence.hpp"
 #include "core/TaskRecord.hpp"
+#include "core/TaskVisibility.hpp"
 
 #include <QtTest>
 #include <algorithm>
@@ -27,7 +28,45 @@ private slots:
   void projectDefinitionPendingDate_data();
   void projectDefinitionPendingDate();
   void preserveNonRecurringDefinitionCompletion();
+  void filterCalendarListsAndRegistrationHistory();
 };
+
+void RecurrenceTest::filterCalendarListsAndRegistrationHistory() {
+  const std::optional<QStringList> bills = QStringList{QStringLiteral("bills")};
+  const std::optional<QStringList> none = QStringList{};
+  QVERIFY(waypoint::isTaskListVisible(QStringLiteral("new-list"), std::nullopt));
+  QVERIFY(!waypoint::isTaskListVisible(QStringLiteral("bills"), none));
+  QVERIFY(!waypoint::isTaskListVisible(QString(), none));
+  QVERIFY(waypoint::isTaskListVisible(QString(), QStringList{QString()}));
+  QVERIFY(!waypoint::isTaskListVisible(QStringLiteral("bills"), QStringList{QString()}));
+  QVERIFY(waypoint::isTaskListVisible(QStringLiteral("bills"), bills));
+  QVERIFY(!waypoint::isTaskListVisible(QStringLiteral("routine"), bills));
+
+  waypoint::TaskRecord bill;
+  bill.id = QStringLiteral("bill");
+  bill.categoryId = QStringLiteral("bills");
+  bill.categoryName = QStringLiteral("Contas a pagar");
+  bill.scheduledDate = QDate(2026, 9, 3);
+  bill.completed = true;
+  bill.completedDate = QDate(2026, 9, 3);
+  bill.registeredAt = QDateTime(QDate(2026, 9, 4), QTime(12, 0));
+  waypoint::TaskRecord inbox = bill;
+  inbox.id = QStringLiteral("inbox");
+  inbox.categoryId.clear();
+  inbox.categoryName.clear();
+  const auto history = waypoint::projectRegistrationActivity(
+      {bill, inbox}, {}, QDate(2026, 9, 4), QDate(2026, 9, 4))
+                           .value(QStringLiteral("2026-09-04")).toArray();
+  QCOMPARE(history.size(), 2);
+  const auto selected = waypoint::filterTaskListActivity(history, bills);
+  QCOMPARE(selected.size(), 1);
+  QCOMPARE(selected.first().toObject().value(QStringLiteral("taskId")).toString(), bill.id);
+  QCOMPARE(waypoint::filterTaskListActivity(history, std::nullopt), history);
+  QVERIFY(waypoint::filterTaskListActivity(history, none).isEmpty());
+  const auto entrance = waypoint::filterTaskListActivity(history, QStringList{QString()});
+  QCOMPARE(entrance.size(), 1);
+  QCOMPARE(entrance.first().toObject().value(QStringLiteral("taskId")).toString(), inbox.id);
+}
 
 void RecurrenceTest::projectMonthlyDefinitionWithoutMovingAnchor() {
   waypoint::TaskRecord task;

@@ -38,6 +38,8 @@ Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, ho
 - Complete, reopen, skip, reschedule, or edit one occurrence, this and following occurrences, or an entire series.
 - Desktop and Android task lists show the earliest unresolved occurrence of each recurring series, not its original start date. Completing or skipping an occurrence advances the displayed date; only an unresolved past occurrence is overdue. Finished series show **SEM PENDÊNCIAS**, while editing retains the original series start date.
 - Switch between all tasks and pending-only tasks; the preference synchronizes across desktop, Android, the home-screen widget, and the Omarchy panel.
+- Calendar **Listas** filters support multiple lists, **Somente** to isolate one, and **Mostrar todas** or **×** to reset. The grid, selected-day tasks, and completion history share the selection; **Entrada** includes uncategorized tasks. Unchecking every list hides all tasks rather than resetting the filter. This combines with **Todas / Pendentes**, without hiding holidays or habits or changing reminders.
+- Calendar list selections are remembered locally and independently for the desktop app, Android app, Omarchy panel, and each Android home-screen widget; they are not synchronized. The widget opens a compact native selector. Global Today views and the bar badge remain unfiltered.
 - Floating calendar dates and local wall-clock times: a task stays on the day and time the user chose instead of shifting through UTC.
 - Linux completion actions play the desktop notification sound from both the main app and the Omarchy panel.
 

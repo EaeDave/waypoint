@@ -1,4 +1,6 @@
 #include "app/WaypointController.hpp"
+#include "core/TaskStore.hpp"
+#include "core/TaskVisibility.hpp"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -66,7 +68,11 @@ QList<QTime> habitReminderTimes(const QVariantList &values) {
 
 WaypointController::WaypointController(QObject *parent)
     : QObject(parent), m_client(this), m_todayTasks(this), m_selectedDateTasks(this), m_calendar(this),
+      m_calendarSettings(defaultWaypointDatabasePath() + QStringLiteral(".desktop.ini"), QSettings::IniFormat),
       m_selectedDate(QDate::currentDate()) {
+  if (m_calendarSettings.contains(QStringLiteral("calendar/listIds"))) {
+    m_calendarListIds = m_calendarSettings.value(QStringLiteral("calendar/listIds")).toStringList();
+  }
   m_todayTasks.setFocusDate(QDate::currentDate());
   m_selectedDateTasks.setFocusDate(m_selectedDate);
   m_refreshTimer.setInterval(1000);
@@ -87,6 +93,8 @@ QVariantList WaypointController::allTasks() const { return m_allTasks; }
 
 CalendarModel *WaypointController::calendar() { return &m_calendar; }
 QString WaypointController::taskVisibility() const { return m_taskVisibility; }
+bool WaypointController::calendarListFilterActive() const { return m_calendarListIds.has_value(); }
+QStringList WaypointController::calendarListIds() const { return m_calendarListIds.value_or(QStringList{}); }
 
 QString WaypointController::selectedDateKey() const { return m_selectedDate.toString(Qt::ISODate); }
 
@@ -201,6 +209,13 @@ void WaypointController::refresh() {
     updateConnection(false, error);
     return;
   }
+  const QList<TaskOccurrence> selectedOccurrences =
+      m_selectedDate >= rangeStart && m_selectedDate <= rangeEnd
+          ? rangeOccurrences : m_client.listOccurrences(m_selectedDate, m_selectedDate, &error);
+  if (!error.isEmpty()) {
+    updateConnection(false, error);
+    return;
+  }
   const QJsonObject activity = m_client.registrationActivity(
       qMin(today, qMin(rangeStart, m_selectedDate)), qMax(today, qMax(rangeEnd, m_selectedDate)), &error);
   if (!error.isEmpty()) {
@@ -208,11 +223,10 @@ void WaypointController::refresh() {
     return;
   }
   const QVariantList todayActivity = activity.value(today.toString(Qt::ISODate)).toArray().toVariantList();
-  const QVariantList selectedActivity =
-      activity.value(m_selectedDate.toString(Qt::ISODate)).toArray().toVariantList();
-  if (m_todayRegistrationActivity != todayActivity || m_selectedRegistrationActivity != selectedActivity) {
+  m_selectedActivityGroups = activity.value(m_selectedDate.toString(Qt::ISODate)).toArray();
+  publishSelectedRegistrationActivity();
+  if (m_todayRegistrationActivity != todayActivity) {
     m_todayRegistrationActivity = todayActivity;
-    m_selectedRegistrationActivity = selectedActivity;
     emit registrationActivityChanged();
   }
   const QString taskVisibility = m_client.taskVisibility(&error);
@@ -245,16 +259,30 @@ void WaypointController::refresh() {
   for (const TaskOccurrence &occurrence : rangeOccurrences) {
     rangeValues.append(occurrence.toJson());
   }
+  QJsonArray selectedValues;
+  if (m_selectedDate < rangeStart || m_selectedDate > rangeEnd) {
+    for (const TaskOccurrence &occurrence : selectedOccurrences) {
+      selectedValues.append(occurrence.toJson());
+    }
+  }
   const QVariantList taskValues = tasks.toVariantList();
   const QByteArray signature =
       QJsonDocument(QJsonObject{{QStringLiteral("today"), todayValues},
                                 {QStringLiteral("todayHabits"), habitValues},
                                 {QStringLiteral("selectedDateHabits"), selectedDateHabitValues},
+                                {QStringLiteral("selectedDate"), selectedDateKey()},
+                                {QStringLiteral("selected"), selectedValues},
+                                {QStringLiteral("visibleMonth"), visibleMonth.toString(Qt::ISODate)},
                                 {QStringLiteral("range"), rangeValues}})
           .toJson(QJsonDocument::Compact);
   if (signature != m_snapshotSignature) {
     m_snapshotSignature = signature;
-    publishOccurrences(todayOccurrences, rangeOccurrences);
+    m_todayTasks.setFocusDate(today);
+    m_todayTasks.setSourceOccurrences(todayOccurrences);
+    m_rangeOccurrences = rangeOccurrences;
+    m_selectedOccurrences = selectedOccurrences;
+    m_selectedOccurrencesSeparate = m_selectedDate < rangeStart || m_selectedDate > rangeEnd;
+    publishCalendarOccurrences();
     m_todayHabits.clear();
     for (const QJsonValue &value : habitValues) {
       m_todayHabits.append(value.toObject().toVariantMap());
@@ -459,6 +487,36 @@ bool WaypointController::setTaskVisibility(const QString &taskVisibility) {
   return true;
 }
 
+void WaypointController::setCalendarListFilter(const QStringList &listIds) {
+  QStringList normalized = listIds;
+  normalized.removeDuplicates();
+  if (m_calendarListIds && *m_calendarListIds == normalized) {
+    return;
+  }
+  m_calendarListIds = normalized;
+  saveCalendarListFilter();
+}
+
+void WaypointController::clearCalendarListFilter() {
+  if (!m_calendarListIds) {
+    return;
+  }
+  m_calendarListIds.reset();
+  saveCalendarListFilter();
+}
+
+void WaypointController::saveCalendarListFilter() {
+  if (m_calendarListIds) {
+    m_calendarSettings.setValue(QStringLiteral("calendar/listIds"), *m_calendarListIds);
+  } else {
+    m_calendarSettings.remove(QStringLiteral("calendar/listIds"));
+  }
+  m_calendarSettings.sync();
+  publishCalendarOccurrences();
+  publishSelectedRegistrationActivity();
+  emit calendarListFilterChanged();
+}
+
 bool WaypointController::saveHabit(const QString &habitId, const QString &title, const qint64 targetAmount,
                                    const QString &unit, const QString &checkInMode,
                                    const qint64 incrementAmount, const QVariantList &weekdays,
@@ -649,12 +707,32 @@ void WaypointController::updateConnection(bool online, const QString &errorMessa
   }
 }
 
-void WaypointController::publishOccurrences(const QList<TaskOccurrence> &todayOccurrences,
-                                            const QList<TaskOccurrence> &rangeOccurrences) {
-  m_todayTasks.setFocusDate(QDate::currentDate());
-  m_todayTasks.setSourceOccurrences(todayOccurrences);
-  m_selectedDateTasks.setSourceOccurrences(rangeOccurrences);
-  m_calendar.setSourceOccurrences(rangeOccurrences);
+void WaypointController::publishCalendarOccurrences() {
+  auto visibleOccurrences = [this](const QList<TaskOccurrence> &source) {
+    if (!m_calendarListIds) {
+      return source;
+    }
+    QList<TaskOccurrence> visible;
+    visible.reserve(source.size());
+    for (const TaskOccurrence &occurrence : source) {
+      if (isTaskListVisible(occurrence.categoryId, m_calendarListIds)) {
+        visible.append(occurrence);
+      }
+    }
+    return visible;
+  };
+  const QList<TaskOccurrence> range = visibleOccurrences(m_rangeOccurrences);
+  m_calendar.setSourceOccurrences(range);
+  m_selectedDateTasks.setSourceOccurrences(m_selectedOccurrencesSeparate
+                                              ? visibleOccurrences(m_selectedOccurrences) : range);
+}
+
+void WaypointController::publishSelectedRegistrationActivity() {
+  const QVariantList selected = filterTaskListActivity(m_selectedActivityGroups, m_calendarListIds).toVariantList();
+  if (m_selectedRegistrationActivity != selected) {
+    m_selectedRegistrationActivity = selected;
+    emit registrationActivityChanged();
+  }
 }
 
 bool WaypointController::refreshSyncDetails(QString *errorMessage) {

@@ -118,6 +118,15 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
     setError(errorMessage, error);
     return {};
   }
+  const QList<TaskCategory> categories = store.listActiveTaskCategories(&error);
+  if (!error.isEmpty()) {
+    setError(errorMessage, error);
+    return {};
+  }
+  QJsonArray categoryValues;
+  for (const TaskCategory &category : categories) {
+    categoryValues.append(category.toJson());
+  }
 
   QJsonObject dates;
   for (const TaskOccurrence &occurrence : occurrences) {
@@ -142,11 +151,12 @@ QJsonObject buildWidgetSnapshot(TaskStore &store, const QDate &today, const int 
 
   setError(errorMessage, {});
   return {
-      {QStringLiteral("schemaVersion"), 9},
+      {QStringLiteral("schemaVersion"), 10},
       {QStringLiteral("today"), today.toString(Qt::ISODate)},
       {QStringLiteral("rangeStart"), rangeStart.toString(Qt::ISODate)},
       {QStringLiteral("rangeEnd"), rangeEnd.toString(Qt::ISODate)},
       {QStringLiteral("taskVisibility"), taskVisibilityModeName(visibility)},
+      {QStringLiteral("taskCategories"), categoryValues},
       {QStringLiteral("dates"), dates},
   };
 }

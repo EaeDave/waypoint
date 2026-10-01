@@ -20,4 +20,21 @@ bool isTaskVisible(const TaskOccurrence &occurrence, const TaskVisibilityMode mo
   return mode == TaskVisibilityMode::All || (!occurrence.completed && !occurrence.skipped);
 }
 
+bool isTaskListVisible(const QString &categoryId, const std::optional<QStringList> &listIds) {
+  return !listIds.has_value() || listIds->contains(categoryId);
+}
+
+QJsonArray filterTaskListActivity(const QJsonArray &groups, const std::optional<QStringList> &listIds) {
+  if (!listIds.has_value()) {
+    return groups;
+  }
+  QJsonArray visible;
+  for (const QJsonValue &group : groups) {
+    if (isTaskListVisible(group.toObject().value(QStringLiteral("categoryId")).toString(), listIds)) {
+      visible.append(group);
+    }
+  }
+  return visible;
+}
+
 } // namespace waypoint

@@ -17,6 +17,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Set;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -88,17 +89,31 @@ public final class WaypointWidgetHistoryActivity extends Activity {
     content.removeAllViews();
     addText("Waypoint · " + LocalDate.parse(date).format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), Color.WHITE);
     JSONObject snapshot = WaypointWidgetProvider.snapshot(this);
+    Set<String> listIds = WaypointWidgetListFilterState.read(this, widgetId);
+    addText(WaypointWidgetListFilterState.label(listIds, snapshot.optJSONArray("taskCategories")),
+            listIds == null ? WaypointWidgetTaskText.NEUTRAL : Color.rgb(151, 159, 236));
+    if (listIds != null) {
+      Button reset = addButton("Mostrar todas");
+      reset.setOnClickListener(view -> {
+        WaypointWidgetListFilterState.clear(this, widgetId);
+        WaypointWidgetProvider.updateAll(this);
+        render();
+      });
+    }
     if (!LocalDate.now().toString().equals(snapshot.optString("today", "")) ||
-        snapshot.optInt("schemaVersion", 0) < 9) {
+        snapshot.optInt("schemaVersion", 0) < 10) {
       addText("Atualizando registros…", WaypointWidgetTaskText.NEUTRAL);
       WaypointBackgroundSyncScheduler.requestLocalWidgetRefresh(this);
     } else {
       JSONObject dates = snapshot.optJSONObject("dates");
       JSONObject day = dates == null ? null : dates.optJSONObject(date);
-      JSONArray tasks = day == null ? null : day.optJSONArray("tasks");
+      JSONArray tasks = WaypointWidgetListFilterState.filter(
+          day == null ? null : day.optJSONArray("tasks"), listIds);
       addText("TAREFAS", WaypointWidgetTaskText.NEUTRAL);
       if (tasks == null || tasks.length() == 0) {
-        addText("Nenhuma tarefa para este dia.", WaypointWidgetTaskText.NEUTRAL);
+        addText(listIds == null ? "Nenhuma tarefa para este dia."
+                              : WaypointWidgetListFilterState.emptyText(listIds),
+                WaypointWidgetTaskText.NEUTRAL);
       }
       for (int index = 0; tasks != null && index < tasks.length(); ++index) {
         JSONObject task = tasks.optJSONObject(index);
@@ -106,7 +121,8 @@ public final class WaypointWidgetHistoryActivity extends Activity {
           addTask(task, false);
         }
       }
-      addHistory(day == null ? null : day.optJSONArray("registrationActivity"));
+      addHistory(WaypointWidgetListFilterState.filter(
+          day == null ? null : day.optJSONArray("registrationActivity"), listIds));
     }
     Button close = addButton("Fechar");
     close.setOnClickListener(view -> finish());

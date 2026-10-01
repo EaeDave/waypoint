@@ -138,6 +138,13 @@ Item {
                         }
                     }
 
+                    CalendarListFilter {
+                        id: listFilter
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 12
+                        controller: root.controller
+                    }
+
                     CalendarGrid {
                         id: calendarGrid
                         Layout.alignment: Qt.AlignHCenter
@@ -324,13 +331,24 @@ Item {
                                 Layout.topMargin: 12
                                 Layout.bottomMargin: 8
                                 visible: selectedTasks.count === 0
-                                text: root.controller.taskVisibility === "pending"
-                                    ? "Nenhuma tarefa pendente neste dia."
-                                    : "Clique acima para planejar este dia."
+                                text: root.controller.calendarListFilterActive
+                                    ? "Nenhuma tarefa " + (root.controller.taskVisibility === "pending" ? "pendente " : "")
+                                        + "neste dia nas listas selecionadas: " + listFilter.selectionDescription + "."
+                                    : root.controller.taskVisibility === "pending"
+                                        ? "Nenhuma tarefa pendente neste dia."
+                                        : "Clique acima para planejar este dia."
+                                wrapMode: Text.Wrap
                                 horizontalAlignment: Text.AlignHCenter
                                 color: WaypointTheme.disabledText
                                 font.family: WaypointTheme.fontFamily
                                 font.pixelSize: WaypointTheme.bodySize
+                            }
+
+                            AppButton {
+                                Layout.alignment: Qt.AlignHCenter
+                                visible: selectedTasks.count === 0 && root.controller.calendarListFilterActive
+                                text: "Mostrar todas as listas"
+                                onClicked: root.controller.clearCalendarListFilter()
                             }
 
                             RegistrationActivity {

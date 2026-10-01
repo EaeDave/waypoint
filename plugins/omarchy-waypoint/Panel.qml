@@ -80,11 +80,25 @@ Panel {
     readonly property var portugueseLocale: Qt.locale("pt_BR")
 
     readonly property var barIdentity: hostWidget || root
-    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, occurrences, holidays)
+    readonly property var calendarListIds: hostWidget ? hostWidget.calendarListIds : null
+    readonly property bool calendarListFilterActive: calendarListIds !== null
+    readonly property var calendarListOptions: categoryOptions()
+    readonly property string calendarListFilterLabel: {
+        if (!calendarListFilterActive)
+            return "Listas: Todas";
+        if (calendarListIds.length === 1) {
+            const option = calendarListOptions.find(item => item.value === calendarListIds[0]);
+            return "Listas: " + (option ? option.label : "Lista indisponível");
+        }
+        return "Listas: " + calendarListIds.length;
+    }
+    readonly property var calendarOccurrences: filterCalendarLists(occurrences)
+    readonly property var calendarRegistrationActivity: filterCalendarLists(selectedRegistrationActivity)
+    readonly property var weeks: Model.monthWeeks(viewYear, viewMonth, calendarOccurrences, holidays)
     readonly property bool selectedDateIsToday:
         Model.dateKey(selectedDate) === Model.dateKey(today)
     readonly property var selectedDateTasks: selectedDateIsToday
-        ? todayTasks : Model.occurrencesForDate(occurrences, selectedDate)
+        ? filterCalendarLists(todayTasks) : Model.occurrencesForDate(calendarOccurrences, selectedDate)
     readonly property var selectedTasks: selectedDateTasks
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
@@ -133,6 +147,22 @@ Panel {
             });
         }
         return options;
+    }
+
+    function filterCalendarLists(items) {
+        return calendarListIds === null ? items
+            : (items || []).filter(item => calendarListIds.indexOf(String(item.categoryId || "")) >= 0);
+    }
+
+    function toggleCalendarList(id) {
+        const ids = calendarListIds === null
+            ? calendarListOptions.map(option => option.value) : calendarListIds.slice();
+        const index = ids.indexOf(id);
+        if (index < 0)
+            ids.push(id);
+        else
+            ids.splice(index, 1);
+        hostWidget.setCalendarListFilter(ids);
     }
     function requestCompletion(task, editDate) {
         if (!hostWidget || hostWidget.actionBusy)
@@ -872,6 +902,112 @@ Panel {
                         }
                     }
 
+                    Row {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: Style.space(4)
+
+                        Button {
+                            id: calendarListFilterButton
+                            objectName: "calendarListFilterButton"
+                            text: root.calendarListFilterLabel
+                            selected: root.calendarListFilterActive
+                            focusable: true
+                            enabled: root.hostWidget && root.hostWidget.calendarListSettingsLoaded
+                            Accessible.role: Accessible.Button
+                            Accessible.name: text
+                            Accessible.onPressAction: clicked()
+                            onClicked: calendarListFilterPopup.open()
+
+                            Popup {
+                                id: calendarListFilterPopup
+                                objectName: "calendarListFilterPopup"
+                                y: calendarListFilterButton.height + Style.space(4)
+                                width: Math.min(Style.space(360), calendarGridColumn.width)
+                                padding: Style.space(8)
+                                modal: true
+                                focus: true
+                                closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                                background: Rectangle {
+                                    color: Color.background
+                                    border.color: Color.accent
+                                    radius: Style.cornerRadius
+                                }
+                                contentItem: Column {
+                                    spacing: Style.space(6)
+                                    Button {
+                                        width: parent.width
+                                        text: "Mostrar todas"
+                                        focusable: true
+                                        Accessible.role: Accessible.Button
+                                        Accessible.name: text
+                                        Accessible.onPressAction: clicked()
+                                        onClicked: root.hostWidget.setCalendarListFilter(null)
+                                    }
+                                    ScrollView {
+                                        width: parent.width
+                                        height: Math.min(listFilterRows.implicitHeight, Style.space(280))
+                                        contentWidth: availableWidth
+                                        clip: true
+                                        Column {
+                                            id: listFilterRows
+                                            width: parent.width
+                                            Repeater {
+                                                model: root.calendarListOptions
+                                                RowLayout {
+                                                    id: listFilterRow
+                                                    required property var modelData
+                                                    width: listFilterRows.width
+                                                    spacing: Style.space(6)
+                                                    Rectangle {
+                                                        width: Style.space(8)
+                                                        height: width
+                                                        radius: width / 2
+                                                        color: listFilterRow.modelData.color
+                                                    }
+                                                    CheckBox {
+                                                        Layout.fillWidth: true
+                                                        text: listFilterRow.modelData.label
+                                                        checked: root.calendarListIds === null
+                                                            || root.calendarListIds.indexOf(listFilterRow.modelData.value) >= 0
+                                                        Accessible.name: text
+                                                        onClicked: root.toggleCalendarList(listFilterRow.modelData.value)
+                                                        contentItem: Text {
+                                                            text: parent.text
+                                                            leftPadding: parent.indicator.width + parent.spacing
+                                                            color: root.foreground
+                                                            font.family: root.fontFamily
+                                                            font.pixelSize: Style.font.bodySmall
+                                                            verticalAlignment: Text.AlignVCenter
+                                                            elide: Text.ElideRight
+                                                        }
+                                                    }
+                                                    Button {
+                                                        text: "Somente"
+                                                        focusable: true
+                                                        Accessible.role: Accessible.Button
+                                                        Accessible.name: "Somente " + listFilterRow.modelData.label
+                                                        Accessible.onPressAction: clicked()
+                                                        onClicked: root.hostWidget.setCalendarListFilter([listFilterRow.modelData.value])
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Button {
+                            visible: root.calendarListFilterActive
+                            text: "×"
+                            focusable: true
+                            tooltipText: "Mostrar todas as listas"
+                            Accessible.role: Accessible.Button
+                            Accessible.name: tooltipText
+                            Accessible.onPressAction: clicked()
+                            onClicked: root.hostWidget.setCalendarListFilter(null)
+                        }
+                    }
+
                     Item {
                         width: parent.width
                         height: calendarGridColumn.y + calendarGridColumn.height
@@ -1594,17 +1730,29 @@ Panel {
                         Text {
                             visible: root.selectedTasks.length === 0
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: root.loadError !== "" ? root.loadError : "Nenhuma tarefa para este dia"
+                            text: root.loadError !== "" ? root.loadError
+                                : root.calendarListFilterActive ? "Nenhuma tarefa nas listas selecionadas"
+                                                               : "Nenhuma tarefa para este dia"
                             color: root.loadError !== "" ? Color.urgent : Qt.darker(root.foreground, 1.9)
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
+                        }
+                        Button {
+                            visible: root.selectedTasks.length === 0 && root.calendarListFilterActive
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Mostrar todas"
+                            focusable: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: text
+                            Accessible.onPressAction: clicked()
+                            onClicked: root.hostWidget.setCalendarListFilter(null)
                         }
                     }
 
                     Column {
                         width: parent.width
                         spacing: Style.space(6)
-                        visible: root.selectedRegistrationActivity.length > 0
+                        visible: root.calendarRegistrationActivity.length > 0
 
                         Button {
                             width: parent.width
@@ -1619,7 +1767,7 @@ Panel {
 
                         Repeater {
                             model: root.registrationActivityExpanded
-                                   ? root.selectedRegistrationActivity : []
+                                   ? root.calendarRegistrationActivity : []
 
                             Column {
                                 id: activityGroup

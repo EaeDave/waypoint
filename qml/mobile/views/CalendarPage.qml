@@ -246,8 +246,12 @@ Item {
                 onClicked: root.controller.selectToday()
             }
 
-            Item {
+            CalendarListFilter {
+                id: calendarListFilter
+                controller: root.controller
                 Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
             }
 
             MobileButton {
@@ -560,14 +564,24 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     visible: root.controller.selectedTasks.length === 0
-                    text: root.controller.taskVisibility === "pending"
-                        ? "Nenhuma tarefa pendente neste dia."
-                        : "Nenhuma tarefa neste dia."
+                    text: root.controller.calendarListFilterActive ? calendarListFilter.emptyMessage
+                        : root.controller.taskVisibility === "pending"
+                          ? "Nenhuma tarefa pendente neste dia."
+                          : "Nenhuma tarefa neste dia."
                     color: MobileTheme.disabled
                     font.family: MobileTheme.fontFamily
                     font.pixelSize: MobileTheme.bodySize
                     horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
                     Layout.topMargin: 14
+                }
+
+                MobileButton {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: root.controller.selectedTasks.length === 0
+                        && root.controller.calendarListFilterActive
+                    text: "Mostrar todas as listas"
+                    onClicked: root.controller.clearCalendarListFilter()
                 }
 
                 RegistrationActivity {

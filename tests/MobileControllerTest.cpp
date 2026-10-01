@@ -16,6 +16,7 @@ class MobileControllerTest final : public QObject {
 private slots:
   void exposeTaskAndHabitWorkflows();
   void showOnlyFirstPendingRecurrenceOnCalendar();
+  void keepCalendarListSelectionLocalAndIndependent();
   void exposeCachedMunicipalities();
   void buildFutureTaskAndHabitNotifications();
   void buildCatchUpNotificationForMostRecentMissedOffset();
@@ -158,6 +159,98 @@ void MobileControllerTest::showOnlyFirstPendingRecurrenceOnCalendar() {
 
   controller.setSelectedDateKey(today.addDays(5).toString(Qt::ISODate));
   QCOMPARE(controller.selectedTasks().size(), 0);
+}
+
+void MobileControllerTest::keepCalendarListSelectionLocalAndIndependent() {
+  QTemporaryDir directory;
+  const QString database = directory.filePath(QStringLiteral("calendar.sqlite3"));
+  const QDate today = QDate::currentDate();
+  const QString todayKey = today.toString(Qt::ISODate);
+  const QString yesterdayKey = today.addDays(-1).toString(Qt::ISODate);
+  QString categoryId;
+  {
+    waypoint::MobileController controller(database, nullptr);
+    controller.start();
+    QVERIFY(controller.ready());
+    QVERIFY(!controller.calendarListFilterActive());
+    QVERIFY(controller.saveTaskCategory({}, QStringLiteral("Trabalho"), QStringLiteral("#3B82F6")));
+    categoryId = controller.taskCategories().first().toMap().value(QStringLiteral("id")).toString();
+    QVERIFY(controller.saveTask({}, QStringLiteral("Rotina"), yesterdayKey, QStringLiteral("09:00"),
+                                QStringLiteral("daily"), 1, {}, QStringLiteral("never"), {}, 0, {}, {},
+                                categoryId));
+    const QString recurringId = controller.allTasks().first().toMap().value(QStringLiteral("taskId")).toString();
+    QVERIFY(controller.setTaskCompleted(recurringId, yesterdayKey, true, true, yesterdayKey));
+    QVERIFY(controller.saveTask({}, QStringLiteral("Entrada"), todayKey, QStringLiteral("10:00"),
+                                QStringLiteral("none"), 1, {}, QStringLiteral("never"), {}, 0, {}, {}, {}));
+    const QVariantList globalTasks = controller.todayTasks();
+    const QVariantList globalHistory = controller.todayRegistrationActivity();
+    QCOMPARE(globalTasks.size(), 2);
+    QCOMPARE(globalHistory.size(), 1);
+
+    controller.setCalendarListFilter({QString()});
+    QVERIFY(controller.calendarListFilterActive());
+    QCOMPARE(controller.selectedTasks().size(), 1);
+    QCOMPARE(controller.selectedTasks().first().toMap().value(QStringLiteral("title")).toString(),
+             QStringLiteral("Entrada"));
+    QVERIFY(controller.selectedRegistrationActivity().isEmpty());
+    QCOMPARE(controller.monthOccurrences().size(), 1);
+    QCOMPARE(controller.todayTasks(), globalTasks);
+    QCOMPARE(controller.todayRegistrationActivity(), globalHistory);
+    QCOMPARE(controller.allTasks().size(), 2);
+
+    controller.setSelectedDateKey(yesterdayKey);
+    QVERIFY(controller.selectedTasks().isEmpty());
+    controller.setCalendarListFilter({categoryId});
+    QCOMPARE(controller.selectedTasks().size(), 1);
+    QVERIFY(controller.setTaskVisibility(QStringLiteral("pending")));
+    QVERIFY(controller.selectedTasks().isEmpty());
+    QVERIFY(controller.setTaskVisibility(QStringLiteral("all")));
+    controller.selectToday();
+    QCOMPARE(controller.selectedRegistrationActivity(), globalHistory);
+    for (const QVariant &value : controller.monthOccurrences()) {
+      QCOMPARE(value.toMap().value(QStringLiteral("categoryId")).toString(), categoryId);
+    }
+  }
+  {
+    waypoint::MobileController restored(database, nullptr);
+    restored.start();
+    QVERIFY(restored.calendarListFilterActive());
+    QCOMPARE(restored.calendarListIds(), QStringList{categoryId});
+    QCOMPARE(restored.selectedTasks().size(), 1);
+    QCOMPARE(restored.selectedTasks().first().toMap().value(QStringLiteral("categoryId")).toString(), categoryId);
+    restored.setCalendarListFilter({});
+    QVERIFY(restored.calendarListFilterActive());
+    QVERIFY(restored.selectedTasks().isEmpty());
+    QVERIFY(restored.monthOccurrences().isEmpty());
+    QVERIFY(restored.selectedRegistrationActivity().isEmpty());
+    QCOMPARE(restored.todayTasks().size(), 2);
+  }
+  {
+    waypoint::MobileController restored(database, nullptr);
+    restored.start();
+    QVERIFY(restored.calendarListFilterActive());
+    QVERIFY(restored.calendarListIds().isEmpty());
+    QVERIFY(restored.selectedTasks().isEmpty());
+    restored.setCalendarListFilter({categoryId});
+    QVERIFY(restored.deleteTaskCategory(categoryId));
+    QVERIFY(restored.calendarListFilterActive());
+    QVERIFY(restored.selectedTasks().isEmpty());
+    restored.clearCalendarListFilter();
+    QVERIFY(!restored.calendarListFilterActive());
+    QCOMPARE(restored.selectedTasks().size(), 2);
+    QVERIFY(restored.saveTaskCategory({}, QStringLiteral("Nova"), QStringLiteral("#22C55E")));
+    const QString newId = restored.taskCategories().first().toMap().value(QStringLiteral("id")).toString();
+    QVERIFY(restored.saveTask({}, QStringLiteral("Lista futura"), todayKey, QStringLiteral("11:00"),
+                              QStringLiteral("none"), 1, {}, QStringLiteral("never"), {}, 0, {}, {}, newId));
+    QCOMPARE(restored.selectedTasks().size(), 3);
+  }
+  waypoint::MobileController restored(database, nullptr);
+  restored.start();
+  QVERIFY(!restored.calendarListFilterActive());
+  QCOMPARE(restored.selectedTasks().size(), 3);
+  restored.setCalendarListFilter({});
+  waypoint::MobileController isolated(directory.filePath(QStringLiteral("other.sqlite3")), nullptr);
+  QVERIFY(!isolated.calendarListFilterActive());
 }
 
 void MobileControllerTest::exposeCachedMunicipalities() {

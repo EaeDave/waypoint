@@ -47,12 +47,41 @@
             android:id="@+id/widget_day_details"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            android:contentDescription="Ver todas as tarefas e conclusões do dia selecionado"
+            android:contentDescription="Ver tarefas e conclusões das listas selecionadas do dia"
             android:fontFamily="monospace"
             android:gravity="center"
             android:text="DIA"
             android:textColor="#FF979FEC"
             android:textSize="10sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+        <TextView
+            android:id="@+id/widget_list_filter"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="8dp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="Listas: Todas"
+            android:textColor="#99FFFFFF"
+            android:textSize="12sp" />
+        <TextView
+            android:id="@+id/widget_list_filter_reset"
+            android:layout_width="48dp"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:contentDescription="Mostrar todas as listas"
+            android:text="×"
+            android:textColor="#FF979FEC"
+            android:textSize="20sp"
+            android:visibility="gone" />
     </LinearLayout>
 
     <LinearLayout

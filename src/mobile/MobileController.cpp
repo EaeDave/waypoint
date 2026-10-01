@@ -1,5 +1,6 @@
 #include "mobile/MobileController.hpp"
 
+#include "core/TaskVisibility.hpp"
 #include "mobile/AndroidBackgroundSyncBridge.hpp"
 #include "mobile/AndroidNotificationBridge.hpp"
 #include "mobile/AndroidWidgetBridge.hpp"
@@ -78,12 +79,13 @@ QVariantList occurrenceValues(const QList<TaskOccurrence> &occurrences,
 }
 
 
-QList<TaskOccurrence> visibleOccurrences(const QList<TaskOccurrence> &occurrences,
-                                         const TaskVisibilityMode mode) {
+QList<TaskOccurrence> visibleOccurrences(
+    const QList<TaskOccurrence> &occurrences, const TaskVisibilityMode mode,
+    const std::optional<QStringList> &listIds = std::nullopt) {
   QList<TaskOccurrence> visible;
   visible.reserve(occurrences.size());
   for (const TaskOccurrence &occurrence : occurrences) {
-    if (isTaskVisible(occurrence, mode)) {
+    if (isTaskVisible(occurrence, mode) && isTaskListVisible(occurrence.categoryId, listIds)) {
       visible.append(occurrence);
     }
   }
@@ -123,10 +125,15 @@ MobileController::MobileController(QObject *parent)
     : MobileController(defaultWaypointDatabasePath(), parent) {}
 
 MobileController::MobileController(QString databasePath, QObject *parent)
-    : QObject(parent), m_store(std::move(databasePath), this), m_syncEngine(&m_store, this),
+    : QObject(parent),
+      m_calendarSettings(databasePath + QStringLiteral(".mobile-calendar.ini"), QSettings::IniFormat),
+      m_store(std::move(databasePath), this), m_syncEngine(&m_store, this),
       m_holidaySyncEngine(&m_store, this), m_updateChecker(UpdateAsset::AndroidArm64, this),
       m_updateInstaller(this), m_selectedDate(QDate::currentDate()), m_visibleYear(m_selectedDate.year()),
       m_visibleMonth(m_selectedDate.month()) {
+  if (m_calendarSettings.contains(QStringLiteral("listIds"))) {
+    m_calendarListIds = m_calendarSettings.value(QStringLiteral("listIds")).toStringList();
+  }
   m_refreshTimer.setInterval(30000);
   connect(&m_refreshTimer, &QTimer::timeout, this, &MobileController::refresh);
   connect(&m_store, &TaskStore::tasksChanged, this, [this] {
@@ -175,6 +182,8 @@ QVariantList MobileController::monthOccurrences() const { return m_monthOccurren
 QVariantList MobileController::taskCategories() const { return m_taskCategories; }
 QVariantList MobileController::allTasks() const { return m_allTasks; }
 QString MobileController::taskVisibility() const { return taskVisibilityModeName(m_taskVisibility); }
+bool MobileController::calendarListFilterActive() const { return m_calendarListIds.has_value(); }
+QStringList MobileController::calendarListIds() const { return m_calendarListIds.value_or(QStringList{}); }
 QVariantList MobileController::monthHolidays() const { return m_monthHolidays; }
 QVariantList MobileController::allHabits() const { return m_allHabits; }
 QString MobileController::syncEndpoint() const { return m_syncEndpoint; }
@@ -272,7 +281,7 @@ void MobileController::refresh() {
     return;
   }
   const QList<TaskOccurrence> month =
-      visibleOccurrences(m_store.listOccurrences(monthStart, monthEnd, &error), visibility);
+      visibleOccurrences(m_store.listOccurrences(monthStart, monthEnd, &error), visibility, m_calendarListIds);
   if (!error.isEmpty()) {
     publishError(error);
     return;
@@ -317,7 +326,8 @@ void MobileController::refresh() {
   }
   QList<TaskOccurrence> selected;
   if (m_selectedDate == today) {
-    selected = todayOccurrences;
+    selected = m_calendarListIds ? visibleOccurrences(todayOccurrences, visibility, m_calendarListIds)
+                                 : todayOccurrences;
   } else {
     for (const TaskOccurrence &occurrence : month) {
       const bool calendarVisible = !occurrence.recurring || occurrence.calendarMarker;
@@ -335,8 +345,8 @@ void MobileController::refresh() {
   m_todayTasks = occurrenceValues(todayOccurrences, scheduledDates);
   m_selectedTasks = occurrenceValues(selected, scheduledDates);
   m_todayRegistrationActivity = activity.value(today.toString(Qt::ISODate)).toArray().toVariantList();
-  m_selectedRegistrationActivity =
-      activity.value(m_selectedDate.toString(Qt::ISODate)).toArray().toVariantList();
+  m_selectedRegistrationActivity = filterTaskListActivity(
+      activity.value(m_selectedDate.toString(Qt::ISODate)).toArray(), m_calendarListIds).toVariantList();
   m_todayHabits = habitValues(habits);
   m_selectedDateHabits = habitValues(selectedDateHabits);
   m_monthOccurrences = occurrenceValues(month, scheduledDates);
@@ -451,6 +461,29 @@ bool MobileController::setTaskVisibility(const QString &taskVisibility) {
   }
   QString error;
   return finishMutation(m_store.setTaskVisibilityMode(*mode, &error), error);
+}
+
+void MobileController::setCalendarListFilter(const QStringList &listIds) {
+  if (m_calendarListIds && *m_calendarListIds == listIds) {
+    return;
+  }
+  m_calendarListIds = listIds;
+  m_calendarListIds->removeDuplicates();
+  m_calendarSettings.setValue(QStringLiteral("listIds"), *m_calendarListIds);
+  m_calendarSettings.sync();
+  emit calendarListFilterChanged();
+  refresh();
+}
+
+void MobileController::clearCalendarListFilter() {
+  if (!m_calendarListIds) {
+    return;
+  }
+  m_calendarListIds.reset();
+  m_calendarSettings.remove(QStringLiteral("listIds"));
+  m_calendarSettings.sync();
+  emit calendarListFilterChanged();
+  refresh();
 }
 
 bool MobileController::saveTaskCategory(const QString &categoryId, const QString &name,

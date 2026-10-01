@@ -74,6 +74,12 @@
             android:excludeFromRecents="true"
             android:taskAffinity=""
             android:theme="@style/WidgetHistoryTheme" />
+        <activity
+            android:name="org.eaedave.waypoint.WaypointWidgetListFilterActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/WidgetHistoryTheme" />
 
         <service
             android:name="org.eaedave.waypoint.WaypointWidgetActionService"

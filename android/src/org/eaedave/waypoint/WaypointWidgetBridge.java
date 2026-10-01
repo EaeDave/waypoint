@@ -35,7 +35,8 @@ public final class WaypointWidgetBridge {
                 temporary.delete();
             }
         }
-        WaypointWidgetProvider.updateAll(context);
+        // Render in the provider's process, where per-widget SharedPreferences are coherent.
+        context.sendBroadcast(new Intent(context, WaypointWidgetProvider.class).setAction(ACTION_SNAPSHOT_CHANGED));
         context.sendBroadcast(new Intent(ACTION_SNAPSHOT_CHANGED).setPackage(context.getPackageName()));
     }
 

@@ -28,6 +28,57 @@ BarWidget {
     property string loadError: ""
     property string actionError: ""
     property string taskVisibility: "all"
+    property var calendarListIds: null
+    property bool calendarListSettingsLoaded: false
+    readonly property string calendarStateDirectory:
+        (Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME") + "/.local/state")
+        + "/waypoint"
+
+    function loadCalendarListSettings(raw) {
+        if (calendarListSettingsLoaded)
+            return;
+        try {
+            const saved = raw.trim() === "" ? null : JSON.parse(raw);
+            calendarListIds = saved === null || saved.calendarListIds === undefined
+                ? null : saved.calendarListIds;
+            if (calendarListIds !== null
+                    && (!Array.isArray(calendarListIds)
+                        || !calendarListIds.every(id => typeof id === "string")))
+                throw new Error("Seleção de listas inválida");
+        } catch (error) {
+            calendarListIds = [];
+            actionError = "Não foi possível ler o filtro de listas: " + error;
+        }
+        calendarListSettingsLoaded = true;
+    }
+
+    function setCalendarListFilter(ids) {
+        if (!calendarListSettingsLoaded)
+            return;
+        calendarListIds = ids;
+        calendarListSettings.setText(JSON.stringify({ calendarListIds: ids }) + "\n");
+    }
+
+    Process {
+        command: ["mkdir", "-p", root.calendarStateDirectory]
+        running: true
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode === 0)
+                calendarListSettings.path = root.calendarStateDirectory + "/omarchy-calendar.json";
+            else
+                root.actionError = "Não foi possível preparar o filtro local de listas";
+        }
+    }
+
+    FileView {
+        id: calendarListSettings
+        watchChanges: false
+        atomicWrites: true
+        printErrors: false
+        onLoaded: root.loadCalendarListSettings(text())
+        onLoadFailed: root.loadCalendarListSettings("")
+        onSaveFailed: root.actionError = "Não foi possível salvar o filtro local de listas"
+    }
     property var syncStatus: ({ state: "local-only", configured: false, lastError: "" })
     property var updateStatus: ({ state: "idle", currentVersion: "", latestVersion: "",
                                   canInstall: false, error: "" })
