@@ -21,6 +21,7 @@ Panel {
     property var selectedHabits: []
     property var selectedRegistrationActivity: []
     property bool registrationActivityExpanded: false
+    property bool completedTasksExpanded: false
     property var expandedActivityTasks: ({})
     property var completionTask: null
     property var editedTask: null
@@ -85,12 +86,12 @@ Panel {
     readonly property var calendarListOptions: categoryOptions()
     readonly property string calendarListFilterLabel: {
         if (!calendarListFilterActive)
-            return "Listas: Todas";
+            return "Todas as listas ▾";
         if (calendarListIds.length === 1) {
             const option = calendarListOptions.find(item => item.value === calendarListIds[0]);
-            return "Listas: " + (option ? option.label : "Lista indisponível");
+            return (option ? option.label : "Lista indisponível") + " ▾";
         }
-        return "Listas: " + calendarListIds.length;
+        return calendarListIds.length + " listas ▾";
     }
     readonly property var calendarOccurrences: filterCalendarLists(occurrences)
     readonly property var calendarRegistrationActivity: filterCalendarLists(selectedRegistrationActivity)
@@ -100,13 +101,17 @@ Panel {
     readonly property var selectedDateTasks: selectedDateIsToday
         ? filterCalendarLists(todayTasks) : Model.occurrencesForDate(calendarOccurrences, selectedDate)
     readonly property var selectedTasks: selectedDateTasks
+    readonly property var pendingTasks: selectedTasks.filter(task => !task.completed && !task.skipped)
+    readonly property var skippedTasks: selectedTasks.filter(task => !task.completed && task.skipped)
+    readonly property var completedTasks: selectedTasks.filter(task => task.completed)
     readonly property var selectedHolidays: Model.holidaysForDate(holidays, selectedDate)
     readonly property real yearDone: Model.yearProgress(today)
     readonly property int yearDonePercent: Math.round(yearDone * 100)
     readonly property color foreground: bar ? bar.foreground : Color.foreground
-    readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+    readonly property string fontFamily: "Noto Sans"
+    readonly property string monospaceFontFamily: bar ? bar.fontFamily : Style.font.family
     readonly property int cellWidth: Style.space(52)
-    readonly property int cellHeight: Style.space(34)
+    readonly property int cellHeight: Style.space(40)
     readonly property int cellSpacing: Style.space(2)
     readonly property int weekColumnWidth: Style.space(32)
     readonly property int gutterWidth: Style.space(14)
@@ -118,6 +123,20 @@ Panel {
         if (kind === "optional")
             return optionalHolidayColor;
         return Color.accent;
+    }
+
+    function habitActionLabel(habit) {
+        if (habit.completed)
+            return "✓ Meta atingida";
+        if (habit.checkInMode === "manual")
+            return "+ Registrar";
+        if (habit.checkInMode !== "fixed")
+            return "✓ Concluir";
+        const amount = Number(habit.incrementAmount);
+        const unit = String(habit.unit || "");
+        const singularUnits = { copos: "copo", vezes: "vez", unidades: "unidade", sessões: "sessão" };
+        return "+" + amount + (unit === "" ? "" : " "
+            + (amount === 1 ? singularUnits[unit] || unit : unit));
     }
 
     function holidayKindLabel(kind, scope) {
@@ -221,6 +240,7 @@ Panel {
 
 
     function open() {
+        completedTasksExpanded = false;
         today = new Date();
         selectedDate = today;
         viewYear = selectedDate.getFullYear();
@@ -254,6 +274,7 @@ Panel {
 
     function selectDay(date) {
         selectedDate = date;
+        completedTasksExpanded = false;
         registrationActivityExpanded = false;
         expandedActivityTasks = ({});
         if (hostWidget) {
@@ -814,32 +835,25 @@ Panel {
                         wrapMode: Text.Wrap
                     }
 
-                    Item {
-                        width: parent.width
-                        height: heroRow.height
+                    Column {
+                        width: calendarGridColumn.width
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        spacing: Style.space(4)
 
-                        Row {
-                            id: heroRow
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            spacing: Style.space(22)
-
-                            Text {
-                                anchors.baseline: heroDate.baseline
-                                text: "󰃭"
-                                color: root.foreground
-                                font.family: root.fontFamily
-                                font.pixelSize: 48
-                            }
-
-                            Text {
-                                id: heroDate
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: root.portugueseLocale.toString(root.selectedDate, "d 'de' MMMM")
-                                color: root.foreground
-                                font.family: root.fontFamily
-                                font.pixelSize: 52
-                                font.bold: true
-                            }
+                        Text {
+                            width: parent.width
+                            text: root.portugueseLocale.toString(root.selectedDate, "d 'de' MMMM")
+                            color: root.foreground
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.space(30)
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            text: root.portugueseLocale.toString(root.selectedDate, "dddd · yyyy")
+                            color: Qt.darker(root.foreground, 1.4)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.space(13)
                         }
                     }
 
@@ -869,8 +883,8 @@ Panel {
                                 id: yearPercent
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: root.yearDonePercent + "%"
-                                color: root.foreground
+                                text: root.yearDonePercent + "% do ano"
+                                color: Qt.darker(root.foreground, 1.5)
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.bodySmall
                             }
@@ -881,7 +895,7 @@ Panel {
                                 anchors.leftMargin: Style.space(12)
                                 anchors.rightMargin: Style.space(12)
                                 anchors.verticalCenter: parent.verticalCenter
-                                height: Style.space(6)
+                                height: Style.space(2)
                                 radius: Style.cornerRadius > 0 ? height / 2 : 0
                                 color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.12)
 
@@ -889,7 +903,7 @@ Panel {
                                     width: Math.round(parent.width * root.yearDone)
                                     height: parent.height
                                     radius: parent.radius
-                                    color: Style.selectedStateColor(root.foreground, Color.accent)
+                                    color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.35)
 
                                     Behavior on width {
                                         NumberAnimation {
@@ -910,6 +924,7 @@ Panel {
                             id: calendarListFilterButton
                             objectName: "calendarListFilterButton"
                             text: root.calendarListFilterLabel
+                            fontFamily: root.fontFamily
                             selected: root.calendarListFilterActive
                             focusable: true
                             enabled: root.hostWidget && root.hostWidget.calendarListSettingsLoaded
@@ -1022,7 +1037,7 @@ Panel {
 
                         Column {
                             id: calendarGridColumn
-                            y: Style.space(18)
+                            y: Style.space(10)
                             anchors.horizontalCenter: parent.horizontalCenter
                             spacing: Style.space(3)
 
@@ -1097,12 +1112,13 @@ Panel {
                                             required property var modelData
                                             width: root.cellWidth
                                             height: root.cellHeight
-                                            radius: Style.cornerRadius
-                                            color: dayMouse.containsMouse || Model.dateKey(root.selectedDate) === modelData.key
-                                                ? Style.hoverFillFor(root.foreground, Color.accent)
+                                            readonly property bool selected: Model.dateKey(root.selectedDate) === modelData.key
+                                            radius: Math.max(Style.cornerRadius, Style.space(6))
+                                            color: selected ? Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.20)
+                                                : dayMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent)
                                                 : "transparent"
-                                            border.width: modelData.today ? Style.spacing.hairline : 0
-                                            border.color: Style.normalBorderFor(root.foreground, Color.accent)
+                                            border.width: selected || modelData.today ? Style.spacing.hairline : 0
+                                            border.color: selected ? Color.accent : Style.normalBorderFor(root.foreground, Color.accent)
 
                                             Text {
                                                 anchors.centerIn: parent
@@ -1115,8 +1131,8 @@ Panel {
                                                                            : root.foreground)
                                                     : Qt.darker(root.foreground, 2.2)
                                                 font.family: root.fontFamily
-                                                font.pixelSize: Style.font.body
-                                                font.bold: modelData.today
+                                                font.pixelSize: Style.space(15)
+                                                font.bold: modelData.today || parent.selected
                                             }
                                             Rectangle {
                                                 anchors.top: parent.top
@@ -1130,32 +1146,31 @@ Panel {
                                             }
 
                                             ToolTip.visible: dayMouse.containsMouse
-                                                                 && modelData.categoryMarkers.length > 0
+                                            ToolTip.delay: 400
                                             ToolTip.text: {
-                                                const labels = [];
+                                                const labels = [root.portugueseLocale.toString(modelData.date, "d 'de' MMMM")];
+                                                if (modelData.pending > 0)
+                                                    labels.push(modelData.pending + " pendente(s)");
+                                                if (modelData.completed > 0)
+                                                    labels.push(modelData.completed + " concluída(s)");
+                                                if (modelData.skipped > 0)
+                                                    labels.push(modelData.skipped + " não feita(s)");
+                                                if (modelData.overdue > 0)
+                                                    labels.push(modelData.overdue + " atrasada(s)");
+                                                for (const holiday of modelData.holidays)
+                                                    labels.push(holiday.name + " · " + root.holidayKindLabel(holiday.kind, holiday.scope));
                                                 for (const marker of modelData.categoryMarkers)
-                                                    labels.push(marker.name);
+                                                    labels.push("Lista: " + marker.name);
                                                 if (modelData.categoryOverflow > 0)
-                                                    labels.push("+" + modelData.categoryOverflow);
-                                                return labels.join(", ");
+                                                    labels.push("Mais " + modelData.categoryOverflow + " lista(s)");
+                                                return labels.join("\n");
                                             }
-
 
                                             Row {
                                                 anchors.horizontalCenter: parent.horizontalCenter
                                                 anchors.bottom: parent.bottom
                                                 anchors.bottomMargin: Style.space(3)
                                                 spacing: Style.space(2)
-
-                                                Text {
-                                                    visible: modelData.skipped > 0
-                                                    text: modelData.skipped === 1
-                                                        ? "×" : "×" + modelData.skipped
-                                                    color: Color.urgent
-                                                    font.family: root.fontFamily
-                                                    font.pixelSize: Style.font.caption
-                                                    font.bold: true
-                                                }
 
                                                 Repeater {
                                                     model: modelData.categoryMarkers
@@ -1172,14 +1187,6 @@ Panel {
                                                     }
                                                 }
 
-                                                Text {
-                                                    visible: modelData.categoryOverflow > 0
-                                                    text: "+" + modelData.categoryOverflow
-                                                    color: Color.accent
-                                                    font.family: root.fontFamily
-                                                    font.pixelSize: Style.font.caption
-                                                    font.bold: true
-                                                }
                                             }
 
                                             MouseArea {
@@ -1219,9 +1226,9 @@ Panel {
                                 id: monthLabel
                                 anchors.horizontalCenter: parent.horizontalCenter
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: Style.space(130)
+                                width: parent.width - Style.space(80)
                                 horizontalAlignment: Text.AlignHCenter
-                                text: root.portugueseLocale.toString(new Date(root.viewYear, root.viewMonth, 1), "MMMM 'de' yyyy").toUpperCase()
+                                text: root.portugueseLocale.toString(new Date(root.viewYear, root.viewMonth, 1), "MMMM 'de' yyyy")
                                 color: Qt.darker(root.foreground, 1.4)
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.body
@@ -1260,22 +1267,23 @@ Panel {
                     Column {
                         id: habitsColumn
                         width: habitsFlick.width
-                        spacing: Style.space(3)
+                        spacing: Style.space(8)
 
                         RowLayout {
                             width: parent.width
 
                             Text {
-                                text: "HÁBITOS"
+                                text: "Hábitos"
                                 color: Qt.darker(root.foreground, 1.4)
                                 font.family: root.fontFamily
-                                font.pixelSize: Style.font.caption
+                                font.pixelSize: Style.space(13)
                                 font.bold: true
-                                font.letterSpacing: 1
+                                font.letterSpacing: 0
                             }
                             Item { Layout.fillWidth: true }
                             Button {
-                                text: "+ HÁBITO"
+                                text: "+ Hábito"
+                                fontFamily: root.fontFamily
                                 foreground: root.foreground
                                 accent: Color.accent
                                 bordered: true
@@ -1300,122 +1308,124 @@ Panel {
                             Rectangle {
                                 id: habitRow
                                 required property var modelData
-                                width: parent.width
-                                height: Style.space(66)
-                                radius: Style.cornerRadius
-                                color: Style.hoverFillFor(root.foreground, Color.accent)
+                                width: habitsColumn.width
+                                height: habitContent.implicitHeight + Style.space(24)
+                                radius: Math.max(Style.cornerRadius, Style.space(6))
+                                color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.045)
 
                                 Column {
+                                    id: habitContent
                                     anchors.left: parent.left
-                                    anchors.right: habitActions.left
+                                    anchors.right: parent.right
                                     anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    anchors.margins: Style.space(8)
-                                    anchors.rightMargin: Style.space(6)
-                                    spacing: Style.space(3)
+                                    anchors.margins: Style.space(12)
+                                    spacing: Style.space(6)
 
-                                    Row {
+                                    RowLayout {
                                         width: parent.width
-                                        spacing: Style.space(6)
-
+                                        spacing: Style.space(8)
                                         Text {
                                             visible: String(habitRow.modelData.emoji || "") !== ""
                                             text: habitRow.modelData.emoji || ""
-                                            color: root.foreground
                                             font.family: "Noto Color Emoji"
-                                            font.pixelSize: Style.font.body
+                                            font.pixelSize: Style.space(17)
                                         }
                                         Text {
-                                            width: parent.width - (visible ? Style.space(28) : 0)
+                                            Layout.fillWidth: true
                                             text: habitRow.modelData.title
-                                            color: habitRow.modelData.completed
-                                                ? Qt.darker(root.foreground, 1.7) : root.foreground
+                                            color: root.foreground
                                             font.family: root.fontFamily
-                                            font.pixelSize: Style.font.body
-                                            font.bold: true
+                                            font.pixelSize: Style.space(14)
+                                            font.weight: Font.DemiBold
                                             elide: Text.ElideRight
+                                        }
+                                        Button {
+                                            visible: habitRow.modelData.amount > 0
+                                            text: "↶"
+                                            fontFamily: root.fontFamily
+                                            foreground: root.foreground
+                                            tooltipText: "Desfazer último registro"
+                                            focusable: true
+                                            enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                            horizontalPadding: Style.space(8)
+                                            verticalPadding: Style.space(5)
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: tooltipText + ": " + habitRow.modelData.title
+                                            Accessible.onPressAction: clicked()
+                                            onClicked: root.hostWidget.undoHabit(
+                                                habitRow.modelData.id, Model.dateKey(root.selectedDate))
+                                        }
+                                        Button {
+                                            text: "⋯"
+                                            fontFamily: root.fontFamily
+                                            foreground: root.foreground
+                                            tooltipText: "Editar hábito"
+                                            focusable: true
+                                            horizontalPadding: Style.space(8)
+                                            verticalPadding: Style.space(5)
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: tooltipText + ": " + habitRow.modelData.title
+                                            Accessible.onPressAction: clicked()
+                                            onClicked: root.openHabitEditor(habitRow.modelData)
                                         }
                                     }
 
-                                    Text {
+                                    RowLayout {
                                         width: parent.width
-                                        text: habitRow.modelData.amount + " / " + habitRow.modelData.targetAmount
-                                            + (String(habitRow.modelData.unit || "") === ""
-                                                ? "" : " " + habitRow.modelData.unit)
-                                            + ((habitRow.modelData.reminderTimes || []).length === 0
-                                                ? "" : " · 󰂚 " + habitRow.modelData.reminderTimes.length)
-                                        color: habitRow.modelData.completed ? Color.accent
-                                            : Qt.darker(root.foreground, 1.45)
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.caption
-                                        font.bold: true
+                                        spacing: Style.space(8)
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: habitRow.modelData.amount + " de " + habitRow.modelData.targetAmount
+                                                + (String(habitRow.modelData.unit || "") === ""
+                                                    ? "" : " " + habitRow.modelData.unit)
+                                            color: habitRow.modelData.completed ? Color.accent
+                                                : Qt.darker(root.foreground, 1.3)
+                                            font.family: root.fontFamily
+                                            font.pixelSize: Style.space(13)
+                                            elide: Text.ElideRight
+                                            ToolTip.visible: habitProgressHover.hovered
+                                            ToolTip.text: text + ((habitRow.modelData.reminderTimes || []).length === 0
+                                                ? "" : "\nLembretes: " + habitRow.modelData.reminderTimes.join(", "))
+                                            HoverHandler { id: habitProgressHover }
+                                        }
+                                        Button {
+                                            enabled: root.hostWidget && !root.hostWidget.actionBusy && !habitRow.modelData.completed
+                                            text: root.habitActionLabel(habitRow.modelData)
+                                            fontFamily: root.fontFamily
+                                            fontSize: Style.space(12)
+                                            foreground: Color.accent
+                                            background: Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.12)
+                                            selected: habitRow.modelData.completed
+                                            focusable: true
+                                            horizontalPadding: Style.space(10)
+                                            verticalPadding: Style.space(6)
+                                            Accessible.role: Accessible.Button
+                                            Accessible.name: text + ": " + habitRow.modelData.title
+                                            Accessible.onPressAction: clicked()
+                                            onClicked: {
+                                                if (habitRow.modelData.checkInMode === "manual")
+                                                    root.openManualHabit(habitRow.modelData.id);
+                                                else
+                                                    root.hostWidget.recordHabit(
+                                                        habitRow.modelData.id, Model.dateKey(root.selectedDate), 0);
+                                            }
+                                        }
                                     }
 
                                     Rectangle {
                                         width: parent.width
-                                        height: Style.spacing.hairline * 2
+                                        height: Style.space(3)
                                         radius: height / 2
-                                        color: Qt.rgba(root.foreground.r, root.foreground.g,
-                                                       root.foreground.b, 0.18)
-
+                                        color: Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, 0.10)
                                         Rectangle {
-                                            width: parent.width * Math.min(
-                                                1, habitRow.modelData.amount / habitRow.modelData.targetAmount)
+                                            width: parent.width * Math.max(0, Math.min(
+                                                1, habitRow.modelData.amount / Math.max(1, habitRow.modelData.targetAmount)))
                                             height: parent.height
                                             radius: parent.radius
                                             color: Color.accent
-                                        }
-                                    }
-                                }
-
-                                Row {
-                                    id: habitActions
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Style.space(6)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: Style.space(3)
-
-                                    Button {
-                                        visible: habitRow.modelData.amount > 0
-                                        text: "↶"
-                                        foreground: root.foreground
-                                        accent: Color.accent
-                                        bordered: true
-                                        horizontalPadding: Style.space(6)
-                                        verticalPadding: Style.space(3)
-                                        onClicked: if (root.hostWidget)
-                                            root.hostWidget.undoHabit(
-                                                habitRow.modelData.id, Model.dateKey(root.selectedDate))
-                                    }
-                                    Button {
-                                        text: "⋯"
-                                        foreground: root.foreground
-                                        accent: Color.accent
-                                        bordered: true
-                                        horizontalPadding: Style.space(6)
-                                        verticalPadding: Style.space(3)
-                                        onClicked: root.openHabitEditor(habitRow.modelData)
-                                    }
-                                    Button {
-                                        enabled: !habitRow.modelData.completed
-                                        text: habitRow.modelData.completed ? "✓"
-                                            : habitRow.modelData.checkInMode === "fixed"
-                                                ? "+" + habitRow.modelData.incrementAmount
-                                            : habitRow.modelData.checkInMode === "manual" ? "+" : "✓"
-                                        foreground: root.foreground
-                                        accent: Color.accent
-                                        selected: habitRow.modelData.completed
-                                        horizontalPadding: Style.space(7)
-                                        verticalPadding: Style.space(3)
-                                        onClicked: {
-                                            if (!root.hostWidget)
-                                                return;
-                                            if (habitRow.modelData.checkInMode === "manual")
-                                                root.openManualHabit(habitRow.modelData.id);
-                                            else
-                                                root.hostWidget.recordHabit(
-                                                    habitRow.modelData.id,
-                                                    Model.dateKey(root.selectedDate), 0);
+                                            Behavior on width {
+                                                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                                            }
                                         }
                                     }
                                 }
@@ -1444,12 +1454,13 @@ Panel {
                         width: parent.width
 
                         Text {
-                            text: "TAREFAS"
+                            text: "Tarefas · " + root.pendingTasks.length
+                                + (root.pendingTasks.length === 1 ? " pendente" : " pendentes")
                             color: Qt.darker(root.foreground, 1.4)
                             font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
+                            font.pixelSize: Style.space(13)
                             font.bold: true
-                            font.letterSpacing: 1
+                            font.letterSpacing: 0
                         }
 
                         Item {
@@ -1457,13 +1468,14 @@ Panel {
                         }
 
                         Button {
-                            text: root.taskVisibility === "pending" ? "PENDENTES" : "TODAS"
+                            fontFamily: root.fontFamily
+                            text: root.taskVisibility === "pending" ? "Só pendentes" : "Todas"
                             tooltipText: root.taskVisibility === "pending"
                                 ? "Exibindo somente pendentes; clique para mostrar todas"
                                 : "Exibindo todas; clique para mostrar somente pendentes"
                             foreground: root.foreground
                             accent: Color.accent
-                            bordered: true
+                            bordered: false
                             selected: root.taskVisibility === "pending"
                             horizontalPadding: Style.space(7)
                             verticalPadding: Style.space(3)
@@ -1566,164 +1578,67 @@ Panel {
                         spacing: Style.space(2)
 
                         Repeater {
-                            model: root.selectedTasks
-
-                            Rectangle {
-                                id: taskRow
+                            model: root.pendingTasks.concat(root.skippedTasks)
+                            TaskRow {
                                 required property var modelData
-                                readonly property bool overdue:
-                                    !modelData.completed && !modelData.skipped
-                                    && String(modelData.occurrenceDate || "") < Model.dateKey(root.today)
-                                width: parent.width
-                                height: Math.max(Style.space(58), taskDetails.implicitHeight + Style.space(12))
-                                radius: Style.cornerRadius
-                                color: taskMouse.containsMouse ? Style.hoverFillFor(root.foreground, Color.accent) : "transparent"
+                                width: detailsColumn.width
+                                height: implicitHeight
+                                task: modelData
+                                today: root.today
+                                foreground: root.foreground
+                                fontFamily: root.fontFamily
+                                monospaceFontFamily: root.monospaceFontFamily
+                                completionLateColor: root.completionLateColor
+                                enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                onCompletionRequested: task => root.requestCompletion(task, false)
+                                onEditRequested: task => root.openTaskEditor(task)
+                            }
+                        }
 
+                        Text {
+                            visible: root.pendingTasks.length === 0 && root.selectedTasks.length > 0
+                            width: parent.width
+                            padding: Style.space(16)
+                            text: "Nenhuma tarefa pendente para este dia"
+                            color: Qt.darker(root.foreground, 1.4)
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.space(13)
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.Wrap
+                        }
 
-                                Rectangle {
-                                    visible: String(modelData.categoryName || "") !== ""
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: Style.spacing.hairline * 2
-                                    radius: width / 2
-                                    color: modelData.categoryColor || Color.accent
-                                }
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: Style.space(8)
-                                    anchors.rightMargin: Style.space(50)
-                                    spacing: Style.space(8)
+                        Button {
+                            width: parent.width
+                            visible: root.completedTasks.length > 0
+                            text: (root.completedTasksExpanded ? "▾ " : "▸ ")
+                                + "Concluídas · " + root.completedTasks.length
+                            fontFamily: root.fontFamily
+                            foreground: Qt.darker(root.foreground, 1.3)
+                            leftAlign: true
+                            focusable: true
+                            horizontalPadding: Style.space(12)
+                            verticalPadding: Style.space(10)
+                            Accessible.role: Accessible.Button
+                            Accessible.name: text
+                            Accessible.onPressAction: clicked()
+                            onClicked: root.completedTasksExpanded = !root.completedTasksExpanded
+                        }
 
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.completed ? "󰄲"
-                                            : modelData.skipped ? "×" : "󰄱"
-                                        color: modelData.completed ? Color.accent
-                                             : modelData.skipped ? Color.urgent : root.foreground
-                                        font.family: root.fontFamily
-                                        font.pixelSize: Style.font.body
-                                    }
-
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: Style.space(26)
-                                        visible: String(modelData.emoji || "") !== ""
-                                        text: modelData.emoji || ""
-                                        font.family: "Noto Color Emoji"
-                                        font.pixelSize: Style.font.body
-                                        horizontalAlignment: Text.AlignHCenter
-                                    }
-
-                                    Column {
-                                        id: taskDetails
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width
-                                               - Style.space(String(modelData.emoji || "") === ""
-                                                             ? 40 : 74)
-                                        spacing: 1
-
-                                        Text {
-                                            width: parent.width
-                                            text: modelData.title
-                                            color: modelData.completed ? Qt.darker(root.foreground, 1.8)
-                                                 : modelData.skipped ? Color.urgent : root.foreground
-                                            elide: Text.ElideRight
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.body
-                                            font.strikeout: modelData.completed
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            visible: String(modelData.categoryName || "") !== ""
-                                            text: String(modelData.categoryName || "").toUpperCase()
-                                            color: modelData.completed
-                                                   ? Qt.darker(root.foreground, 1.8)
-                                                   : modelData.categoryColor || Color.accent
-                                            elide: Text.ElideRight
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.caption
-                                            font.bold: true
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: {
-                                                if (modelData.completed)
-                                                    return modelData.completionLabel || "";
-                                                const time = String(modelData.scheduledTime || "");
-                                                const recurrence = String(modelData.recurrenceLabel || "");
-                                                const reminderCount =
-                                                    (modelData.reminderMinutesBefore || []).length;
-                                                const reminder = reminderCount > 0
-                                                    ? " · 󰂚 " + reminderCount : "";
-                                                const details = (recurrence === ""
-                                                    ? time : time + " · " + recurrence) + reminder;
-                                                if (modelData.skipped) {
-                                                    const date = root.portugueseLocale.toString(
-                                                        Model.parseLocalDate(modelData.occurrenceDate),
-                                                        "dd MMM").toUpperCase();
-                                                    return "NÃO FEITA · " + date + " · " + details;
-                                                }
-                                                if (!taskRow.overdue)
-                                                    return details;
-                                                const date = root.portugueseLocale.toString(
-                                                    Model.parseLocalDate(modelData.occurrenceDate),
-                                                    "dd MMM").toUpperCase();
-                                                return "ATRASADA · " + date + " · " + details;
-                                            }
-                                            color: modelData.completed
-                                                ? (modelData.completionLate ? root.completionLateColor
-                                                   : Qt.darker(root.foreground, 1.5))
-                                                : modelData.skipped || taskRow.overdue
-                                                  ? Color.urgent : Color.accent
-                                            wrapMode: Text.Wrap
-                                            font.family: root.fontFamily
-                                            font.pixelSize: Style.font.caption
-                                            font.bold: true
-                                        }
-                                    }
-                                }
-                                ToolButton {
-                                    id: taskActions
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: Style.space(8)
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: Style.space(34)
-                                    height: Style.space(34)
-                                    z: 2
-                                    text: "⋯"
-                                    onClicked: root.openTaskEditor(modelData)
-                                    ToolTip.visible: hovered
-                                    ToolTip.text: "Editar ou excluir tarefa"
-
-                                    background: Rectangle {
-                                        radius: Style.cornerRadius
-                                        color: taskActions.hovered
-                                            ? Style.hoverFillFor(root.foreground, Color.accent)
-                                            : "transparent"
-                                        border.width: Style.spacing.hairline
-                                        border.color: taskActions.hovered || taskActions.activeFocus
-                                            ? Color.accent
-                                            : Qt.rgba(root.foreground.r, root.foreground.g,
-                                                      root.foreground.b, 0.38)
-                                    }
-                                }
-
-                                TapHandler {
-                                    acceptedButtons: Qt.RightButton
-                                    onTapped: root.openTaskEditor(modelData)
-                                }
-
-
-                                MouseArea {
-                                    id: taskMouse
-                                    anchors.fill: parent
-                                    anchors.rightMargin: Style.space(50)
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    enabled: root.hostWidget && !root.hostWidget.actionBusy
-                                    onClicked: root.requestCompletion(modelData, false)
-                                }
+                        Repeater {
+                            model: root.completedTasksExpanded ? root.completedTasks : []
+                            TaskRow {
+                                required property var modelData
+                                width: detailsColumn.width
+                                height: implicitHeight
+                                task: modelData
+                                today: root.today
+                                foreground: root.foreground
+                                fontFamily: root.fontFamily
+                                monospaceFontFamily: root.monospaceFontFamily
+                                completionLateColor: root.completionLateColor
+                                enabled: root.hostWidget && !root.hostWidget.actionBusy
+                                onCompletionRequested: task => root.requestCompletion(task, false)
+                                onEditRequested: task => root.openTaskEditor(task)
                             }
                         }
 
@@ -1757,7 +1672,13 @@ Panel {
                         Button {
                             width: parent.width
                             text: (root.registrationActivityExpanded ? "▾ " : "▸ ")
-                                  + "CONCLUSÕES REGISTRADAS NESTE DIA"
+                                  + "Histórico de conclusões neste dia"
+                            fontFamily: root.fontFamily
+                            leftAlign: true
+                            focusable: true
+                            Accessible.role: Accessible.Button
+                            Accessible.name: text
+                            Accessible.onPressAction: clicked()
                             foreground: Qt.darker(root.foreground, 1.4)
                             accent: Color.accent
                             bordered: false
