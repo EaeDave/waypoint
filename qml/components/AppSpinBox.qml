@@ -28,12 +28,15 @@ SpinBox {
         x: control.width - width
         height: control.height / 2
         implicitWidth: 26
-        color: control.up.pressed ? WaypointTheme.controlSelectedFill : "transparent"
+        radius: WaypointTheme.radiusSmall
+        color: control.up.pressed ? WaypointTheme.controlSelectedFill
+             : control.up.hovered ? WaypointTheme.controlHoverFill : "transparent"
         Text {
             anchors.centerIn: parent
             text: "+"
             color: WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.bodySize
         }
     }
 
@@ -42,12 +45,15 @@ SpinBox {
         y: control.height / 2
         height: control.height / 2
         implicitWidth: 26
-        color: control.down.pressed ? WaypointTheme.controlSelectedFill : "transparent"
+        radius: WaypointTheme.radiusSmall
+        color: control.down.pressed ? WaypointTheme.controlSelectedFill
+             : control.down.hovered ? WaypointTheme.controlHoverFill : "transparent"
         Text {
             anchors.centerIn: parent
             text: "−"
             color: WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.bodySize
         }
     }
 

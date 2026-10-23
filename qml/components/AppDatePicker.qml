@@ -80,6 +80,26 @@ Item {
             root.committing = false;
             picker.open();
         }
+        contentItem: RowLayout {
+            spacing: 8
+            AppIcon {
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                name: "calendar"
+                color: WaypointTheme.subduedText
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.acceptableInput ? root.displayText : "Selecionar data"
+                color: root.acceptableInput ? WaypointTheme.foreground : WaypointTheme.subduedText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
+                font.weight: WaypointTheme.weightMedium
+                font.features: WaypointTheme.tabularNumbers
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
     }
 
     Popup {
@@ -98,10 +118,10 @@ Item {
         }
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
     }
 
@@ -114,9 +134,15 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             AppButton {
-                text: "‹"
+                square: true
+                flat: true
                 Accessible.name: "Mês anterior"
+                ToolTip.visible: hovered
+                ToolTip.text: "Mês anterior"
                 onClicked: root.moveMonth(-1)
+                contentItem: Item {
+                    AppIcon { anchors.centerIn: parent; width: 16; height: 16; name: "chevron-left"; color: WaypointTheme.subduedText }
+                }
             }
             AppComboBox {
                 Layout.fillWidth: true
@@ -137,9 +163,15 @@ Item {
                 onValueModified: root.shownYear = value
             }
             AppButton {
-                text: "›"
+                square: true
+                flat: true
                 Accessible.name: "Próximo mês"
+                ToolTip.visible: hovered
+                ToolTip.text: "Próximo mês"
                 onClicked: root.moveMonth(1)
+                contentItem: Item {
+                    AppIcon { anchors.centerIn: parent; width: 16; height: 16; name: "chevron-right"; color: WaypointTheme.subduedText }
+                }
             }
         }
 
@@ -150,9 +182,10 @@ Item {
                 required property string shortName
                 text: shortName
                 horizontalAlignment: Text.AlignHCenter
-                color: WaypointTheme.subduedText
+                color: WaypointTheme.disabledText
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.bodySmallSize
+                font.pixelSize: WaypointTheme.captionSize
+                font.weight: WaypointTheme.weightMedium
             }
         }
         MonthGrid {
@@ -163,12 +196,35 @@ Item {
             year: root.shownYear
             locale: Qt.locale("pt_BR")
             delegate: AppButton {
+                id: dayCell
                 required property var model
+                readonly property bool chosen: Qt.formatDate(model.date, "yyyy-MM-dd") === root.dateKey
                 text: String(model.day)
-                selected: Qt.formatDate(model.date, "yyyy-MM-dd") === root.dateKey
+                flat: true
+                highlighted: chosen
                 opacity: model.month === root.shownMonth ? 1 : 0.4
                 Accessible.name: Qt.locale("pt_BR").toString(model.date, "dd 'de' MMMM 'de' yyyy")
                 onClicked: root.selectDate(model.date)
+                contentItem: Text {
+                    text: String(dayCell.model.day)
+                    color: dayCell.chosen ? WaypointTheme.background
+                         : dayCell.model.today ? WaypointTheme.accent : WaypointTheme.foreground
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                    font.weight: dayCell.chosen || dayCell.model.today ? WaypointTheme.weightSemiBold
+                                                                       : WaypointTheme.weightMedium
+                    font.features: WaypointTheme.tabularNumbers
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    visible: dayCell.model.today && !dayCell.chosen
+                    radius: WaypointTheme.radius
+                    color: "transparent"
+                    border.width: 1
+                    border.color: WaypointTheme.accent
+                }
             }
         }
         RowLayout {
@@ -188,6 +244,7 @@ Item {
             }
             AppButton {
                 text: "Hoje"
+                flat: true
                 onClicked: root.selectDate(new Date())
             }
         }
@@ -204,11 +261,12 @@ Item {
             Item { Layout.fillWidth: true }
             AppButton {
                 text: "Cancelar"
+                flat: true
                 onClicked: picker.close()
             }
             AppButton {
                 text: "Concluir"
-                selected: true
+                highlighted: true
                 enabled: root.acceptableInput
                 onClicked: root.applySelection()
             }

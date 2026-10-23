@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.waypoint.bar",
   "name": "Waypoint",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "author": "Waypoint",
   "description": "Tarefas e calendário na barra do Omarchy",
   "kinds": ["bar-widget"],

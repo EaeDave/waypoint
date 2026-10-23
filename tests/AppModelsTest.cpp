@@ -7,6 +7,7 @@ class AppModelsTest final : public QObject {
   Q_OBJECT
 
 private slots:
+  void startCalendarWeeksOnMonday();
   void aggregateTaskMarkersByCalendarDate();
   void showOnlyEligibleRecurringTaskMarkers();
   void aggregateHolidayMarkersByCalendarDate();
@@ -37,6 +38,19 @@ waypoint::TaskOccurrence occurrence(QString id, const QDate &date, bool complete
 }
 
 } // namespace
+
+void AppModelsTest::startCalendarWeeksOnMonday() {
+  waypoint::CalendarModel model;
+  for (int month = 0; month < 12; ++month) {
+    const QDate first =
+        QDate::fromString(model.data(model.index(0, 0), waypoint::CalendarModel::DateRole).toString(), Qt::ISODate);
+    const QDate visibleFirst(model.visibleYear(), model.visibleMonth(), 1);
+    QCOMPARE(first.dayOfWeek(), static_cast<int>(Qt::Monday));
+    QVERIFY(first <= visibleFirst && first.daysTo(visibleFirst) < 7);
+    QCOMPARE(model.weekNumberAtRow(0), visibleFirst.weekNumber());
+    model.showNextMonth();
+  }
+}
 
 void AppModelsTest::aggregateTaskMarkersByCalendarDate() {
   waypoint::CalendarModel model;

@@ -100,8 +100,28 @@ Item {
     AppButton {
         anchors.fill: parent
         visible: root.showInlineButton && !root.embedded
-        text: root.acceptableInput ? pickerInput.text + "  ◷" : "Selecionar horário  ◷"
+        text: root.acceptableInput ? pickerInput.text : "Selecionar horário"
         onClicked: root.openPicker()
+        contentItem: RowLayout {
+            spacing: 8
+            AppIcon {
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                name: "clock"
+                color: WaypointTheme.subduedText
+            }
+            Text {
+                Layout.fillWidth: true
+                text: root.acceptableInput ? pickerInput.text : "Selecionar horário"
+                color: root.acceptableInput ? WaypointTheme.foreground : WaypointTheme.subduedText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
+                font.weight: WaypointTheme.weightMedium
+                font.features: WaypointTheme.tabularNumbers
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
     }
 
     Popup {
@@ -128,10 +148,10 @@ Item {
         }
 
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentHeight: selectionContent.implicitHeight
@@ -145,11 +165,11 @@ Item {
 
             Text {
                 visible: !root.embedded
-                text: "SELECIONAR HORÁRIO"
+                text: "Selecionar horário"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
             }
 
             TextField {
@@ -166,7 +186,8 @@ Item {
                 selectByMouse: true
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.displayLargeSize
-                font.bold: true
+                font.weight: WaypointTheme.weightSemiBold
+                font.features: WaypointTheme.tabularNumbers
                 validator: RegularExpressionValidator {
                     regularExpression: /(?:[01]\d|2[0-3]):[0-5]\d/
                 }
@@ -176,11 +197,11 @@ Item {
             }
 
             Text {
-                text: "HORA"
-                color: WaypointTheme.subduedText
+                text: "Hora"
+                color: WaypointTheme.disabledText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
-                font.bold: true
+                font.weight: WaypointTheme.weightMedium
             }
 
             GridLayout {
@@ -193,21 +214,33 @@ Item {
                     model: 24
 
                     AppButton {
+                        id: hourCell
                         required property int index
                         square: true
+                        flat: true
                         text: root.pad(index)
                         selected: root.pendingHour === index
                         onClicked: root.chooseHour(index)
+                        contentItem: Text {
+                            text: hourCell.text
+                            color: hourCell.selected ? WaypointTheme.accent : WaypointTheme.foreground
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
+                            font.weight: hourCell.selected ? WaypointTheme.weightSemiBold : WaypointTheme.weightMedium
+                            font.features: WaypointTheme.tabularNumbers
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
             }
 
             Text {
-                text: "MINUTO"
-                color: WaypointTheme.subduedText
+                text: "Minuto"
+                color: WaypointTheme.disabledText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
-                font.bold: true
+                font.weight: WaypointTheme.weightMedium
             }
 
             GridLayout {
@@ -220,11 +253,23 @@ Item {
                     model: 60
 
                     AppButton {
+                        id: minuteCell
                         required property int index
                         square: true
+                        flat: true
                         text: root.pad(index)
                         selected: root.pendingMinute === index
                         onClicked: root.chooseMinute(index)
+                        contentItem: Text {
+                            text: minuteCell.text
+                            color: minuteCell.selected ? WaypointTheme.accent : WaypointTheme.foreground
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
+                            font.weight: minuteCell.selected ? WaypointTheme.weightSemiBold : WaypointTheme.weightMedium
+                            font.features: WaypointTheme.tabularNumbers
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
                     }
                 }
             }
@@ -236,6 +281,7 @@ Item {
 
                 AppButton {
                     text: "Agora"
+                    flat: true
                     onClicked: root.selectCurrentTime()
                 }
                 Item {
@@ -243,6 +289,7 @@ Item {
                 }
                 AppButton {
                     text: "Cancelar"
+                    flat: true
                     visible: !root.embedded
                     onClicked: root.cancelSelection()
                 }
@@ -250,7 +297,7 @@ Item {
                     id: acceptButton
                     visible: !root.embedded
                     text: "Concluir"
-                    selected: true
+                    highlighted: true
                     enabled: root.acceptableInput
                     onClicked: root.applySelection()
                 }

@@ -152,9 +152,8 @@ void CalendarModel::setVisibleMonth(const QDate &month) {
 }
 
 void CalendarModel::rebuildCells() {
-  const int firstDayOfWeek = static_cast<int>(QLocale(QLocale::Portuguese, QLocale::Brazil).firstDayOfWeek());
-  const int offset = (m_visibleMonth.dayOfWeek() - firstDayOfWeek + 7) % 7;
-  const QDate gridStart = m_visibleMonth.addDays(-offset);
+  // Monday-first, matching the weekday header, ISO week numbers, Android, and the Omarchy panel.
+  const QDate gridStart = m_visibleMonth.addDays(1 - m_visibleMonth.dayOfWeek());
   const QDate today = QDate::currentDate();
 
   QList<CalendarCell> cells;

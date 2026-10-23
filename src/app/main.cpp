@@ -14,8 +14,10 @@ int main(int argc, char *argv[]) {
   QGuiApplication application(argc, argv);
   QCommandLineParser parser;
   parser.addHelpOption();
-  parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Renderiza a visão mensal em PNG e encerra"),
+  parser.addOption({QStringLiteral("screenshot"), QStringLiteral("Renderiza a janela em PNG e encerra"),
                     QStringLiteral("caminho")});
+  parser.addOption({QStringLiteral("page"), QStringLiteral("Abre uma página: today, tasks, calendar ou settings"),
+                    QStringLiteral("página")});
   parser.addOption({QStringLiteral("settings"), QStringLiteral("Abre as configurações de sincronização")});
   parser.process(application);
   QCoreApplication::setOrganizationName(QStringLiteral("Waypoint"));
@@ -32,14 +34,15 @@ int main(int argc, char *argv[]) {
       Qt::QueuedConnection);
   engine.loadFromModule(QStringLiteral("Waypoint"), QStringLiteral("Main"));
 
-  if (parser.isSet(QStringLiteral("settings")) && !engine.rootObjects().isEmpty()) {
-    engine.rootObjects().constFirst()->setProperty("activePage", 2);
+  const QString page =
+      parser.isSet(QStringLiteral("settings")) ? QStringLiteral("settings") : parser.value(QStringLiteral("page"));
+  if (!page.isEmpty() && !engine.rootObjects().isEmpty()) {
+    engine.rootObjects().constFirst()->setProperty("activePage", page);
   }
 
   const QString screenshotPath = parser.value(QStringLiteral("screenshot"));
   if (!screenshotPath.isEmpty() && !engine.rootObjects().isEmpty()) {
     QObject *rootObject = engine.rootObjects().constFirst();
-    rootObject->setProperty("activePage", parser.isSet(QStringLiteral("settings")) ? 2 : 1);
     QTimer::singleShot(750, &application, [rootObject, screenshotPath] {
       auto *window = qobject_cast<QQuickWindow *>(rootObject);
       const bool saved = window != nullptr && window->grabWindow().save(screenshotPath, "PNG");

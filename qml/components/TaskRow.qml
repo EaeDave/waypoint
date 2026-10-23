@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../data/TaskCategoryOptions.js" as TaskCategoryOptions
+import "../data/Labels.js" as Labels
 
 Rectangle {
     id: root
@@ -32,60 +33,84 @@ Rectangle {
     property int weekdayMask: 0
     property bool definitionMode: false
     property string pendingDate: ""
-
+    property bool showDivider: false
     readonly property var portugueseLocale: Qt.locale("pt_BR")
     readonly property date scheduledDateValue: {
         const parts = scheduledDateKey.split("-");
         return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
     }
 
-    implicitHeight: Math.max(root.completed ? 72 : 50, rowContent.implicitHeight + 16)
-    radius: WaypointTheme.radius
-    color: pointer.containsMouse ? WaypointTheme.controlHoverFill : "transparent"
+    // The checkbox carries the list colour; overdue and skipped states override it.
+    readonly property color statusColor: root.overdue || root.skipped ? WaypointTheme.urgent
+                                       : root.categoryName !== "" ? root.categoryColor
+                                       : WaypointTheme.accent
+
+    implicitHeight: Math.max(52, rowContent.implicitHeight + 16)
+    color: "transparent"
+
     Rectangle {
-        anchors.left: parent.left
+        visible: root.showDivider
         anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        visible: root.categoryName !== ""
-        width: 3
-        radius: 2
-        color: root.categoryColor
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.leftMargin: 14
+        anchors.rightMargin: 14
+        height: 1
+        color: WaypointTheme.divider
     }
 
+    Rectangle {
+        anchors.fill: parent
+        anchors.leftMargin: 4
+        anchors.rightMargin: 4
+        anchors.topMargin: 2
+        anchors.bottomMargin: 2
+        radius: WaypointTheme.radius
+        color: WaypointTheme.controlFill
+        visible: pointer.hovered || actionsMenu.opened
+    }
 
     RowLayout {
         id: rowContent
         anchors.fill: parent
-        anchors.leftMargin: 8
-        anchors.rightMargin: 6
-        spacing: 10
+        anchors.leftMargin: 14
+        anchors.rightMargin: 10
+        spacing: 12
 
         Rectangle {
             visible: !root.definitionMode
             Layout.preferredWidth: 18
             Layout.preferredHeight: 18
-            radius: WaypointTheme.radius
-            color: root.completed ? WaypointTheme.accent
-                 : root.skipped ? WaypointTheme.urgent
-                 : WaypointTheme.controlFill
-            border.width: 1
-            border.color: root.completed ? WaypointTheme.accent
-                        : root.skipped || root.overdue ? WaypointTheme.urgent
-                        : WaypointTheme.controlBorder
+            radius: 5
+            opacity: root.completed ? 0.6 : 1
+            color: root.completed || root.skipped ? root.statusColor
+                 : checkHover.hovered ? Qt.rgba(root.statusColor.r, root.statusColor.g,
+                                                root.statusColor.b, 0.18)
+                 : "transparent"
+            border.width: 1.5
+            border.color: root.statusColor
 
-            Text {
+            AppIcon {
                 anchors.centerIn: parent
+                width: 12
+                height: 12
                 visible: root.completed || root.skipped
-                text: root.completed ? "✓" : "×"
+                name: root.completed ? "check" : "close"
                 color: WaypointTheme.background
-                font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.bodySmallSize
-                font.bold: true
+                strokeWidth: 2
+            }
+
+            HoverHandler {
+                id: checkHover
+                cursorShape: Qt.PointingHandCursor
             }
 
             MouseArea {
                 anchors.fill: parent
+                anchors.margins: -6
                 cursorShape: Qt.PointingHandCursor
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: (root.completed ? "Reabrir " : "Concluir ") + root.title
                 onClicked: root.completionActions.toggle(root.taskId, root.scheduledDateKey,
                     root.completed, root.skipped, root.overdue)
             }
@@ -93,19 +118,18 @@ Rectangle {
 
         Text {
             visible: root.emoji !== ""
-            Layout.preferredWidth: 26
+            Layout.preferredWidth: 22
             Layout.alignment: Qt.AlignVCenter
             text: root.emoji
             horizontalAlignment: Text.AlignHCenter
-            color: root.completed ? WaypointTheme.disabledText
-                 : root.skipped ? WaypointTheme.urgent : WaypointTheme.foreground
+            opacity: root.completed ? 0.45 : 1
             font.family: "Noto Color Emoji"
-            font.pixelSize: 20
+            font.pixelSize: 17
         }
 
         ColumnLayout {
             Layout.fillWidth: true
-            spacing: 2
+            spacing: 3
 
             Text {
                 Layout.fillWidth: true
@@ -120,77 +144,108 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                visible: root.completed || root.definitionMode || root.skipped || root.overdue
-                         || root.recurring || root.categoryName !== ""
+                visible: text !== ""
                 wrapMode: Text.WordWrap
                 text: {
                     const parts = [];
                     if (root.categoryName !== "")
-                        parts.push(root.categoryName.toUpperCase());
+                        parts.push(root.categoryName);
                     if (root.completed)
-                        parts.push(root.completionLabel);
+                        parts.push(Labels.sentenceCase(root.completionLabel));
                     if (root.definitionMode) {
-                        parts.push(root.recurring ? root.recurrenceLabel : "ÚNICA");
+                        parts.push(root.recurring ? Labels.sentenceCase(root.recurrenceLabel) : "Única");
                         if (root.overdue)
-                            parts.push("ATRASADA");
+                            parts.push("Atrasada");
                         else if (root.recurring && root.pendingDate === "")
-                            parts.push("SEM PENDÊNCIAS");
+                            parts.push("Sem pendências");
                     } else if (root.skipped) {
-                        parts.push("NÃO FEITA · " + root.portugueseLocale.toString(
-                            root.scheduledDateValue, "dd MMM"));
+                        parts.push("Não feita · " + root.portugueseLocale.toString(
+                            root.scheduledDateValue, "d MMM"));
                     } else if (root.overdue) {
-                        parts.push("ATRASADA · " + root.portugueseLocale.toString(
-                            root.scheduledDateValue, "dd MMM"));
+                        parts.push("Atrasada · " + root.portugueseLocale.toString(
+                            root.scheduledDateValue, "d MMM"));
                     }
                     if (!root.definitionMode && root.recurring)
-                        parts.push(root.recurrenceLabel);
+                        parts.push(Labels.sentenceCase(root.recurrenceLabel));
                     return parts.join(" · ");
                 }
                 color: root.completed
-                     ? (root.completionLate ? WaypointTheme.warning : WaypointTheme.subduedText)
+                     ? (root.completionLate ? WaypointTheme.warning : WaypointTheme.disabledText)
                      : root.skipped || root.overdue ? WaypointTheme.urgent
-                     : root.categoryName !== "" ? root.categoryColor : WaypointTheme.accent
+                     : WaypointTheme.subduedText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
-                font.bold: true
-                font.letterSpacing: 1
             }
         }
 
-        Text {
-            readonly property int reminderCount:
-                (root.reminderMinutesBefore || []).length
-            text: {
-                const parts = [];
-                if (root.definitionMode) {
-                    const dateKey = root.recurring ? root.pendingDate : root.scheduledDateKey;
-                    if (dateKey !== "")
-                        parts.push(root.portugueseLocale.toString(
-                            new Date(dateKey + "T00:00:00"), "dd MMM"));
+        RowLayout {
+            id: schedule
+            spacing: 6
+            readonly property int reminderCount: (root.reminderMinutesBefore || []).length
+            readonly property color tint: root.completed ? WaypointTheme.disabledText
+                                        : root.skipped || root.overdue ? WaypointTheme.urgent
+                                        : WaypointTheme.subduedText
+
+            Text {
+                text: {
+                    const parts = [];
+                    if (root.definitionMode) {
+                        const dateKey = root.recurring ? root.pendingDate : root.scheduledDateKey;
+                        if (dateKey !== "")
+                            parts.push(root.portugueseLocale.toString(
+                                new Date(dateKey + "T00:00:00"), "d MMM"));
+                    }
+                    parts.push(root.scheduledTimeKey);
+                    return parts.join(" · ");
                 }
-                parts.push(root.scheduledTimeKey);
-                if (reminderCount > 0)
-                    parts.push("󰂚 " + reminderCount);
-                return parts.join(" · ");
+                color: schedule.tint
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
+                font.features: WaypointTheme.tabularNumbers
             }
-            color: root.completed ? WaypointTheme.disabledText
-                 : root.skipped ? WaypointTheme.urgent : WaypointTheme.subduedText
-            font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.bodySmallSize
+
+            AppIcon {
+                visible: schedule.reminderCount > 0
+                Layout.preferredWidth: 13
+                Layout.preferredHeight: 13
+                Layout.leftMargin: 2
+                name: "bell"
+                color: schedule.tint
+                strokeWidth: 1.4
+            }
+
+            Text {
+                visible: schedule.reminderCount > 0
+                text: schedule.reminderCount
+                color: schedule.tint
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.captionSize
+                font.features: WaypointTheme.tabularNumbers
+            }
         }
 
         AppButton {
             id: taskActions
-            Layout.preferredWidth: 34
-            Layout.preferredHeight: 34
+            Layout.preferredWidth: 30
+            Layout.preferredHeight: 30
             Layout.alignment: Qt.AlignVCenter
             square: true
-            text: "⋯"
+            flat: true
+            opacity: pointer.hovered || activeFocus || actionsMenu.opened ? 1 : 0
             onClicked: root.openActionsMenuFromButton()
+            Accessible.name: root.definitionMode ? "Editar ou excluir tarefa"
+                                                 : "Editar, marcar status ou excluir tarefa"
             ToolTip.visible: hovered
-            ToolTip.text: root.definitionMode ? "Editar ou excluir tarefa"
-                                                  : "Editar, marcar status ou excluir tarefa"
-
+            ToolTip.text: Accessible.name
+            contentItem: Item {
+                AppIcon {
+                    anchors.centerIn: parent
+                    width: 16
+                    height: 16
+                    name: "more"
+                    color: WaypointTheme.subduedText
+                }
+            }
             Menu {
                 id: actionsMenu
                 y: taskActions.height + 4
@@ -199,9 +254,9 @@ Rectangle {
 
                 background: Rectangle {
                     radius: WaypointTheme.radius
-                    color: WaypointTheme.background
+                    color: WaypointTheme.popupFill
                     border.width: 1
-                    border.color: WaypointTheme.activeBorder
+                    border.color: WaypointTheme.controlBorder
                 }
 
                 AppMenuItem {
@@ -408,21 +463,22 @@ Rectangle {
         }
 
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
             spacing: WaypointTheme.controlGap
 
             Text {
-                text: "EDITAR TAREFA"
+                Layout.bottomMargin: 4
+                text: "Editar tarefa"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
             }
 
             RowLayout {
@@ -622,11 +678,12 @@ Rectangle {
                 }
                 AppButton {
                     text: "Cancelar"
+                    flat: true
                     onClicked: editPopup.close()
                 }
                 AppButton {
                     text: "Salvar"
-                    selected: true
+                    highlighted: true
                     enabled: editTitle.text.trim() !== "" && editDate.acceptableInput
                              && editTime.acceptableInput
                     onClicked: root.saveEdit()
@@ -635,10 +692,7 @@ Rectangle {
         }
     }
 
-    MouseArea {
+    HoverHandler {
         id: pointer
-        anchors.fill: parent
-        acceptedButtons: Qt.NoButton
-        hoverEnabled: true
     }
 }

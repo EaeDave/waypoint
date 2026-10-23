@@ -10,6 +10,8 @@ Item {
 
     required property var controller
     readonly property bool compact: width < WaypointTheme.compactBreakpoint
+    readonly property var tasks: controller.todayTasks
+    readonly property int completedCount: Math.max(0, taskList.count - tasks.pendingCount - tasks.skippedCount)
 
     CompletionActions {
         id: completionFlow
@@ -18,11 +20,14 @@ Item {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: root.compact ? 18 : 34
+        anchors.leftMargin: root.compact ? 20 : 32
+        anchors.rightMargin: root.compact ? 20 : 32
+        anchors.topMargin: root.compact ? 20 : 28
         spacing: 0
 
         RowLayout {
             Layout.fillWidth: true
+            spacing: 12
 
             ColumnLayout {
                 spacing: 4
@@ -32,119 +37,127 @@ Item {
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
-                    font.bold: true
+                    font.weight: WaypointTheme.weightSemiBold
                 }
 
-                Text {
-                    text: Qt.locale("pt_BR").toString(new Date(), "dddd, d 'de' MMMM")
-                    color: WaypointTheme.subduedText
-                    font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.bodySmallSize
+                RowLayout {
+                    spacing: 0
+
+                    Text {
+                        text: Qt.locale("pt_BR").toString(new Date(), "dddd, d 'de' MMMM") + " · "
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                    }
+
+                    Text {
+                        text: root.tasks.overdueCount > 0
+                              ? root.tasks.overdueCount + " atrasada" + (root.tasks.overdueCount === 1 ? "" : "s")
+                              : root.tasks.pendingCount + " pendente" + (root.tasks.pendingCount === 1 ? "" : "s")
+                        color: root.tasks.overdueCount > 0 ? WaypointTheme.urgent : WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                        font.weight: root.tasks.overdueCount > 0 ? WaypointTheme.weightMedium : Font.Normal
+                    }
                 }
             }
 
-            Item {
-                Layout.fillWidth: true
-            }
-
-            Rectangle {
-                Layout.preferredWidth: connectionLabel.implicitWidth + 20
-                Layout.preferredHeight: 28
-                radius: WaypointTheme.radius
-                color: WaypointTheme.controlFill
-                border.width: 1
-                border.color: root.controller.online ? WaypointTheme.success : WaypointTheme.urgent
-
-                Text {
-                    id: connectionLabel
-                    anchors.centerIn: parent
-                    text: root.controller.online ? "LOCAL" : "SEM REDE"
-                    color: root.controller.online ? WaypointTheme.success : WaypointTheme.urgent
-                    font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.captionSize
-                    font.bold: true
-                    font.letterSpacing: 1
-                }
-            }
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.topMargin: 28
-            Layout.bottomMargin: 12
-
-            Text {
-                text: root.controller.todayTasks.overdueCount > 0 ? root.controller.todayTasks.overdueCount + " atrasada" + (root.controller.todayTasks.overdueCount === 1 ? "" : "s") : root.controller.todayTasks.pendingCount + " pendente" + (root.controller.todayTasks.pendingCount === 1 ? "" : "s")
-                color: root.controller.todayTasks.overdueCount > 0 ? WaypointTheme.urgent : WaypointTheme.subduedText
-                font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.bodySmallSize
-                font.bold: true
-                font.letterSpacing: 1
-            }
-
-            Item {
-                Layout.fillWidth: true
-            }
+            Item { Layout.fillWidth: true }
 
             TaskVisibilityChip {
                 controller: root.controller
-            }
-
-            Text {
-                visible: !root.compact
-                text: "N  NOVA TAREFA"
-                color: WaypointTheme.disabledText
-                font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.captionSize
-                font.letterSpacing: 1
             }
         }
 
         QuickTaskComposer {
             id: composer
             Layout.fillWidth: true
+            Layout.topMargin: 20
             controller: root.controller
             scheduledDateKey: Qt.formatDate(new Date(), "yyyy-MM-dd")
+            placeholderText: "Adicionar tarefa"
         }
 
         ScrollView {
             id: dayScroll
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.topMargin: 12
+            Layout.topMargin: 16
             clip: true
             contentWidth: availableWidth
 
             ColumnLayout {
                 width: dayScroll.availableWidth
-                spacing: 4
+                spacing: 20
 
-                ListView {
-                    id: taskList
+                Rectangle {
+                    visible: taskList.count > 0
                     Layout.fillWidth: true
-                    Layout.preferredHeight: contentHeight
-                    interactive: false
-                    model: root.controller.todayTasks
-                    spacing: 2
+                    Layout.preferredHeight: taskList.contentHeight + 8
+                    radius: WaypointTheme.radiusLarge
+                    color: WaypointTheme.surface
+                    border.width: 1
+                    border.color: WaypointTheme.controlBorder
 
-                    delegate: TaskRow {
-                        width: taskList.width
-                        controller: root.controller
-                        completionActions: completionFlow
+                    ListView {
+                        id: taskList
+                        anchors.fill: parent
+                        anchors.topMargin: 4
+                        anchors.bottomMargin: 4
+                        interactive: false
+                        model: root.tasks
+                        section.property: "completed"
+                        section.delegate: Item {
+                            id: sectionHeader
+                            required property string section
+                            width: taskList.width
+                            height: section === "true" && root.completedCount > 0 ? 40 : 0
+                            visible: height > 0
+
+                            Rectangle {
+                                visible: sectionHeader.y > 0
+                                anchors.top: parent.top
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 14
+                                height: 1
+                                color: WaypointTheme.divider
+                            }
+
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 14
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 6
+                                text: "Concluídas · " + root.completedCount
+                                color: WaypointTheme.disabledText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.captionSize
+                                font.weight: WaypointTheme.weightMedium
+                            }
+                        }
+
+                        delegate: TaskRow {
+                            required property int index
+                            width: taskList.width
+                            showDivider: index > 0 && ListView.previousSection === ListView.section
+                            controller: root.controller
+                            completionActions: completionFlow
+                        }
                     }
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    Layout.topMargin: 18
-                    Layout.bottomMargin: 8
+                    Layout.topMargin: 12
                     visible: taskList.count === 0
                     text: root.controller.taskVisibility === "pending"
                         ? "Nenhuma tarefa pendente." : "Seu dia está livre."
                     horizontalAlignment: Text.AlignHCenter
                     color: WaypointTheme.disabledText
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.subtitleSize
+                    font.pixelSize: WaypointTheme.bodySize
                 }
 
                 RegistrationActivity {
@@ -160,6 +173,8 @@ Item {
                     habits: root.controller.todayHabits
                     dateKey: Qt.formatDate(new Date(), "yyyy-MM-dd")
                 }
+
+                Item { Layout.preferredHeight: 12 }
             }
         }
     }

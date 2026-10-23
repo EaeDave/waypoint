@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 
+// Variants: default (soft outline), `highlighted` (primary action), `flat` (ghost),
+// `selected` (toggle on), `destructive`.
 Button {
     id: control
 
@@ -8,10 +10,10 @@ Button {
     property bool destructive: false
     property bool square: false
 
-    implicitWidth: square ? implicitHeight : Math.max(72, contentItem.implicitWidth + leftPadding + rightPadding)
+    implicitWidth: square ? implicitHeight : Math.max(64, contentItem.implicitWidth + leftPadding + rightPadding)
     implicitHeight: WaypointTheme.controlHeight
-    leftPadding: square ? 0 : 10
-    rightPadding: square ? 0 : 10
+    leftPadding: square ? 0 : 12
+    rightPadding: square ? 0 : 12
     topPadding: 6
     bottomPadding: 6
     hoverEnabled: true
@@ -19,11 +21,14 @@ Button {
     contentItem: Text {
         text: control.text
         color: !control.enabled ? WaypointTheme.disabledText
+             : control.highlighted ? WaypointTheme.background
              : control.destructive ? WaypointTheme.urgent
+             : control.selected ? WaypointTheme.accent
              : WaypointTheme.foreground
         font.family: WaypointTheme.fontFamily
         font.pixelSize: WaypointTheme.bodySmallSize
-        font.bold: control.selected
+        font.weight: control.highlighted || control.selected ? WaypointTheme.weightSemiBold
+                                                             : WaypointTheme.weightMedium
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
@@ -31,13 +36,19 @@ Button {
 
     background: Rectangle {
         radius: WaypointTheme.radius
-        color: control.down || control.selected ? WaypointTheme.controlSelectedFill
+        color: control.highlighted
+               ? (!control.enabled ? WaypointTheme.controlFill
+                  : control.down ? Qt.darker(WaypointTheme.accent, 1.15)
+                  : control.hovered ? Qt.lighter(WaypointTheme.accent, 1.08)
+                  : WaypointTheme.accent)
+             : control.selected ? WaypointTheme.accentSoft
+             : control.down ? WaypointTheme.controlSelectedFill
              : control.hovered ? WaypointTheme.controlHoverFill
+             : control.flat ? "transparent"
              : WaypointTheme.controlFill
-        border.width: 1
-        border.color: !control.enabled ? WaypointTheme.divider
-                    : control.destructive ? WaypointTheme.urgent
-                    : control.activeFocus || control.selected ? WaypointTheme.activeBorder
+        border.width: control.activeFocus || !(control.flat || control.highlighted || control.selected) ? 1 : 0
+        border.color: control.activeFocus ? WaypointTheme.activeBorder
+                    : control.destructive && control.enabled ? Qt.rgba(0.788, 0.522, 0.569, 0.45)
                     : control.hovered ? WaypointTheme.controlHoverBorder
                     : WaypointTheme.controlBorder
     }

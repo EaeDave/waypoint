@@ -89,10 +89,31 @@ Item {
     AppButton {
         id: trigger
         anchors.fill: parent
-        text: root.compact ? "AL " + root.minutesBefore.length : "ALERTAS · " + root.minutesBefore.length
+        text: root.compact ? String(root.minutesBefore.length) : "Alertas · " + root.minutesBefore.length
         onClicked: reminderPopup.open()
         ToolTip.visible: hovered
         ToolTip.text: "Configurar até 5 notificações"
+        Accessible.name: "Alertas · " + root.minutesBefore.length
+        contentItem: RowLayout {
+            spacing: 6
+            AppIcon {
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                name: "bell"
+                color: WaypointTheme.subduedText
+            }
+            Text {
+                Layout.fillWidth: true
+                text: trigger.text
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
+                font.weight: WaypointTheme.weightMedium
+                font.features: WaypointTheme.tabularNumbers
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
     }
 
     Popup {
@@ -110,33 +131,56 @@ Item {
         }
 
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
             spacing: WaypointTheme.controlGap
 
             Text {
-                text: "NOTIFICAÇÕES · " + root.minutesBefore.length + "/" + root.maximumCount
+                text: "Notificações · " + root.minutesBefore.length + "/" + root.maximumCount
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
+                font.features: WaypointTheme.tabularNumbers
             }
 
             Repeater {
                 model: root.presets
 
                 AppButton {
+                    id: presetButton
                     required property var modelData
                     Layout.fillWidth: true
+                    flat: !selected
                     selected: root.contains(Number(modelData.minutes))
                     enabled: selected || root.minutesBefore.length < root.maximumCount
-                    text: (selected ? "✓  " : "") + String(modelData.label)
+                    text: String(modelData.label)
                     onClicked: root.toggle(Number(modelData.minutes))
+                    contentItem: RowLayout {
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            text: presetButton.text
+                            color: !presetButton.enabled ? WaypointTheme.disabledText
+                                 : presetButton.selected ? WaypointTheme.accent : WaypointTheme.foreground
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
+                            font.weight: WaypointTheme.weightMedium
+                            verticalAlignment: Text.AlignVCenter
+                        }
+                        AppIcon {
+                            Layout.preferredWidth: 16
+                            Layout.preferredHeight: 16
+                            visible: presetButton.selected
+                            name: "check"
+                            color: WaypointTheme.accent
+                        }
+                    }
                 }
             }
 
@@ -147,11 +191,11 @@ Item {
             }
 
             Text {
-                text: "PERSONALIZADO"
-                color: WaypointTheme.subduedText
+                text: "Personalizado"
+                color: WaypointTheme.disabledText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.captionSize
-                font.bold: true
+                font.weight: WaypointTheme.weightMedium
             }
 
             RowLayout {
@@ -212,7 +256,7 @@ Item {
                 }
                 AppButton {
                     text: "Concluir"
-                    selected: true
+                    highlighted: true
                     onClicked: reminderPopup.close()
                 }
             }

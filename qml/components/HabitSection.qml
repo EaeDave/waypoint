@@ -76,19 +76,37 @@ ColumnLayout {
         Layout.topMargin: 18
 
         Text {
-            text: "HÁBITOS"
-            color: WaypointTheme.subduedText
+            text: "Hábitos"
+            color: WaypointTheme.foreground
             font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.bodySmallSize
-            font.bold: true
-            font.letterSpacing: 1
+            font.pixelSize: WaypointTheme.subtitleSize
+            font.weight: WaypointTheme.weightSemiBold
         }
 
         Item { Layout.fillWidth: true }
 
         AppButton {
-            text: "+ HÁBITO"
+            flat: true
+            text: "Novo hábito"
+            leftPadding: 10
+            Accessible.name: "Novo hábito"
             onClicked: root.openCreate()
+            contentItem: RowLayout {
+                spacing: 6
+                AppIcon {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    name: "plus"
+                    color: WaypointTheme.accent
+                }
+                Text {
+                    text: "Novo hábito"
+                    color: WaypointTheme.accent
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                    font.weight: WaypointTheme.weightMedium
+                }
+            }
         }
     }
 
@@ -109,31 +127,31 @@ ColumnLayout {
             required property var modelData
 
             Layout.fillWidth: true
-            implicitHeight: rowContent.implicitHeight + 20
-            radius: WaypointTheme.radius
-            color: WaypointTheme.controlFill
+            implicitHeight: rowContent.implicitHeight + 28
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.surface
             border.width: 1
             border.color: WaypointTheme.controlBorder
 
             ColumnLayout {
                 id: rowContent
                 anchors.fill: parent
-                anchors.margins: 10
-                spacing: 7
+                anchors.margins: 14
+                spacing: 10
 
                 RowLayout {
                     Layout.fillWidth: true
-                    spacing: 8
+                    spacing: 10
 
                     Text {
                         visible: habitRow.modelData.emoji !== ""
                         text: habitRow.modelData.emoji
-                        font.pixelSize: WaypointTheme.titleSize
+                        font.pixelSize: WaypointTheme.headingSize
                     }
 
                     ColumnLayout {
                         Layout.fillWidth: true
-                        spacing: 1
+                        spacing: 2
 
                         Text {
                             Layout.fillWidth: true
@@ -141,30 +159,41 @@ ColumnLayout {
                             color: habitRow.modelData.completed ? WaypointTheme.subduedText : WaypointTheme.foreground
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: WaypointTheme.bodySize
-                            font.bold: true
+                            font.weight: WaypointTheme.weightMedium
                             elide: Text.ElideRight
                         }
 
-                        Text {
-                            text: habitRow.modelData.amount + " / " + habitRow.modelData.targetAmount +
-                                  (habitRow.modelData.unit === "" ? "" : " " + habitRow.modelData.unit)
-                            color: habitRow.modelData.completed ? WaypointTheme.success : WaypointTheme.subduedText
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.bodySmallSize
+                        RowLayout {
+                            spacing: 8
+                            Text {
+                                text: habitRow.modelData.amount + " de " + habitRow.modelData.targetAmount +
+                                      (habitRow.modelData.unit === "" ? "" : " " + habitRow.modelData.unit)
+                                color: habitRow.modelData.completed ? WaypointTheme.success : WaypointTheme.subduedText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.bodySmallSize
+                                font.features: WaypointTheme.tabularNumbers
+                            }
+                            AppIcon {
+                                visible: habitRow.modelData.reminderTimes.length > 0
+                                Layout.preferredWidth: 12
+                                Layout.preferredHeight: 12
+                                name: "bell"
+                                color: WaypointTheme.disabledText
+                            }
+                            Text {
+                                visible: habitRow.modelData.reminderTimes.length > 0
+                                text: habitRow.modelData.reminderTimes.length
+                                color: WaypointTheme.disabledText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.captionSize
+                                font.features: WaypointTheme.tabularNumbers
+                            }
                         }
                     }
 
-                    Text {
-                        visible: habitRow.modelData.reminderTimes.length > 0
-                        text: "󰂚 " + habitRow.modelData.reminderTimes.length
-                        color: WaypointTheme.disabledText
-                        font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.bodySmallSize
-                    }
-
                     AppButton {
-                        text: "↶"
-                        square: true
+                        text: "Desfazer"
+                        flat: true
                         enabled: habitRow.modelData.amount > 0
                         onClicked: root.controller.undoHabit(habitRow.modelData.id, root.dateKey)
                         ToolTip.visible: hovered
@@ -172,8 +201,21 @@ ColumnLayout {
                     }
 
                     AppButton {
-                        text: "Editar"
+                        square: true
+                        flat: true
+                        Accessible.name: "Editar hábito"
+                        ToolTip.visible: hovered
+                        ToolTip.text: "Editar hábito"
                         onClicked: root.openEdit(habitRow.modelData)
+                        contentItem: Item {
+                            AppIcon {
+                                anchors.centerIn: parent
+                                width: 16
+                                height: 16
+                                name: "edit"
+                                color: WaypointTheme.subduedText
+                            }
+                        }
                     }
 
                     AppButton {
@@ -183,7 +225,8 @@ ColumnLayout {
                                 ? "+" + habitRow.modelData.incrementAmount +
                                   (habitRow.modelData.unit === "" ? "" : " " + habitRow.modelData.unit)
                             : habitRow.modelData.checkInMode === "manual" ? "Registrar" : "Concluir"
-                        selected: habitRow.modelData.completed
+                        highlighted: !habitRow.modelData.completed
+                        flat: habitRow.modelData.completed
                         onClicked: {
                             if (habitRow.modelData.checkInMode === "manual") {
                                 root.manualHabitId = habitRow.modelData.id;
@@ -199,15 +242,15 @@ ColumnLayout {
 
                 Rectangle {
                     Layout.fillWidth: true
-                    implicitHeight: 3
+                    implicitHeight: 4
                     radius: 2
-                    color: WaypointTheme.divider
+                    color: WaypointTheme.controlFill
 
                     Rectangle {
                         width: parent.width * Math.min(1, habitRow.modelData.amount / habitRow.modelData.targetAmount)
                         height: parent.height
                         radius: parent.radius
-                        color: habitRow.modelData.completed ? WaypointTheme.success : WaypointTheme.activeBorder
+                        color: habitRow.modelData.completed ? WaypointTheme.success : WaypointTheme.accent
                     }
                 }
             }
@@ -230,21 +273,21 @@ ColumnLayout {
 
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
             spacing: WaypointTheme.controlGap
 
             Text {
-                text: "REGISTRAR PROGRESSO"
+                text: "Registrar progresso"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
             }
 
             AppTextField {
@@ -263,10 +306,10 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                AppButton { text: "Cancelar"; onClicked: manualPopup.close() }
+                AppButton { text: "Cancelar"; flat: true; onClicked: manualPopup.close() }
                 AppButton {
                     text: "Registrar"
-                    selected: true
+                    highlighted: true
                     enabled: manualAmount.acceptableInput
                     onClicked: {
                         if (root.controller.recordHabit(
@@ -290,21 +333,21 @@ ColumnLayout {
 
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
             spacing: WaypointTheme.controlGap
 
             Text {
-                text: root.editingHabitId === "" ? "NOVO HÁBITO" : "EDITAR HÁBITO"
+                text: root.editingHabitId === "" ? "Novo hábito" : "Editar hábito"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
             }
 
             RowLayout {
@@ -425,10 +468,10 @@ ColumnLayout {
                     }
                 }
                 Item { Layout.fillWidth: true }
-                AppButton { text: "Cancelar"; onClicked: editorPopup.close() }
+                AppButton { text: "Cancelar"; flat: true; onClicked: editorPopup.close() }
                 AppButton {
                     text: "Salvar"
-                    selected: true
+                    highlighted: true
                     enabled: habitTitle.text.trim() !== "" && goalInput.acceptableInput &&
                              incrementInput.acceptableInput && root.weekdayMask !== 0
                     onClicked: root.saveHabit()

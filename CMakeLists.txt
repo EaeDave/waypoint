@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(Waypoint VERSION 0.2.22 LANGUAGES CXX)
+project(Waypoint VERSION 0.2.23 LANGUAGES CXX)
 configure_file(
     src/core/WaypointVersion.hpp.in
     ${CMAKE_CURRENT_BINARY_DIR}/generated/WaypointVersion.hpp
@@ -210,7 +210,7 @@ else()
     )
     set_source_files_properties(qml/WaypointTheme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
     set_source_files_properties(qml/data/EmojiCatalog.js PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
-    set_source_files_properties(qml/data/TaskCategoryOptions.js
+    set_source_files_properties(qml/data/TaskCategoryOptions.js qml/data/Labels.js
         PROPERTIES QT_QML_SKIP_QMLDIR_ENTRY TRUE)
 
     qt_add_qml_module(waypoint
@@ -242,12 +242,18 @@ else()
             qml/components/TaskListManager.qml
             qml/components/TaskVisibilityChip.qml
             qml/components/CalendarListFilter.qml
+            qml/components/NavItem.qml
             qml/views/MonthView.qml
             qml/views/TodayView.qml
             qml/views/TasksView.qml
             qml/views/SettingsView.qml
             qml/data/EmojiCatalog.js
             qml/data/TaskCategoryOptions.js
+            qml/data/Labels.js
+        RESOURCES
+            qml/fonts/Inter-Regular.ttf
+            qml/fonts/Inter-Medium.ttf
+            qml/fonts/Inter-SemiBold.ttf
     )
     target_include_directories(waypoint PRIVATE src)
     target_link_libraries(waypoint PRIVATE waypoint_app_models waypoint_ipc waypoint_update waypoint_version Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2)
@@ -268,6 +274,9 @@ else()
         DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
     install(FILES LICENSE
         DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/waypoint)
+    install(FILES qml/fonts/OFL.txt
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/waypoint
+        RENAME Inter-OFL.txt)
     install(FILES packaging/systemd/waypointd.service
         DESTINATION ${CMAKE_INSTALL_DATADIR}/systemd/user)
 endif()

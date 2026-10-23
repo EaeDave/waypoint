@@ -5,8 +5,8 @@ TextField {
     id: control
 
     implicitHeight: WaypointTheme.controlHeight
-    leftPadding: 10
-    rightPadding: 10
+    leftPadding: 12
+    rightPadding: 12
     topPadding: 6
     bottomPadding: 6
     selectByMouse: true

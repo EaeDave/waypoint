@@ -45,9 +45,30 @@ Item {
     }
 
     AppButton {
+        id: trigger
         anchors.fill: parent
         text: "Lembretes · " + root.reminderTimes.length
         onClicked: reminderPopup.open()
+        contentItem: RowLayout {
+            spacing: 6
+            AppIcon {
+                Layout.preferredWidth: 16
+                Layout.preferredHeight: 16
+                name: "bell"
+                color: WaypointTheme.subduedText
+            }
+            Text {
+                Layout.fillWidth: true
+                text: trigger.text
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.bodySmallSize
+                font.weight: WaypointTheme.weightMedium
+                font.features: WaypointTheme.tabularNumbers
+                verticalAlignment: Text.AlignVCenter
+                elide: Text.ElideRight
+            }
+        }
     }
 
     AppTimePicker {
@@ -69,10 +90,10 @@ Item {
 
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
@@ -82,11 +103,11 @@ Item {
                 Layout.fillWidth: true
 
                 Text {
-                    text: "LEMBRETES"
+                    text: "Lembretes"
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.titleSize
-                    font.bold: true
+                    font.pixelSize: WaypointTheme.headingSize
+                    font.weight: WaypointTheme.weightSemiBold
                 }
                 Item { Layout.fillWidth: true }
                 Text {
@@ -94,6 +115,7 @@ Item {
                     color: WaypointTheme.subduedText
                     font.family: WaypointTheme.fontFamily
                     font.pixelSize: WaypointTheme.bodySmallSize
+                    font.features: WaypointTheme.tabularNumbers
                 }
             }
 
@@ -119,10 +141,12 @@ Item {
                         color: WaypointTheme.foreground
                         font.family: WaypointTheme.fontFamily
                         font.pixelSize: WaypointTheme.bodySize
-                        font.bold: true
+                        font.weight: WaypointTheme.weightMedium
+                        font.features: WaypointTheme.tabularNumbers
                     }
                     AppButton {
                         text: "Remover"
+                        flat: true
                         destructive: true
                         onClicked: root.removeTime(parent.modelData)
                     }
@@ -130,10 +154,29 @@ Item {
             }
 
             AppButton {
+                id: addButton
                 Layout.fillWidth: true
                 enabled: root.reminderTimes.length < root.maximumReminderCount
-                text: "+ Adicionar horário"
+                text: "Adicionar horário"
                 onClicked: timePicker.openPicker()
+                contentItem: Row {
+                    spacing: 6
+                    AppIcon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 16
+                        height: 16
+                        name: "plus"
+                        color: addButton.enabled ? WaypointTheme.subduedText : WaypointTheme.disabledText
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: addButton.text
+                        color: addButton.enabled ? WaypointTheme.foreground : WaypointTheme.disabledText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                        font.weight: WaypointTheme.weightMedium
+                    }
+                }
             }
 
             RowLayout {
@@ -141,7 +184,7 @@ Item {
                 Item { Layout.fillWidth: true }
                 AppButton {
                     text: "Concluir"
-                    selected: true
+                    highlighted: true
                     onClicked: reminderPopup.close()
                 }
             }

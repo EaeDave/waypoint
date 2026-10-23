@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/desktop-wide.png" alt="Waypoint desktop calendar with tasks, holidays, and habit progress" width="100%">
+  <img src="docs/images/desktop-wide.png" alt="Waypoint desktop calendar with list colors and the selected day's tasks" width="100%">
 </p>
 
 Waypoint keeps the fast path local: tasks, recurrence state, habit check-ins, holiday data, and pending changes live in SQLite. A self-hosted synchronization API makes the same plan available on Linux and Android without turning an internet connection into a requirement.
@@ -98,10 +98,12 @@ Every client writes to SQLite first and queues mutations in an offline outbox. T
 
 ### Linux desktop
 
-The wide overview above combines the month view, selected-day tasks, holiday details, and habit progress. The same workspace responds cleanly to a compact window beside the rest of your work.
+The wide overview above pairs the month view with the selected day's tasks; holiday details and habit progress follow below them. The same workspace responds cleanly to a compact window beside the rest of your work.
+
+A sidebar switches between **Hoje**, **Todas as tarefas**, **Calendário**, and **Configurações**, and lists every task list with its task count; selecting a list opens the task view filtered to it. The top bar shows the clock, task search (<kbd>Ctrl</kbd>+<kbd>K</kbd>), and the daemon and synchronization status. <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>4</kbd> switch pages, and the sidebar collapses to icons in narrow windows. `waypoint --page today|tasks|calendar|settings` opens a specific page.
 
 <p align="center">
-  <img src="docs/images/desktop-compact.png" alt="Compact Waypoint desktop layout" width="520"><br>
+  <img src="docs/images/desktop-compact.png" alt="Compact Waypoint desktop Today view with a collapsed sidebar" width="520"><br>
   <sub>Compact desktop layout</sub>
 </p>
 
@@ -440,5 +442,7 @@ version = "0.2.0"
 ## License
 
 Waypoint is free software licensed under the [GNU Affero General Public License, version 3 or later](LICENSE). You may use, study, modify, and redistribute it under the terms of that license. Modified versions offered over a network must provide their corresponding source code to their users.
+
+The desktop app embeds the [Inter](https://github.com/rsms/inter) typeface, licensed under the [SIL Open Font License 1.1](qml/fonts/OFL.txt); the license is installed as `share/licenses/waypoint/Inter-OFL.txt`.
 
 Copyright © 2026 EaeDave.

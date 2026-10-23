@@ -4,7 +4,7 @@ import QtQuick.Controls
 CheckBox {
     id: control
 
-    spacing: 8
+    spacing: 10
     padding: 0
     hoverEnabled: true
 
@@ -13,23 +13,25 @@ CheckBox {
         implicitHeight: 18
         x: control.leftPadding
         y: parent.height / 2 - height / 2
-        radius: WaypointTheme.radius
+        radius: 5
+        opacity: control.enabled ? 1 : 0.45
         color: control.checked ? WaypointTheme.accent
              : control.hovered ? WaypointTheme.controlHoverFill
-             : WaypointTheme.controlFill
-        border.width: 1
+             : "transparent"
+        border.width: 1.5
         border.color: control.checked ? WaypointTheme.accent
                     : control.activeFocus ? WaypointTheme.activeBorder
-                    : WaypointTheme.controlBorder
+                    : control.hovered ? WaypointTheme.subduedText
+                    : WaypointTheme.controlHoverBorder
 
-        Text {
+        AppIcon {
             anchors.centerIn: parent
+            width: 12
+            height: 12
             visible: control.checked
-            text: "✓"
+            name: "check"
             color: WaypointTheme.background
-            font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.bodySmallSize
-            font.bold: true
+            strokeWidth: 2
         }
     }
 

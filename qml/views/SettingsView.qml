@@ -107,12 +107,12 @@ Item {
         contentWidth: availableWidth
 
         ColumnLayout {
-            width: Math.max(0, parent.width - (root.compact ? 28 : 68))
-            anchors.horizontalCenter: parent.horizontalCenter
+            x: root.compact ? 20 : 32
+            width: Math.max(0, Math.min(720, parent.width - (root.compact ? 40 : 64)))
             spacing: 14
 
             Item {
-                Layout.preferredHeight: 24
+                Layout.preferredHeight: root.compact ? 6 : 14
             }
 
             Text {
@@ -120,7 +120,7 @@ Item {
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
-                font.bold: true
+                font.weight: WaypointTheme.weightSemiBold
             }
 
             Text {
@@ -134,16 +134,16 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: statusColumn.implicitHeight + 28
-                radius: WaypointTheme.radius
-                color: WaypointTheme.controlFill
+                Layout.preferredHeight: statusColumn.implicitHeight + 32
+                radius: WaypointTheme.radiusLarge
+                color: WaypointTheme.surface
                 border.width: 1
                 border.color: WaypointTheme.controlBorder
 
                 ColumnLayout {
                     id: statusColumn
                     anchors.fill: parent
-                    anchors.margins: 14
+                    anchors.margins: 16
                     spacing: 8
 
                     RowLayout {
@@ -152,7 +152,7 @@ Item {
                         Rectangle {
                             Layout.preferredWidth: 8
                             Layout.preferredHeight: 8
-                            radius: 4
+                            radius: height / 2
                             color: root.stateColor()
                         }
 
@@ -160,8 +160,8 @@ Item {
                             text: root.stateLabel()
                             color: WaypointTheme.foreground
                             font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.subtitleSize
-                            font.bold: true
+                            font.pixelSize: WaypointTheme.bodySize
+                            font.weight: WaypointTheme.weightMedium
                         }
 
                         Item {
@@ -174,7 +174,8 @@ Item {
                             text: "Última sincronização: " + Qt.formatDateTime(new Date(root.controller.lastSuccessfulSync), "dd/MM/yyyy HH:mm")
                             color: WaypointTheme.subduedText
                             font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.captionSize
+                            font.pixelSize: WaypointTheme.bodySmallSize
+                            font.features: WaypointTheme.tabularNumbers
                             elide: Text.ElideLeft
                         }
                     }
@@ -193,24 +194,33 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: syncColumn.implicitHeight + 28
-                radius: WaypointTheme.radius
+                Layout.preferredHeight: syncColumn.implicitHeight + 40
+                radius: WaypointTheme.radiusLarge
                 color: WaypointTheme.surface
                 border.width: 1
-                border.color: WaypointTheme.divider
+                border.color: WaypointTheme.controlBorder
 
                 ColumnLayout {
                     id: syncColumn
                     anchors.fill: parent
-                    anchors.margins: 14
+                    anchors.margins: 20
                     spacing: 10
 
                     Text {
-                        text: "SINCRONIZAÇÃO"
+                        text: "Sincronização"
                         color: WaypointTheme.foreground
                         font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.titleSize
-                        font.bold: true
+                        font.pixelSize: WaypointTheme.subtitleSize
+                        font.weight: WaypointTheme.weightSemiBold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Envie e receba tarefas pelo seu servidor Waypoint."
+                        color: WaypointTheme.subduedText
+                        font.family: WaypointTheme.fontFamily
+                        font.pixelSize: WaypointTheme.bodySmallSize
+                        wrapMode: Text.Wrap
                     }
 
                     Text {
@@ -256,7 +266,7 @@ Item {
 
                         AppButton {
                             text: "Salvar e sincronizar"
-                            selected: true
+                            highlighted: true
                             enabled: serverField.text.trim() !== ""
                             onClicked: {
                                 const saved = root.controller.saveSyncConfiguration(serverField.text, tokenField.text);
@@ -299,24 +309,24 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: holidayColumn.implicitHeight + 28
-                radius: WaypointTheme.radius
+                Layout.preferredHeight: holidayColumn.implicitHeight + 40
+                radius: WaypointTheme.radiusLarge
                 color: WaypointTheme.surface
                 border.width: 1
-                border.color: WaypointTheme.divider
+                border.color: WaypointTheme.controlBorder
 
                 ColumnLayout {
                     id: holidayColumn
                     anchors.fill: parent
-                    anchors.margins: 14
+                    anchors.margins: 20
                     spacing: 10
 
                     Text {
-                        text: "FERIADOS BRASILEIROS"
+                        text: "Feriados brasileiros"
                         color: WaypointTheme.foreground
                         font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.titleSize
-                        font.bold: true
+                        font.pixelSize: WaypointTheme.subtitleSize
+                        font.weight: WaypointTheme.weightSemiBold
                     }
 
                     Text {
@@ -337,6 +347,7 @@ Item {
                         AppComboBox {
                             id: stateField
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 1
                             model: root.brazilianStates
                             textRole: "name"
                             valueRole: "code"
@@ -350,6 +361,7 @@ Item {
                         AppComboBox {
                             id: cityField
                             Layout.fillWidth: true
+                            Layout.preferredWidth: 1
                             enabled: stateField.currentValue !== ""
                             model: root.controller.municipalities
                             textRole: "name"
@@ -395,7 +407,7 @@ Item {
 
                         AppButton {
                             text: "Salvar feriados"
-                            selected: true
+                            highlighted: true
                             onClicked: {
                                 const cityCode = cityField.currentIndex >= 0 ? cityField.currentValue : "";
                                 const saved = root.controller.saveHolidayPreferences(
@@ -484,7 +496,7 @@ Item {
                     visible: root.controller.updateState === "available"
                              && root.controller.canInstallUpdate
                     text: "Atualizar para " + root.controller.latestVersion
-                    selected: true
+                    highlighted: true
                     onClicked: {
                         const started = root.controller.installUpdate();
                         root.feedbackError = !started;

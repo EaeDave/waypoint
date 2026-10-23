@@ -23,7 +23,7 @@ MenuItem {
     }
 
     background: Rectangle {
-        color: control.highlighted ? WaypointTheme.controlSelectedFill : "transparent"
-        radius: WaypointTheme.radius
+        color: control.highlighted ? WaypointTheme.controlHoverFill : "transparent"
+        radius: WaypointTheme.radiusSmall
     }
 }

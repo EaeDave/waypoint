@@ -46,15 +46,13 @@ ComboBox {
         }
     }
 
-    indicator: Text {
+    indicator: AppIcon {
         x: control.width - width - 10
-        y: control.topPadding
-        height: control.availableHeight
-        text: "⌄"
+        y: (control.height - height) / 2
+        width: 14
+        height: 14
+        name: "chevron-down"
         color: control.enabled ? WaypointTheme.subduedText : WaypointTheme.disabledText
-        font.family: WaypointTheme.fontFamily
-        font.pixelSize: WaypointTheme.subtitleSize
-        verticalAlignment: Text.AlignVCenter
     }
 
     background: Rectangle {
@@ -101,7 +99,8 @@ ComboBox {
             }
         }
         background: Rectangle {
-            color: option.highlighted ? WaypointTheme.controlSelectedFill : "transparent"
+            radius: WaypointTheme.radiusSmall
+            color: option.highlighted ? WaypointTheme.controlHoverFill : "transparent"
         }
     }
 
@@ -121,10 +120,10 @@ ComboBox {
         }
 
         background: Rectangle {
-            color: WaypointTheme.background
+            color: WaypointTheme.popupFill
             radius: WaypointTheme.radius
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
     }
 }

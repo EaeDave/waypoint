@@ -67,26 +67,57 @@ Item {
             id: trigger
             objectName: "calendarListFilterTrigger"
             Layout.maximumWidth: Math.max(72, root.width - (reset.visible ? reset.width + controls.spacing : 0))
-            implicitHeight: 28
+            implicitHeight: 30
+            rightPadding: 8
             text: root.label
             selected: root.controller.calendarListFilterActive
             Accessible.name: root.label + ". Filtrar listas do calendário"
             ToolTip.visible: hovered
             ToolTip.text: root.selectionDescription
             onClicked: picker.open()
+            contentItem: RowLayout {
+                spacing: 6
+
+                Text {
+                    Layout.fillWidth: true
+                    text: trigger.text
+                    color: trigger.selected ? WaypointTheme.accent : WaypointTheme.foreground
+                    font.family: WaypointTheme.fontFamily
+                    font.pixelSize: WaypointTheme.bodySmallSize
+                    font.weight: trigger.selected ? WaypointTheme.weightSemiBold : WaypointTheme.weightMedium
+                    verticalAlignment: Text.AlignVCenter
+                    elide: Text.ElideRight
+                }
+
+                AppIcon {
+                    Layout.preferredWidth: 14
+                    Layout.preferredHeight: 14
+                    name: "chevron-down"
+                    color: trigger.selected ? WaypointTheme.accent : WaypointTheme.subduedText
+                }
+            }
         }
 
         AppButton {
             id: reset
             objectName: "calendarListFilterReset"
             visible: root.controller.calendarListFilterActive
-            implicitHeight: 28
+            implicitHeight: 30
             square: true
-            text: "×"
+            flat: true
             Accessible.name: "Mostrar todas as listas do calendário"
             ToolTip.visible: hovered
             ToolTip.text: Accessible.name
             onClicked: root.controller.clearCalendarListFilter()
+            contentItem: Item {
+                AppIcon {
+                    anchors.centerIn: parent
+                    width: 16
+                    height: 16
+                    name: "close"
+                    color: WaypointTheme.subduedText
+                }
+            }
         }
     }
 
@@ -110,10 +141,10 @@ Item {
         onClosed: trigger.forceActiveFocus()
 
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ScrollView {
@@ -124,7 +155,7 @@ Item {
             ColumnLayout {
                 id: contentColumn
                 width: scroll.availableWidth
-                spacing: 8
+                spacing: 4
 
                 AppButton {
                     id: showAll
@@ -144,32 +175,43 @@ Item {
                         Layout.fillWidth: true
                         spacing: 8
 
-                        Rectangle {
-                            Layout.preferredWidth: 8
-                            Layout.preferredHeight: 8
-                            radius: 4
-                            color: listRow.modelData.color
-                        }
-
                         AppCheckBox {
+                            id: listCheck
                             Layout.fillWidth: true
+                            Layout.preferredHeight: 32
                             text: listRow.modelData.name
                             checked: !root.controller.calendarListFilterActive
                                 || root.controller.calendarListIds.indexOf(listRow.modelData.id) >= 0
                             Accessible.name: "Mostrar lista " + listRow.modelData.name
-                            contentItem: Text {
-                                leftPadding: 26
-                                text: listRow.modelData.name
-                                color: WaypointTheme.foreground
-                                font.family: WaypointTheme.fontFamily
-                                font.pixelSize: WaypointTheme.bodySmallSize
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
+                            contentItem: Row {
+                                leftPadding: listCheck.indicator.width + listCheck.spacing
+                                spacing: 8
+
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: listRow.modelData.color
+                                }
+
+                                Text {
+                                    width: Math.max(0, parent.width - x)
+                                    height: parent.height
+                                    text: listRow.modelData.name
+                                    color: WaypointTheme.foreground
+                                    font.family: WaypointTheme.fontFamily
+                                    font.pixelSize: WaypointTheme.bodySmallSize
+                                    verticalAlignment: Text.AlignVCenter
+                                    elide: Text.ElideRight
+                                }
                             }
                             onClicked: root.toggleList(listRow.modelData.id)
                         }
 
                         AppButton {
+                            implicitHeight: 28
+                            flat: true
                             text: "Somente"
                             Accessible.name: "Mostrar somente " + listRow.modelData.name
                             onClicked: root.controller.setCalendarListFilter([listRow.modelData.id])

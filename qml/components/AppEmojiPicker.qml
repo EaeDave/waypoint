@@ -43,18 +43,28 @@ Item {
         id: inlineButton
         anchors.fill: parent
         square: true
-        text: root.emoji === "" ? "☺" : root.emoji
+        text: root.emoji
         onClicked: root.openPicker()
         ToolTip.visible: hovered
         ToolTip.text: root.emoji === "" ? "Adicionar emoji" : "Alterar emoji"
+        Accessible.name: ToolTip.text
 
-        contentItem: Text {
-            text: inlineButton.text
-            color: WaypointTheme.foreground
-            font.family: root.emoji === "" ? WaypointTheme.fontFamily : "Noto Color Emoji"
-            font.pixelSize: root.emoji === "" ? WaypointTheme.bodySize : 20
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
+        contentItem: Item {
+            AppIcon {
+                anchors.centerIn: parent
+                width: 16
+                height: 16
+                visible: root.emoji === ""
+                name: "plus"
+                color: WaypointTheme.subduedText
+            }
+            Text {
+                anchors.centerIn: parent
+                visible: root.emoji !== ""
+                text: root.emoji
+                font.family: "Noto Color Emoji"
+                font.pixelSize: 20
+            }
         }
     }
 
@@ -79,10 +89,10 @@ Item {
         }
 
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
@@ -92,17 +102,18 @@ Item {
                 Layout.fillWidth: true
 
                 Text {
-                    text: "ESCOLHER EMOJI"
+                    text: "Escolher emoji"
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.titleSize
-                    font.bold: true
+                    font.pixelSize: WaypointTheme.headingSize
+                    font.weight: WaypointTheme.weightSemiBold
                 }
                 Item {
                     Layout.fillWidth: true
                 }
                 AppButton {
                     text: "Sem emoji"
+                    flat: true
                     onClicked: root.chooseEmoji("")
                 }
             }
@@ -132,6 +143,7 @@ Item {
                         AppButton {
                             required property var modelData
                             square: true
+                            flat: true
                             id: categoryButton
                             text: modelData.emoji
                             selected: root.activeCategory === modelData.id && searchInput.text === ""
@@ -187,10 +199,9 @@ Item {
                     }
                     background: Rectangle {
                         radius: WaypointTheme.radius
-                        color: emojiButton.down ? WaypointTheme.controlSelectedFill
+                        color: emojiButton.modelData.emoji === root.emoji ? WaypointTheme.accentSoft
+                             : emojiButton.down ? WaypointTheme.controlSelectedFill
                              : emojiButton.hovered ? WaypointTheme.controlHoverFill : "transparent"
-                        border.width: emojiButton.modelData.emoji === root.emoji ? 1 : 0
-                        border.color: WaypointTheme.activeBorder
                     }
                 }
             }

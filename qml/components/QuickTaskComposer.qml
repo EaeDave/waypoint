@@ -45,10 +45,14 @@ Rectangle {
     }
 
     implicitHeight: 44
-    radius: WaypointTheme.radius
-    color: input.activeFocus ? WaypointTheme.controlHoverFill : WaypointTheme.controlFill
+    radius: 10
+    color: WaypointTheme.controlFill
     border.width: 1
-    border.color: input.activeFocus ? WaypointTheme.activeBorder : WaypointTheme.controlBorder
+    border.color: input.activeFocus ? WaypointTheme.activeBorder
+                : fieldHover.hovered ? WaypointTheme.controlHoverBorder
+                : WaypointTheme.controlBorder
+
+    HoverHandler { id: fieldHover }
 
     function focusInput() {
         input.forceActiveFocus();
@@ -173,14 +177,14 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 12
+        anchors.leftMargin: 14
         anchors.rightMargin: 6
-        spacing: 8
-        Text {
-            text: "+"
+        spacing: 10
+        AppIcon {
+            Layout.preferredWidth: 16
+            Layout.preferredHeight: 16
+            name: "plus"
             color: WaypointTheme.accent
-            font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.headingSize
         }
         TextField {
             id: input
@@ -192,14 +196,35 @@ Rectangle {
             selectionColor: WaypointTheme.accent
             selectedTextColor: WaypointTheme.background
             background: Item {}
+            leftPadding: 0
             font.family: WaypointTheme.fontFamily
             font.pixelSize: WaypointTheme.bodySize
             onTextEdited: root.draftTitle = text
             onAccepted: root.beginSubmit()
         }
+        Rectangle {
+            visible: root.draftTitle === "" && !input.activeFocus
+            Layout.rightMargin: 4
+            implicitWidth: hintText.implicitWidth + 12
+            implicitHeight: 20
+            radius: 5
+            color: "transparent"
+            border.width: 1
+            border.color: WaypointTheme.controlBorder
+            Text {
+                id: hintText
+                anchors.centerIn: parent
+                text: "N"
+                color: WaypointTheme.disabledText
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: 11
+            }
+        }
         AppButton {
             text: "Continuar"
-            enabled: root.draftTitle.trim() !== ""
+            visible: root.draftTitle.trim() !== ""
+            highlighted: true
+            implicitHeight: 32
             onClicked: root.beginSubmit()
         }
     }
@@ -217,10 +242,10 @@ Rectangle {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            radius: WaypointTheme.radius
-            color: WaypointTheme.background
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
             border.width: 1
-            border.color: WaypointTheme.activeBorder
+            border.color: WaypointTheme.controlBorder
         }
 
         contentItem: ColumnLayout {
@@ -236,11 +261,11 @@ Rectangle {
                 width: formScroll.availableWidth
                 spacing: WaypointTheme.controlGap
                 Text {
-                    text: root.step === 0 ? "NOVA TAREFA" : root.step === 1 ? "ESCOLHER DATA" : "ESCOLHER HORÁRIO"
+                    text: root.step === 0 ? "Nova tarefa" : root.step === 1 ? "Escolher data" : "Escolher horário"
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.titleSize
-                    font.bold: true
+                    font.pixelSize: WaypointTheme.headingSize
+                    font.weight: WaypointTheme.weightSemiBold
                 }
                 AppTextField {
                     id: titleInput
@@ -289,6 +314,7 @@ Rectangle {
                 }
                 AppButton {
                     text: root.moreOptions ? "Menos opções" : "Mais opções"
+                    flat: true
                     onClicked: root.moreOptions = !root.moreOptions
                 }
                 ColumnLayout {
@@ -311,9 +337,21 @@ Rectangle {
                             Accessible.name: "Lista da tarefa"
                         }
                         AppButton {
-                            text: "…"
+                            square: true
+                            flat: true
                             Accessible.name: "Gerenciar listas"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Gerenciar listas"
                             onClicked: listManager.openManager()
+                            contentItem: Item {
+                                AppIcon {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    name: "more"
+                                    color: WaypointTheme.subduedText
+                                }
+                            }
                         }
                     }
                     AppReminderPicker {
@@ -424,6 +462,7 @@ Rectangle {
                     Layout.fillWidth: true
                     AppButton {
                         text: "Voltar"
+                        flat: true
                         visible: root.step > 0
                         onClicked: {
                             root.step = root.step === 2 && !root.contextualDate ? 1 : 0;
@@ -433,11 +472,12 @@ Rectangle {
                     Item { Layout.fillWidth: true }
                     AppButton {
                         text: "Cancelar"
+                        flat: true
                         onClicked: creationPopup.close()
                     }
                     AppButton {
                         text: root.step === 2 ? "Criar" : "Continuar"
-                        selected: true
+                        highlighted: true
                         enabled: !root.submitting && root.draftTitle.trim() !== ""
                             && (root.step === 0 || dateInput.acceptableInput)
                             && (root.step !== 2 || timeInput.acceptableInput)

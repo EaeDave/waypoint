@@ -59,33 +59,37 @@ Rectangle {
     implicitWidth: 58
     implicitHeight: 48
     radius: WaypointTheme.radius
-    color: root.selected ? WaypointTheme.controlSelectedFill
+    color: root.selected ? WaypointTheme.accentSoft
          : pointer.containsMouse ? WaypointTheme.controlHoverFill
+         : root.inVisibleMonth ? WaypointTheme.surface
          : "transparent"
-    border.width: root.today || root.selected ? 1 : 0
-    border.color: root.selected ? WaypointTheme.activeBorder : WaypointTheme.controlBorder
+    border.width: 1
+    border.color: root.today ? WaypointTheme.accent
+                : root.inVisibleMonth && !root.selected ? WaypointTheme.divider
+                : "transparent"
 
     Text {
         anchors.centerIn: parent
-        anchors.verticalCenterOffset: -3
+        anchors.verticalCenterOffset: -4
         text: root.dayNumber
-        color: root.inVisibleMonth
-             ? root.holidayCount > 0 ? root.holidayColor(root.holidayKind)
+        color: !root.inVisibleMonth ? WaypointTheme.disabledText
+             : root.today || root.selected ? WaypointTheme.accent
+             : root.holidayCount > 0 ? root.holidayColor(root.holidayKind)
              : root.weekend ? WaypointTheme.subduedText : WaypointTheme.foreground
-             : WaypointTheme.disabledText
         font.family: WaypointTheme.fontFamily
-        font.pixelSize: WaypointTheme.subtitleSize
-        font.bold: root.today
+        font.pixelSize: WaypointTheme.bodySize
+        font.weight: root.today || root.selected ? WaypointTheme.weightSemiBold : WaypointTheme.weightMedium
+        font.features: WaypointTheme.tabularNumbers
     }
 
     Rectangle {
         anchors.top: parent.top
         anchors.right: parent.right
-        anchors.margins: 6
+        anchors.margins: 7
         visible: root.holidayCount > 0
-        width: root.holidayCount > 1 ? 12 : 7
-        height: 2
-        radius: 1
+        width: root.holidayCount > 1 ? 12 : 6
+        height: 6
+        radius: 3
         color: root.holidayColor(root.holidayKind)
     }
 
@@ -99,16 +103,29 @@ Rectangle {
     Row {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 6
+        anchors.bottomMargin: 7
         spacing: 3
+        opacity: root.inVisibleMonth ? 1 : 0.5
+
+        AppIcon {
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.skippedCount > 0
+            width: 9
+            height: 9
+            name: "close"
+            color: WaypointTheme.urgent
+            strokeWidth: 2
+        }
 
         Text {
-            visible: root.skippedCount > 0
-            text: root.skippedCount === 1 ? "×" : "×" + root.skippedCount
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.skippedCount > 1
+            text: root.skippedCount
             color: WaypointTheme.urgent
             font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.captionSize
-            font.bold: true
+            font.pixelSize: 10
+            font.weight: WaypointTheme.weightMedium
+            font.features: WaypointTheme.tabularNumbers
         }
 
         Repeater {
@@ -116,8 +133,9 @@ Rectangle {
 
             Rectangle {
                 required property var modelData
-                width: 5
-                height: 5
+                anchors.verticalCenter: parent.verticalCenter
+                width: 6
+                height: 6
                 radius: 3
                 color: modelData.color === "" ? WaypointTheme.accent : modelData.color
                 border.width: modelData.urgent ? 1 : 0
@@ -135,20 +153,23 @@ Rectangle {
         }
 
         Text {
+            anchors.verticalCenter: parent.verticalCenter
             visible: root.categoryOverflow > 0
             text: "+" + root.categoryOverflow
             color: WaypointTheme.subduedText
             font.family: WaypointTheme.fontFamily
-            font.pixelSize: WaypointTheme.captionSize
-            font.bold: true
+            font.pixelSize: 10
+            font.weight: WaypointTheme.weightMedium
+            font.features: WaypointTheme.tabularNumbers
         }
 
         Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
             visible: root.categoryMarkers.length === 0 && root.skippedCount === 0
                      && root.completedCount > 0
-            width: 4
-            height: 4
-            radius: 2
+            width: 5
+            height: 5
+            radius: 3
             color: "transparent"
             border.width: 1
             border.color: WaypointTheme.subduedText

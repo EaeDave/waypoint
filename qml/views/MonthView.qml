@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import "../components"
+import "../data/Labels.js" as Labels
 
 Item {
     id: root
@@ -16,7 +17,8 @@ Item {
     }
 
     readonly property bool compact: width < WaypointTheme.calendarSplitBreakpoint
-    readonly property int pageMargin: compact ? 18 : 34
+    readonly property int pageMargin: compact ? 20 : 32
+    readonly property int pageTopMargin: compact ? 20 : 28
     readonly property date now: new Date()
     readonly property int elapsedDays: Math.floor((now - new Date(now.getFullYear(), 0, 1)) / 86400000) + 1
     readonly property int daysInYear: new Date(now.getFullYear(), 1, 29).getMonth() === 1 ? 366 : 365
@@ -34,19 +36,19 @@ Item {
     }
 
     function holidayKindLabel(kind, scope) {
-        let category = "DATA COMEMORATIVA";
+        let category = "Data comemorativa";
         if (kind === "legal")
-            category = "FERIADO";
+            category = "Feriado";
         else if (kind === "optional")
-            category = "PONTO FACULTATIVO";
+            category = "Ponto facultativo";
 
         let coverage = "";
         if (scope === "national")
-            coverage = "NACIONAL";
+            coverage = "nacional";
         else if (scope === "state")
-            coverage = "ESTADUAL";
+            coverage = "estadual";
         else if (scope === "municipal")
-            coverage = "MUNICIPAL";
+            coverage = "municipal";
         return coverage === "" ? category : category + " " + coverage;
     }
 
@@ -58,12 +60,12 @@ Item {
 
         GridLayout {
             x: root.pageMargin
-            y: root.pageMargin
+            y: root.pageTopMargin
             width: Math.max(0, page.availableWidth - root.pageMargin * 2)
-            height: root.compact ? implicitHeight : Math.max(0, page.availableHeight - root.pageMargin * 2)
+            height: root.compact ? implicitHeight : Math.max(0, page.availableHeight - root.pageTopMargin - root.pageMargin)
             columns: root.compact ? 1 : 3
-            columnSpacing: root.compact ? 0 : 30
-            rowSpacing: root.compact ? 20 : 0
+            columnSpacing: root.compact ? 0 : 32
+            rowSpacing: root.compact ? 24 : 0
 
             Item {
                 id: calendarPane
@@ -81,109 +83,117 @@ Item {
                     spacing: 0
 
                     RowLayout {
-                        Layout.alignment: Qt.AlignHCenter
-                        spacing: 12
-
-                        AppIcon {
-                            Layout.preferredWidth: 26
-                            Layout.preferredHeight: 26
-                            name: "calendar"
-                            color: WaypointTheme.foreground
-                            strokeWidth: 2
-                        }
-
-                        Text {
-                            text: Qt.locale("pt_BR").toString(root.selectedDateValue, "d 'de' MMMM")
-                            color: WaypointTheme.foreground
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
-                            font.bold: true
-                        }
-                    }
-
-                    RowLayout {
                         Layout.fillWidth: true
-                        Layout.topMargin: 18
-                        Layout.bottomMargin: 22
-                        spacing: 12
+                        spacing: 4
 
-                        Text {
-                            text: root.now.getFullYear()
-                            color: WaypointTheme.subduedText
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.captionSize
-                        }
-
-                        Rectangle {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 6
-                            radius: 3
-                            color: WaypointTheme.controlFill
-                            border.width: 1
-                            border.color: WaypointTheme.divider
+                            spacing: 4
 
-                            Rectangle {
-                                width: parent.width * root.elapsedDays / root.daysInYear
-                                height: parent.height
-                                radius: 3
-                                color: WaypointTheme.activeBorder
+                            Text {
+                                Layout.fillWidth: true
+                                text: Labels.sentenceCase(root.controller.calendar.monthLabel)
+                                color: WaypointTheme.foreground
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: root.compact ? WaypointTheme.displaySize : WaypointTheme.displayLargeSize
+                                font.weight: WaypointTheme.weightSemiBold
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                text: "Ano " + root.now.getFullYear() + " · "
+                                      + Math.round(root.elapsedDays * 100 / root.daysInYear) + "% concluído"
+                                color: WaypointTheme.subduedText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.bodySmallSize
+                                font.features: WaypointTheme.tabularNumbers
                             }
                         }
 
-                        Text {
-                            text: Math.round(root.elapsedDays * 100 / root.daysInYear) + "%"
-                            color: WaypointTheme.subduedText
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.captionSize
+                        AppButton {
+                            Layout.rightMargin: 4
+                            text: "Hoje"
+                            Accessible.name: "Ir para o mês atual"
+                            onClicked: root.controller.calendar.showCurrentMonth()
+                        }
+
+                        AppButton {
+                            square: true
+                            flat: true
+                            Accessible.name: "Mês anterior"
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
+                            onClicked: root.controller.calendar.showPreviousMonth()
+                            contentItem: Item {
+                                AppIcon {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    name: "chevron-left"
+                                    color: WaypointTheme.subduedText
+                                }
+                            }
+                        }
+
+                        AppButton {
+                            square: true
+                            flat: true
+                            Accessible.name: "Próximo mês"
+                            ToolTip.visible: hovered
+                            ToolTip.text: Accessible.name
+                            onClicked: root.controller.calendar.showNextMonth()
+                            contentItem: Item {
+                                AppIcon {
+                                    anchors.centerIn: parent
+                                    width: 16
+                                    height: 16
+                                    name: "chevron-right"
+                                    color: WaypointTheme.subduedText
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 14
+                        Layout.preferredHeight: 4
+                        radius: 2
+                        color: WaypointTheme.controlFill
+
+                        Rectangle {
+                            width: parent.width * root.elapsedDays / root.daysInYear
+                            height: parent.height
+                            radius: 2
+                            color: WaypointTheme.accent
                         }
                     }
 
                     CalendarListFilter {
                         id: listFilter
                         Layout.fillWidth: true
+                        Layout.topMargin: 20
                         Layout.bottomMargin: 12
                         controller: root.controller
                     }
 
-                    CalendarGrid {
-                        id: calendarGrid
-                        Layout.alignment: Qt.AlignHCenter
-                        calendarModel: root.controller.calendar
-                        selectedDateKey: root.controller.selectedDateKey
-                        onDaySelected: selectedDateKey => root.controller.selectedDateKey = selectedDateKey
-                    }
-
-                    RowLayout {
+                    Rectangle {
                         Layout.fillWidth: true
-                        Layout.topMargin: 16
+                        Layout.preferredHeight: calendarGrid.implicitHeight + 28
+                        radius: WaypointTheme.radiusLarge
+                        color: WaypointTheme.surface
+                        border.width: 1
+                        border.color: WaypointTheme.controlBorder
 
-                        AppButton {
-                            text: "‹"
-                            square: true
-                            onClicked: root.controller.calendar.showPreviousMonth()
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Mês anterior"
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        AppButton {
-                            text: root.controller.calendar.monthLabel.toUpperCase()
-                            onClicked: root.controller.calendar.showCurrentMonth()
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
-                        AppButton {
-                            text: "›"
-                            square: true
-                            onClicked: root.controller.calendar.showNextMonth()
-                            ToolTip.visible: hovered
-                            ToolTip.text: "Próximo mês"
+                        CalendarGrid {
+                            id: calendarGrid
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: 14
+                            calendarModel: root.controller.calendar
+                            selectedDateKey: root.controller.selectedDateKey
+                            onDaySelected: selectedDateKey => root.controller.selectedDateKey = selectedDateKey
                         }
                     }
                 }
@@ -211,35 +221,40 @@ Item {
 
                     RowLayout {
                         Layout.fillWidth: true
+                        spacing: 12
 
-                        Text {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            text: Qt.locale("pt_BR").toString(root.selectedDateValue, "dddd, d 'de' MMMM")
-                            color: WaypointTheme.foreground
-                            font.family: WaypointTheme.fontFamily
-                            font.pixelSize: WaypointTheme.headingSize
-                            font.bold: true
-                            elide: Text.ElideRight
+                            spacing: 4
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: Labels.sentenceCase(Qt.locale("pt_BR").toString(root.selectedDateValue, "dddd, d 'de' MMMM"))
+                                color: WaypointTheme.foreground
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.headingSize
+                                font.weight: WaypointTheme.weightSemiBold
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                text: {
+                                    const pending = root.controller.selectedDateTasks.pendingCount;
+                                    const skipped = root.controller.selectedDateTasks.skippedCount;
+                                    const pendingLabel = pending + " pendente" + (pending === 1 ? "" : "s");
+                                    return skipped === 0 ? pendingLabel
+                                         : pendingLabel + " · " + skipped + " não feita" + (skipped === 1 ? "" : "s");
+                                }
+                                color: WaypointTheme.subduedText
+                                font.family: WaypointTheme.fontFamily
+                                font.pixelSize: WaypointTheme.bodySmallSize
+                                font.features: WaypointTheme.tabularNumbers
+                            }
                         }
 
                         TaskVisibilityChip {
                             controller: root.controller
                         }
-                    }
-
-                    Text {
-                        Layout.topMargin: 6
-                        text: {
-                            const pending = root.controller.selectedDateTasks.pendingCount;
-                            const skipped = root.controller.selectedDateTasks.skippedCount;
-                            const pendingLabel = pending + " pendente" + (pending === 1 ? "" : "s");
-                            return skipped === 0 ? pendingLabel
-                                 : pendingLabel + " · " + skipped + " não feita" + (skipped === 1 ? "" : "s");
-                        }
-                        color: WaypointTheme.subduedText
-                        font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.captionSize
-                        font.letterSpacing: 1
                     }
 
                     Repeater {
@@ -249,47 +264,63 @@ Item {
                             id: holidayCard
                             required property var modelData
                             Layout.fillWidth: true
-                            Layout.topMargin: 10
-                            Layout.preferredHeight: holidayContent.implicitHeight + 18
-                            radius: WaypointTheme.radius
-                            color: WaypointTheme.controlFill
+                            Layout.topMargin: 12
+                            Layout.preferredHeight: holidayContent.implicitHeight + 24
+                            radius: WaypointTheme.radiusLarge
+                            color: WaypointTheme.surface
                             border.width: 1
-                            border.color: root.holidayColor(modelData.kind)
+                            border.color: WaypointTheme.controlBorder
 
-                            ColumnLayout {
+                            RowLayout {
                                 id: holidayContent
                                 anchors.fill: parent
-                                anchors.margins: 9
-                                spacing: 3
+                                anchors.margins: 12
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 14
+                                spacing: 10
 
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: holidayCard.modelData.name
+                                Rectangle {
+                                    Layout.alignment: Qt.AlignTop
+                                    Layout.topMargin: 6
+                                    Layout.preferredWidth: 8
+                                    Layout.preferredHeight: 8
+                                    radius: 4
                                     color: root.holidayColor(holidayCard.modelData.kind)
-                                    font.family: WaypointTheme.fontFamily
-                                    font.pixelSize: WaypointTheme.subtitleSize
-                                    font.bold: true
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    text: root.holidayKindLabel(holidayCard.modelData.kind,
-                                                                holidayCard.modelData.scope)
-                                    color: root.holidayColor(holidayCard.modelData.kind)
-                                    opacity: 0.72
-                                    font.family: WaypointTheme.fontFamily
-                                    font.pixelSize: WaypointTheme.captionSize
-                                    font.bold: true
-                                    font.letterSpacing: 0.8
                                 }
 
-                                Text {
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    visible: holidayCard.modelData.description !== ""
-                                    text: holidayCard.modelData.description
-                                    color: WaypointTheme.subduedText
-                                    font.family: WaypointTheme.fontFamily
-                                    font.pixelSize: WaypointTheme.bodySmallSize
-                                    wrapMode: Text.Wrap
+                                    spacing: 2
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: holidayCard.modelData.name
+                                        color: WaypointTheme.foreground
+                                        font.family: WaypointTheme.fontFamily
+                                        font.pixelSize: WaypointTheme.bodySize
+                                        font.weight: WaypointTheme.weightMedium
+                                        elide: Text.ElideRight
+                                    }
+
+                                    Text {
+                                        text: root.holidayKindLabel(holidayCard.modelData.kind,
+                                                                    holidayCard.modelData.scope)
+                                        color: root.holidayColor(holidayCard.modelData.kind)
+                                        font.family: WaypointTheme.fontFamily
+                                        font.pixelSize: WaypointTheme.captionSize
+                                        font.weight: WaypointTheme.weightMedium
+                                    }
+
+                                    Text {
+                                        Layout.fillWidth: true
+                                        Layout.topMargin: 2
+                                        visible: holidayCard.modelData.description !== ""
+                                        text: holidayCard.modelData.description
+                                        color: WaypointTheme.subduedText
+                                        font.family: WaypointTheme.fontFamily
+                                        font.pixelSize: WaypointTheme.bodySmallSize
+                                        wrapMode: Text.Wrap
+                                    }
                                 }
                             }
                         }
@@ -300,36 +331,56 @@ Item {
                         Layout.topMargin: 20
                         controller: root.controller
                         scheduledDateKey: root.controller.selectedDateKey
-                        placeholderText: "Nova tarefa neste dia…"
+                        placeholderText: "Adicionar tarefa neste dia"
                     }
 
                     ScrollView {
                         id: selectedDateScroll
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.topMargin: 12
+                        Layout.topMargin: 16
                         contentWidth: availableWidth
                         clip: true
 
                         ColumnLayout {
                             width: selectedDateScroll.availableWidth
-                            spacing: 4
+                            spacing: 20
 
-                            Repeater {
-                                id: selectedTasks
-                                model: root.controller.selectedDateTasks
+                            Rectangle {
+                                visible: selectedTasks.count > 0
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: selectedTaskColumn.implicitHeight + 8
+                                radius: WaypointTheme.radiusLarge
+                                color: WaypointTheme.surface
+                                border.width: 1
+                                border.color: WaypointTheme.controlBorder
 
-                                delegate: TaskRow {
-                                    Layout.fillWidth: true
-                                    controller: root.controller
-                                    completionActions: completionFlow
+                                ColumnLayout {
+                                    id: selectedTaskColumn
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 4
+                                    spacing: 0
+
+                                    Repeater {
+                                        id: selectedTasks
+                                        model: root.controller.selectedDateTasks
+
+                                        delegate: TaskRow {
+                                            required property int index
+                                            Layout.fillWidth: true
+                                            showDivider: index > 0
+                                            controller: root.controller
+                                            completionActions: completionFlow
+                                        }
+                                    }
                                 }
                             }
 
                             Text {
                                 Layout.fillWidth: true
                                 Layout.topMargin: 12
-                                Layout.bottomMargin: 8
                                 visible: selectedTasks.count === 0
                                 text: root.controller.calendarListFilterActive
                                     ? "Nenhuma tarefa " + (root.controller.taskVisibility === "pending" ? "pendente " : "")
@@ -364,6 +415,8 @@ Item {
                                 habits: root.controller.selectedDateHabits
                                 dateKey: root.controller.selectedDateKey
                             }
+
+                            Item { Layout.preferredHeight: 12 }
                         }
                     }
                 }

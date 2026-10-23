@@ -139,10 +139,10 @@ Popup {
     }
 
     background: Rectangle {
-        radius: WaypointTheme.radius
-        color: WaypointTheme.background
+        radius: WaypointTheme.radiusLarge
+        color: WaypointTheme.popupFill
         border.width: 1
-        border.color: WaypointTheme.activeBorder
+        border.color: WaypointTheme.controlBorder
     }
 
     contentItem: ColumnLayout {
@@ -156,11 +156,11 @@ Popup {
                 spacing: 2
 
                 Text {
-                    text: "LISTAS"
+                    text: "Listas"
                     color: WaypointTheme.foreground
                     font.family: WaypointTheme.fontFamily
-                    font.pixelSize: WaypointTheme.titleSize
-                    font.bold: true
+                    font.pixelSize: WaypointTheme.headingSize
+                    font.weight: WaypointTheme.weightSemiBold
                 }
 
                 Text {
@@ -174,11 +174,23 @@ Popup {
                 }
             }
 
-            Item { Layout.fillWidth: true }
-
             AppButton {
-                text: "Fechar"
+                Layout.alignment: Qt.AlignTop
+                square: true
+                flat: true
+                Accessible.name: "Fechar"
+                ToolTip.visible: hovered
+                ToolTip.text: Accessible.name
                 onClicked: root.close()
+                contentItem: Item {
+                    AppIcon {
+                        anchors.centerIn: parent
+                        width: 16
+                        height: 16
+                        name: "close"
+                        color: WaypointTheme.subduedText
+                    }
+                }
             }
         }
 
@@ -198,91 +210,163 @@ Popup {
             contentWidth: availableWidth
             clip: true
 
-            ColumnLayout {
+            Rectangle {
                 width: parent.width
-                spacing: 6
+                implicitHeight: listColumn.implicitHeight
+                color: WaypointTheme.surface
+                radius: WaypointTheme.radiusLarge
+                border.width: 1
+                border.color: WaypointTheme.controlBorder
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: WaypointTheme.controlHeight
-                    spacing: 8
-
-                    Rectangle {
-                        Layout.preferredWidth: 8
-                        Layout.preferredHeight: 8
-                        radius: 4
-                        color: WaypointTheme.subduedText
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Entrada · " + root.taskCount("")
-                        color: WaypointTheme.foreground
-                        font.family: WaypointTheme.fontFamily
-                        font.pixelSize: WaypointTheme.bodySize
-                    }
-
-                    AppButton {
-                        visible: root.allowSelection
-                        text: root.selectedListId === "" ? "Selecionada" : "Usar"
-                        selected: root.selectedListId === ""
-                        onClicked: root.selectList("")
-                    }
-                }
-
-                Repeater {
-                    model: root.controller.taskCategories
+                ColumnLayout {
+                    id: listColumn
+                    width: parent.width
+                    spacing: 0
 
                     RowLayout {
-                        id: listRow
-                        required property var modelData
                         Layout.fillWidth: true
-                        Layout.preferredHeight: WaypointTheme.controlHeight
-                        spacing: 8
+                        Layout.preferredHeight: WaypointTheme.controlHeight + 12
+                        Layout.leftMargin: 14
+                        Layout.rightMargin: 8
+                        spacing: 10
 
                         Rectangle {
-                            Layout.preferredWidth: 8
-                            Layout.preferredHeight: 24
-                            radius: 3
-                            color: listRow.modelData.color
+                            Layout.preferredWidth: 10
+                            Layout.preferredHeight: 10
+                            radius: 5
+                            color: WaypointTheme.subduedText
                         }
 
                         Text {
-                            Layout.minimumWidth: 0
                             Layout.fillWidth: true
-                            text: listRow.modelData.name + " · " + root.taskCount(listRow.modelData.id)
+                            text: "Entrada"
                             color: WaypointTheme.foreground
                             font.family: WaypointTheme.fontFamily
                             font.pixelSize: WaypointTheme.bodySize
-                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: root.taskCount("")
+                            color: WaypointTheme.disabledText
+                            font.family: WaypointTheme.fontFamily
+                            font.pixelSize: WaypointTheme.bodySmallSize
+                            font.features: WaypointTheme.tabularNumbers
                         }
 
                         AppButton {
                             visible: root.allowSelection
-                            text: root.selectedListId === listRow.modelData.id ? "Selecionada" : "Usar"
-                            selected: root.selectedListId === listRow.modelData.id
-                            onClicked: root.selectList(listRow.modelData.id)
+                            flat: root.selectedListId !== ""
+                            text: root.selectedListId === "" ? "Selecionada" : "Usar"
+                            selected: root.selectedListId === ""
+                            onClicked: root.selectList("")
                         }
+                    }
 
-                        AppButton {
-                            text: "Editar"
-                            onClicked: root.openForEdit(listRow.modelData)
-                        }
+                    Repeater {
+                        model: root.controller.taskCategories
 
-                        AppButton {
-                            text: "Excluir"
-                            destructive: true
-                            onClicked: root.requestDelete(listRow.modelData)
+                        ColumnLayout {
+                            id: listRow
+                            required property var modelData
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 14
+                                Layout.rightMargin: 14
+                                Layout.preferredHeight: 1
+                                color: WaypointTheme.divider
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: WaypointTheme.controlHeight + 12
+                                Layout.leftMargin: 14
+                                Layout.rightMargin: 8
+                                spacing: 10
+
+                                Rectangle {
+                                    Layout.preferredWidth: 10
+                                    Layout.preferredHeight: 10
+                                    radius: 5
+                                    color: listRow.modelData.color
+                                }
+
+                                Text {
+                                    Layout.minimumWidth: 0
+                                    Layout.fillWidth: true
+                                    text: listRow.modelData.name
+                                    color: WaypointTheme.foreground
+                                    font.family: WaypointTheme.fontFamily
+                                    font.pixelSize: WaypointTheme.bodySize
+                                    elide: Text.ElideRight
+                                }
+
+                                Text {
+                                    text: root.taskCount(listRow.modelData.id)
+                                    color: WaypointTheme.disabledText
+                                    font.family: WaypointTheme.fontFamily
+                                    font.pixelSize: WaypointTheme.bodySmallSize
+                                    font.features: WaypointTheme.tabularNumbers
+                                }
+
+                                AppButton {
+                                    visible: root.allowSelection
+                                    flat: root.selectedListId !== listRow.modelData.id
+                                    text: root.selectedListId === listRow.modelData.id ? "Selecionada" : "Usar"
+                                    selected: root.selectedListId === listRow.modelData.id
+                                    onClicked: root.selectList(listRow.modelData.id)
+                                }
+
+                                AppButton {
+                                    square: true
+                                    flat: true
+                                    Accessible.name: "Editar lista " + listRow.modelData.name
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Editar"
+                                    onClicked: root.openForEdit(listRow.modelData)
+                                    contentItem: Item {
+                                        AppIcon {
+                                            anchors.centerIn: parent
+                                            width: 16
+                                            height: 16
+                                            name: "edit"
+                                            color: WaypointTheme.subduedText
+                                        }
+                                    }
+                                }
+
+                                AppButton {
+                                    square: true
+                                    flat: true
+                                    Accessible.name: "Excluir lista " + listRow.modelData.name
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "Excluir"
+                                    onClicked: root.requestDelete(listRow.modelData)
+                                    contentItem: Item {
+                                        AppIcon {
+                                            anchors.centerIn: parent
+                                            width: 16
+                                            height: 16
+                                            name: "trash"
+                                            color: WaypointTheme.subduedText
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
         }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 1
-            color: WaypointTheme.divider
+        Text {
+            text: root.editingListId === "" ? "Nova lista" : "Editar lista"
+            color: WaypointTheme.disabledText
+            font.family: WaypointTheme.fontFamily
+            font.pixelSize: WaypointTheme.captionSize
+            font.weight: WaypointTheme.weightMedium
         }
 
         ColumnLayout {
@@ -324,13 +408,14 @@ Popup {
 
                 AppButton {
                     visible: root.editingListId !== ""
+                    flat: true
                     text: "Cancelar"
                     onClicked: root.resetEditor()
                 }
 
                 AppButton {
                     text: root.editingListId === "" ? "Criar lista" : "Salvar alterações"
-                    selected: true
+                    highlighted: true
                     enabled: listName.text.trim() !== ""
                     onClicked: root.saveList()
                 }
@@ -343,19 +428,36 @@ Popup {
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(400, parent ? parent.width - 32 : 400)
+        padding: WaypointTheme.popupPadding
         modal: true
-        title: "Excluir lista"
         standardButtons: Dialog.NoButton
+        Overlay.modal: Rectangle { color: WaypointTheme.scrim }
+        background: Rectangle {
+            radius: WaypointTheme.radiusLarge
+            color: WaypointTheme.popupFill
+            border.width: 1
+            border.color: WaypointTheme.controlBorder
+        }
+        header: null
 
         contentItem: ColumnLayout {
             spacing: 14
 
             Text {
                 Layout.fillWidth: true
+                text: "Excluir lista"
+                color: WaypointTheme.foreground
+                font.family: WaypointTheme.fontFamily
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
                 text: "Excluir “" + String(root.pendingDelete.name || "") + "”?\n"
                       + root.taskCount(String(root.pendingDelete.id || ""))
                       + " tarefa(s) serão movidas para Entrada. Nenhuma tarefa será excluída."
-                color: WaypointTheme.foreground
+                color: WaypointTheme.subduedText
                 font.family: WaypointTheme.fontFamily
                 font.pixelSize: WaypointTheme.bodySize
                 wrapMode: Text.Wrap
@@ -365,6 +467,7 @@ Popup {
                 Layout.alignment: Qt.AlignRight
 
                 AppButton {
+                    flat: true
                     text: "Cancelar"
                     onClicked: deleteConfirmation.close()
                 }

@@ -95,9 +95,10 @@ Item {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         Overlay.modal: Rectangle { color: WaypointTheme.scrim }
         background: Rectangle {
-            color: WaypointTheme.background
-            radius: WaypointTheme.radius
-            border.color: WaypointTheme.activeBorder
+            color: WaypointTheme.popupFill
+            radius: WaypointTheme.radiusLarge
+            border.width: 1
+            border.color: WaypointTheme.controlBorder
         }
         contentItem: ColumnLayout {
             spacing: 12
@@ -106,8 +107,8 @@ Item {
                 text: root.editing ? "Alterar data da conclusão" : "Quando você concluiu?"
                 color: WaypointTheme.foreground
                 font.family: WaypointTheme.fontFamily
-                font.pixelSize: WaypointTheme.titleSize
-                font.bold: true
+                font.pixelSize: WaypointTheme.headingSize
+                font.weight: WaypointTheme.weightSemiBold
                 wrapMode: Text.WordWrap
             }
             AppButton {
@@ -155,11 +156,13 @@ Item {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 AppButton {
+                    flat: true
                     text: "Cancelar"
                     onClicked: picker.close()
                 }
                 AppButton {
                     visible: root.choosingDate
+                    highlighted: true
                     text: "Salvar"
                     enabled: root.controller.completionDateError(dateInput.text) === ""
                     onClicked: root.saveDate(dateInput.text)
@@ -177,9 +180,10 @@ Item {
         padding: 12
         closePolicy: Popup.CloseOnEscape
         background: Rectangle {
-            color: WaypointTheme.background
+            color: WaypointTheme.popupFill
+            border.width: 1
             border.color: WaypointTheme.controlBorder
-            radius: WaypointTheme.radius
+            radius: WaypointTheme.radiusLarge
         }
         contentItem: ColumnLayout {
             Text {
@@ -193,11 +197,13 @@ Item {
             RowLayout {
                 visible: root.feedbackCompleted
                 AppButton {
-                    text: root.feedbackEdited && root.feedbackPreviousDate === "" ? "REABRIR TAREFA" : "DESFAZER"
+                    flat: true
+                    text: root.feedbackEdited && root.feedbackPreviousDate === "" ? "Reabrir tarefa" : "Desfazer"
                     onClicked: root.undoFeedback()
                 }
                 AppButton {
-                    text: "ALTERAR DATA"
+                    flat: true
+                    text: "Alterar data"
                     onClicked: {
                         feedback.close();
                         root.choose(root.feedbackTaskId, root.feedbackDueDate, root.feedbackDate, true);
