@@ -178,7 +178,7 @@ Item {
         y: parent.height - height - 20
         width: Math.min(470, parent.width - 24)
         padding: 12
-        closePolicy: Popup.CloseOnEscape
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
             color: WaypointTheme.popupFill
             border.width: 1
@@ -186,6 +186,9 @@ Item {
             radius: WaypointTheme.radiusLarge
         }
         contentItem: ColumnLayout {
+            HoverHandler {
+                onHoveredChanged: hovered ? feedbackTimer.stop() : feedbackTimer.restart()
+            }
             Text {
                 Layout.fillWidth: true
                 text: root.feedbackText
@@ -215,7 +218,7 @@ Item {
 
     Timer {
         id: feedbackTimer
-        interval: 8000
+        interval: 5000
         onTriggered: feedback.close()
     }
 }

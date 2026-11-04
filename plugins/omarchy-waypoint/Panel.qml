@@ -744,15 +744,16 @@ Panel {
         habitManualVisible = false;
     }
 
-
+    function dismissCompletionFeedback() {
+        completionFeedbackTimer.stop();
+        completionFeedback = "";
+        completionUndo = null;
+    }
 
     Timer {
         id: completionFeedbackTimer
-        interval: 8000
-        onTriggered: {
-            root.completionFeedback = "";
-            root.completionUndo = null;
-        }
+        interval: 5000
+        onTriggered: root.dismissCompletionFeedback()
     }
 
     KeyboardPanel {
@@ -3263,9 +3264,26 @@ Panel {
                 }
             }
 
+            Item {
+                anchors.fill: parent
+                z: 1000
+                enabled: completionFeedbackCard.visible
+                // Passive grab: sees presses without stealing them, so one click both dismisses and acts.
+                PointHandler {
+                    onActiveChanged: {
+                        if (!active)
+                            return;
+                        const local = completionFeedbackCard.mapFromItem(parent, point.position);
+                        if (!completionFeedbackCard.contains(local))
+                            root.dismissCompletionFeedback();
+                    }
+                }
+            }
+
             Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
+                id: completionFeedbackCard
+                x: panelFlick.wideLayout ? detailsFlick.x : 0
+                width: panelFlick.wideLayout ? detailsFlick.width : parent.width
                 anchors.bottom: parent.bottom
                 z: 240
                 visible: root.completionFeedback !== "" && !root.completionPickerVisible
@@ -3274,6 +3292,10 @@ Panel {
                 radius: Style.cornerRadius
                 border.color: Color.accent
                 border.width: Style.spacing.hairline
+
+                HoverHandler {
+                    onHoveredChanged: hovered ? completionFeedbackTimer.stop() : completionFeedbackTimer.restart()
+                }
 
                 RowLayout {
                     id: completionFeedbackRow
