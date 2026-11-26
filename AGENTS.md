@@ -62,7 +62,7 @@ Before a release:
 
 Never replace or lose the Android signing key: upgrades must use the same key.
 
-Cut a release automatically, without asking: when a PR changes anything that reaches end users (app, CLI, daemon, plugin, server, packaging), bump the patch version in that same PR before merging. Skip the bump only for docs, CI, or tests.
+Cut a release automatically, without asking: when a PR changes anything that reaches end users (app, CLI, daemon, plugin, server, packaging), bump the patch version in that same PR before merging. Skip the bump only for docs, CI, or tests. Before merging, rebase on `main` and confirm the version has no existing tag; a duplicate version is silently not released.
 
 Commit every skill change (`.agents/skills/`, `.claude/skills/`, `skills-lock.json`) to the repository in the PR of the card that prompted it.
 
