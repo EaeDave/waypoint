@@ -64,6 +64,8 @@ Never replace or lose the Android signing key: upgrades must use the same key.
 
 Cut a release automatically, without asking: when a PR changes anything that reaches end users (app, CLI, daemon, plugin, server, packaging), bump the patch version in that same PR before merging. Skip the bump only for docs, CI, or tests.
 
+Commit every skill change (`.agents/skills/`, `.claude/skills/`, `skills-lock.json`) to the repository in the PR of the card that prompted it.
+
 ## Work tracking (Plane)
 
 Project `Waypoint`, identifier `WAY`, id `61eaddab-f10a-45ae-a94b-039c818f7266`, workspace `eaedave`. Use the `mcp__plane_*` tools.
