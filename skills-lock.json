@@ -1,11 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "skills": {
     "clean-code-for-agents": {
       "source": "eaedave/skills",
       "sourceType": "github",
       "skillPath": "clean-code-for-agents/SKILL.md",
-      "computedHash": "d526a2d53e893bde63a469bf8fec5bb58aeb5648eb750a2782409e815b7cc7da"
+      "computedHash": "ca2fc293cea43f83cc5ae5852adf1956620048997ea9690a394eadb6bbe4e93d",
+      "commit": "a9ecb3a51e241b613de0300ab04254bd90b090d6"
     }
   }
 }
