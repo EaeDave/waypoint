@@ -705,6 +705,13 @@ int main(int argc, char *argv[]) {
             : std::nullopt;
     succeeded = client.editTask(taskId, title, time, *recurrence, reminders,
                                 parser.value(QStringLiteral("emoji")), categoryId, &error);
+    if (succeeded && parser.isSet(QStringLiteral("date"))) {
+      const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+      if (!date.isValid()) {
+        return printError(QStringLiteral("edit --date requires YYYY-MM-DD"));
+      }
+      succeeded = client.rescheduleTask(taskId, date, time, &error);
+    }
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

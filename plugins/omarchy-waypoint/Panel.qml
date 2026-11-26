@@ -56,6 +56,8 @@ Panel {
     property var quickDraft: null
     property date pendingQuickDate: new Date()
     property bool taskDatePickerVisible: false
+    property date editingDate: new Date()
+    readonly property date activeTaskDate: creatingTask ? pendingQuickDate : editingDate
     property date taskPickerMonth: new Date()
     property bool taskDatePickerForEnding: false
     property string editingEmoji: ""
@@ -499,6 +501,7 @@ Panel {
         editedTask = task;
         editingTaskId = String(task.taskId || "");
         editingOccurrenceDate = String(task.occurrenceDate || "");
+        editingDate = Model.parseLocalDate(editingOccurrenceDate || Model.dateKey(selectedDate));
         editingCompleted = task.completed === true;
         editingSkipped = task.skipped === true;
         taskTitleInput.text = String(task.title || "");
@@ -584,7 +587,7 @@ Panel {
 
     function openTaskDatePicker(forEnding) {
         taskDatePickerForEnding = forEnding;
-        const date = forEnding ? Model.parseLocalDate(taskCustomUntilDate.text) : pendingQuickDate;
+        const date = forEnding ? Model.parseLocalDate(taskCustomUntilDate.text) : activeTaskDate;
         taskPickerMonth = new Date(date.getFullYear(), date.getMonth(), 1);
         taskDatePickerVisible = true;
     }
@@ -592,8 +595,10 @@ Panel {
     function chooseTaskDate(date) {
         if (taskDatePickerForEnding)
             taskCustomUntilDate.text = Model.dateKey(date);
-        else
+        else if (creatingTask)
             pendingQuickDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        else
+            editingDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         taskDatePickerVisible = false;
         if (creatingTask)
             Qt.callLater(() => timePickerConfirm.forceActiveFocus());
@@ -612,8 +617,10 @@ Panel {
                 editingReminderMinutesBefore, editingEmoji, editingCategoryId, recurrence);
             return;
         }
+        const dateChanged = Model.dateKey(editingDate) !== editingOccurrenceDate;
         hostWidget.editTask(editingTaskId, title, time, recurrence,
-                            editingReminderMinutesBefore, editingEmoji, editingCategoryId);
+                            editingReminderMinutesBefore, editingEmoji, editingCategoryId,
+                            dateChanged ? Model.dateKey(editingDate) : "");
         closeTaskEditor();
     }
     function deleteEditedTask() {
@@ -2322,9 +2329,8 @@ Panel {
                         }
 
                         Button {
-                            visible: root.creatingTask
                             Layout.fillWidth: true
-                            text: root.portugueseLocale.toString(root.pendingQuickDate,
+                            text: root.portugueseLocale.toString(root.activeTaskDate,
                                                                 "ddd, dd 'de' MMMM 'de' yyyy")
                             foreground: Color.popups.text
                             accent: Color.accent
@@ -2767,7 +2773,7 @@ Panel {
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
                                 color: Model.dateKey(model.date) === (root.taskDatePickerForEnding
-                                    ? taskCustomUntilDate.text : Model.dateKey(root.pendingQuickDate))
+                                    ? taskCustomUntilDate.text : Model.dateKey(root.activeTaskDate))
                                     ? Color.accent : Color.popups.text
                                 opacity: model.month === taskDateGrid.month ? 1 : 0.4
                                 font.family: root.fontFamily
