@@ -62,6 +62,15 @@ Before a release:
 
 Never replace or lose the Android signing key: upgrades must use the same key.
 
+## Work tracking (Plane)
+
+Project `Waypoint`, identifier `WAY`, id `61eaddab-f10a-45ae-a94b-039c818f7266`, workspace `eaedave`. Use the `mcp__plane_*` tools.
+
+- Every task is a card `WAY-<n>`. Find or create it before starting.
+- Every card ships as one PR. Put `WAY-<n>` in the branch, commit subjects, and PR title.
+- Set In Progress while you edit the card and while its PR is open. Set Done only when the PR is merged.
+- State ids for `workitem update --state`: Backlog `d9bb63fc-1795-42da-83fd-e1183fa25422` (untouched); Todo `b87b1d86-0c58-4c56-bd3b-8d84d8f55f75` (planned); In Progress `12ed076a-c595-4db5-ae60-a194c18912d0`; Done `dd664432-c1e4-4371-8999-5b8c2aab6c0a` (PR merged); Cancelled `f4a7520c-de54-4a02-b4d6-bee5d8d6f0f7` (dropped, no PR).
+
 <!-- clean-code-agents:start -->
 ## Agent rules — non-inferable project facts only
 
@@ -73,16 +82,15 @@ Never replace or lose the Android signing key: upgrades must use the same key.
 - Container: `docker build --tag waypoint-api .`
 - Android APK: `bin/build-android` (outputs `waypoint-android-arm64-debug.apk`)
 
+### Architecture
+- QML owns presentation only; persistence, sync, and date rules stay in typed C++ models.
+
 ### Non-standard practices
 - Date-only tasks are floating calendar dates. Never convert `scheduled_date` through UTC.
 - Task times are floating local wall-clock `HH:mm` values. Never convert them through UTC.
-- QML owns presentation only; persistence, sync, and date rules stay in typed C++ models.
 
 ### Known failure points
 - `waypoint-ipc-v1` is single-instance. Never unlink its socket before probing a live daemon.
 - The Omarchy plugin runs inside `omarchy-shell`; never expose the persisted sync token through IPC/QML.
 - `rescanPlugins` does not replace an active bar-widget QML object reliably; use `omarchy restart shell` after plugin source changes.
-
-### Style
-- Formatters and linters decide style; no manual style rules live here.
 <!-- clean-code-agents:end -->
