@@ -617,7 +617,8 @@ Panel {
                 editingReminderMinutesBefore, editingEmoji, editingCategoryId, recurrence);
             return;
         }
-        const dateChanged = Model.dateKey(editingDate) !== editingOccurrenceDate;
+        const originalDate = editingOccurrenceDate || Model.dateKey(selectedDate);
+        const dateChanged = Model.dateKey(editingDate) !== originalDate;
         hostWidget.editTask(editingTaskId, title, time, recurrence,
                             editingReminderMinutesBefore, editingEmoji, editingCategoryId,
                             dateChanged ? Model.dateKey(editingDate) : "");
@@ -2329,6 +2330,7 @@ Panel {
                         }
 
                         Button {
+                            visible: root.creatingTask || !root.editingRecurringTask
                             Layout.fillWidth: true
                             text: root.portugueseLocale.toString(root.activeTaskDate,
                                                                 "ddd, dd 'de' MMMM 'de' yyyy")
