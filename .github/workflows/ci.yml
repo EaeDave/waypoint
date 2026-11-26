@@ -52,8 +52,8 @@ jobs:
       - name: Audit Rust dependencies
         run: |
           cargo install cargo-audit --locked
-          # rsa is an inactive, lockfile-only sqlx-postgres dependency.
-          cargo audit --ignore RUSTSEC-2023-0071
+          # rsa and libsqlite3-sys are inactive, lockfile-only sqlx dependencies.
+          cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0459
 
   container:
     name: Server container build
