@@ -54,13 +54,15 @@ CI runs on pushes and pull requests. A successful `main` CI run triggers `.githu
 
 Before a release:
 
-1. Set the same semantic version in `CMakeLists.txt` and `server/Cargo.toml`.
+1. Set the same semantic version in `CMakeLists.txt`, `server/Cargo.toml`, `Cargo.lock` (`waypoint-api`), and `plugins/omarchy-waypoint/manifest.json`.
 2. Ensure repository secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_ALIAS`, `ANDROID_KEYSTORE_PASSWORD`, and `ANDROID_KEY_PASSWORD` exist.
 3. Ensure repository variables `WAYPOINT_FIREBASE_APPLICATION_ID`, `WAYPOINT_FIREBASE_API_KEY`, `WAYPOINT_FIREBASE_PROJECT_ID`, and `WAYPOINT_FIREBASE_SENDER_ID` describe the maintainer's Firebase Android app.
 4. Push `main`, then require CI and the release workflow to succeed.
 5. Verify the GitHub release contains the signed Android APK, Linux archive, checksums, and license.
 
 Never replace or lose the Android signing key: upgrades must use the same key.
+
+Cut a release automatically, without asking: when a PR changes anything that reaches end users (app, CLI, daemon, plugin, server, packaging), bump the patch version in that same PR before merging. Skip the bump only for docs, CI, or tests.
 
 ## Work tracking (Plane)
 
