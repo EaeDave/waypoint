@@ -703,8 +703,18 @@ int main(int argc, char *argv[]) {
         parser.isSet(QStringLiteral("category-id"))
             ? std::optional<QString>(parser.value(QStringLiteral("category-id")))
             : std::nullopt;
+    std::optional<QDate> scheduledDate;
+    if (parser.isSet(QStringLiteral("date"))) {
+      scheduledDate = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
+      if (!scheduledDate->isValid()) {
+        return printError(QStringLiteral("edit --date requires YYYY-MM-DD"));
+      }
+    }
     succeeded = client.editTask(taskId, title, time, *recurrence, reminders,
                                 parser.value(QStringLiteral("emoji")), categoryId, &error);
+    if (succeeded && scheduledDate.has_value()) {
+      succeeded = client.rescheduleTask(taskId, *scheduledDate, time, &error);
+    }
   } else if (command == QStringLiteral("reschedule")) {
     const QDate date = QDate::fromString(parser.value(QStringLiteral("date")), Qt::ISODate);
     const QTime time = QTime::fromString(parser.value(QStringLiteral("time")), QStringLiteral("HH:mm"));

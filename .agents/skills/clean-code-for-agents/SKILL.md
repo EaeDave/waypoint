@@ -1,190 +1,101 @@
 ---
 name: clean-code-for-agents
-description: Apply a Clean Code discipline re-ranked for AI coding agents (the primary reader of code is now the agent, not a human) together with a targeted verification loop (tests as specification, not TDD ceremony), and persist ONLY non-inferable project facts into AGENTS.md (the cross-tool standard, with a CLAUDE.md bridge) so they survive across sessions and tools. Use this WHENEVER writing, implementing, refactoring, or reviewing code in a real project; when setting up or bootstrapping a new repo; when the user asks to "work in this pattern", mentions Clean Code, XP, TDD, agent-friendly code, greppable names, small functions, or wants coding standards / agent rules installed. Trigger even if the user does not say "Clean Code" — any request to make a codebase agent-friendly, enforce a coding standard, or set up a CLAUDE.md/AGENTS.md rules file qualifies. Do NOT use for one-off throwaway snippets where no project context exists.
+description: Clean Code tuned for AI coding agents. Vertical slices with tool-checked boundaries, testable modules, targeted test verification, and a lean AGENTS.md that holds only non-inferable facts. Use when writing, refactoring, or reviewing code in a real project, bootstrapping a repo, or installing agent rules or coding standards. Skip throwaway snippets.
 ---
 
 # Clean Code for AI Agents
 
-## Premise
+The main reader of code is now an agent that greps, reads ranges, edits, and
+runs tests. Clean code lowers its cost and navigation; it does not raise
+correctness. Prose rules erode, so anything a tool can enforce becomes a
+check. Sources: [references/evidence.md](references/evidence.md).
 
-In 2008 *Clean Code* optimized code for the next human reader. The primary
-reader is now the **AI agent** that greps, reads in truncated ranges, edits,
-and tests the code. Same principles, re-ranked; one inverts (comments), one is
-demoted with a nuance (DRY), and the persistence layer is now evidence-gated:
-every line an agent re-reads each session must earn its tokens.
+## Structure
 
-## Evidence base
+1. **Vertical slices by default.** Group code by feature, not by layer. One
+   folder per feature holds its entry point, logic, data access, and tests.
+   Use the project's existing naming (`src/orders/`, `features/orders/`,
+   `modules/orders/`); the folder name is not the rule.
+   - Each slice exposes one public entry (`index`, `mod`, package API).
+     Other slices import only that.
+   - Shared code lives in a small kernel that never imports from a slice.
+   - Enforce the boundary in CI (import-linter, ArchUnit,
+     eslint-plugin-boundaries, dependency-cruiser, Nx, Go `internal/`, Rust
+     visibility). A boundary written only in AGENTS.md will be crossed.
+2. **Opinionated frameworks win.** Rails, Laravel, Django, Phoenix, Angular
+   and similar: follow their layout. Group by feature only through the
+   framework's own unit (Django apps, Rails engines, Phoenix contexts).
+3. **Legacy layered repos migrate gradually.** New features go in a slice.
+   Move an old feature only while working in it, in a refactor-only commit.
+4. **Testable modules.** Test each slice through its public entry. Inject
+   I/O (DB, HTTP, clock, queue) at the slice edge so tests use named fakes.
 
-This version is calibrated against measured results, not taste:
+## Code
 
-- **Context files**: providing them does not generally raise task success and
-  adds **+20% inference cost** — but instructions in them ARE followed, and
-  they pay off precisely for **non-standard practices** (Gloaguen et al.,
-  arXiv:2602.11988, 138 instances / 4 agents). Human-curated, non-redundant
-  AGENTS.md cut runtime **−28.6%** and output tokens **−16.6%** (Lulla et al.,
-  arXiv:2601.20404). Conclusion: curation wins, redundancy costs.
-- **TDD**: prescribing a procedural test-first workflow made agents WORSE —
-  regressions rose 6.08% → **9.94%**; giving them targeted context about which
-  tests to verify cut regressions **−70%** (TDAD, arXiv:2603.17973). Human
-  tests as specification: 94.3% success vs 68% with self-generated tests
-  (TDFlow, EACL 2026). Context beats ceremony.
-- **Rules-file size**: practitioner consensus (Anthropic context-engineering,
-  HumanLayer, Osmani) converges on ≤~100 lines with progressive disclosure;
-  instruction-following degrades past ~150–200 instructions
-  (arXiv:2507.11538). These caps are expert consensus, not benchmarks — the
-  cost of redundancy above IS measured.
-- **Unit size**: the binding limit is the *total context a task assembles*,
-  not one file's length. Successful agent trajectories cluster at 20–30k
-  tokens; by 64k the resolve rate falls to 0–7% **even with perfect
-  retrieval** (arXiv:2602.16069). Length alone costs 13.9–85% accuracy
-  *within* the claimed window, even with retrieval perfect and the
-  irrelevant tokens masked out (Du et al., EMNLP 2025 findings.1264).
-  Lexical recall survives (>95%); *semantic* recall is what collapses
-  (−53% median, Štorek et al., ACL 2026 long.19). Meanwhile per-line defect
-  density is **higher** in small modules, not lower (Koru et al., IEEE TSE
-  2009, DOI 10.1109/TSE.2008.90, power law; Basili & Perricone 1984,
-  16.0→6.4 errors/KLOC as size rises), and the 200-line "optimum" U-curve
-  is a mathematical artifact of how the data was binned (Jones, 2023).
-  Only one size figure has modern backing: Java methods ≲24 SLOC
-  (Chowdhury et al., MSR 2022, 785k methods, 49 projects).
+- **Size by working set, not line count.** Split a file when it has two
+  reasons to change. Never split only to hit a number. Test: can the agent
+  finish a task by grepping a symbol and reading one region? Functions hold
+  one idea; ~25 SLOC is a soft signal.
+- **Greppable names.** If a name returns 50 irrelevant hits, rename it.
+  Avoid `data`, `handler`, `Manager`, `Service`.
+- **Comments carry the why:** the prod bug, the upstream issue, the business
+  rule. Never strip existing comments on refactor.
+- **Explicit types**, especially at slice entries. They are the contract.
+- **Reuse before adding.** Search for an existing helper or dependency
+  first. Tolerate small duplication only when sharing would couple slices.
+- **Never loosen validation or error handling as a side effect.** If you
+  must, say so in the commit and add a test.
+- **Errors name the bad value and the expected shape.**
+- **Shallow nesting:** guard clauses, at most ~2 levels.
 
-## The two jobs
+## Verification loop
 
-1. **Behave** — write/edit code right now per the principles and the
-   verification loop below.
-2. **Persist** — keep a lean, marker-delimited rules block in `AGENTS.md`
-   (cross-tool standard) with a minimal `CLAUDE.md` bridge, admitting ONLY
-   non-inferable facts. Idempotent.
+1. Find the tests covering what you touch; run them for a baseline.
+2. One behavior per commit. Refactors go in their own commit.
+3. Re-run targeted tests, the relevant suite, and the boundary check. Never
+   done on red.
+4. Existing human tests are the spec. Never weaken, skip, or delete one.
+5. New tests: state pre/post-conditions and invalid inputs first. A test
+   counts only after it fails on the unfixed code.
+6. Bug fix gets a regression test; the commit records why.
 
-Do both on any real project; if the user wants just one, do that one.
+Do not prescribe red-green ceremony; targeted verification is what helps.
 
-## The admission filter (what may be persisted)
+## Checks in CI
 
-> Can the agent discover this by reading the code? Then delete it.
+Formatter, linter, typecheck, boundary check, nesting cap, and a
+complexity/duplication ratchet (fail when a touched file gets worse). A file
+size cap, if any, only warns and triggers a cohesion review. Tests run
+headless with one command and machine-readable output.
 
-Only three things belong in the rules block: **commands** (test/lint/
-typecheck/build), **non-standard practices** (facts an agent gets wrong by
-assuming defaults), and **known failure points**. Generic style rules,
-repository overviews, and restated conventions are the measured +20%-cost
-noise. Style is the formatter's job. Keep the block ≤40 lines and the whole
-rules file ≤~100 lines — if the project's file is already bigger, flag it and
-move detail into `docs/*` referenced on demand (progressive disclosure).
+## Persisting rules (AGENTS.md)
 
-## Re-ranked principles (apply while coding)
+Admission filter, in order:
+1. A tool can enforce it? Make it a check, not a line.
+2. The agent can read it from the code? Drop it.
+3. Keep only commands, the architecture rule in one line, non-standard
+   practices, and known failure points.
 
-Ordered most-impactful first.
+State boundaries as rules, never as lists of forbidden paths. Block at most
+40 lines; whole file at most ~100, with detail in `docs/*`.
 
-1. **Right-sized units — measured by context, never by a line quota.**
-   Files have **no line budget**. Split a file when it has two reasons to
-   change, not when it crosses a number; splitting on arbitrary boundaries
-   measurably hurts (chunking at raw function boundaries costs 3.57–5.64pp
-   EM, Cliff's δ = −1.0, and is never Pareto-optimal; unit *size* itself has
-   only a weak, non-monotonic effect — arXiv:2605.04763) and every extra
-   fragment is another hop the agent must navigate. Functions: one whole
-   idea, ~≤25 SLOC as a soft signal — a longer straight-line function beats
-   an indirection the agent has to chase. **Never refactor solely to hit a
-   line count.** The real test: *can the agent finish a task by grepping a
-   symbol and reading one region, without loading the whole file?* Yes → the
-   file is fine at any length. No → the defect is cohesion or naming, not
-   size. Budget the working set (~20–30k tokens), not the file.
-2. **Single Responsibility.** One reason to change; lets the agent isolate,
-   test, and edit without side effects.
-3. **Meaningful, unique, greppable names.** Grep is the navigation API. If a
-   name returns 50 irrelevant hits, it is a bad name. Avoid `data`, `handler`,
-   `Manager`, `Service`.
-4. **Comments carry context and provenance** *(inverts)*. The agent has
-   perfect syntax fluency but no idea WHY — the prod bug, the upstream issue,
-   the business constraint. Docstrings with intent + a usage example. **Never
-   strip comments on refactor — including the agent's own.**
-5. **Explicit types.** Free ground truth instead of inferring types from
-   usage. Often the highest-leverage migration in an untyped codebase.
-6. **Locality of behavior over reflexive DRY** *(revised)*. Deduplicate
-   business logic that must change together; tolerate small local duplication
-   when extracting it would add an indirection layer the agent must navigate.
-   Share at domain boundaries, not through grab-bag utils. (OpenAI harness
-   engineering; arXiv:2604.07502.)
-7. **Tests runnable headless, one command, parseable output.** Prefer JSON
-   reporters. See the verification loop.
-8. **Predictable structure.** Framework conventions let the agent anticipate
-   paths without listing directories.
-9. **Dependency injection at boundaries.** Swap a real collaborator for a
-   named fake without monkey-patching; centralize config behind named
-   constants/env vars.
-10. **Shallow nesting.** Guard clauses, early returns; aim ≤2 levels.
-11. **Errors with context.** Include the offending value and expected shape —
-    the message is the agent's debug signal.
-12. **Limits are constraints, not suggestions.** Wire the formatter, the
-    linter, and nesting caps into CI. The formatter decides style; nobody
-    debates it. A repo MAY add a file-size cap — but as a *review trigger*
-    for a cohesion check, never as an automatic mandate to split.
+## Workflow
 
-## The verification loop (replaces the XP ritual)
-
-Prescribing red-green ceremony measurably hurts; targeted verification
-measurably helps. Work like this:
-
-1. Before editing, find the tests that cover what you touch (grep the
-   symbol's usages and test files). Run them for a baseline.
-2. Make the change small — one behavior per commit.
-3. Re-run the targeted tests, then the relevant suite. Never done on red.
-4. **Existing human-written tests are the specification.** Never weaken,
-   skip, or delete one to make a patch pass.
-5. A test the agent generated only becomes a safety net after confirming it
-   fails on the unfixed code (otherwise it verifies nothing).
-6. Bug fix → regression test. Commit message records the *why*.
-
-## Project scaffolding (set up once)
-
-- `AGENTS.md` as a lean index; details live in `docs/*`, loaded on demand.
-- Machine-readable tool output: linter/test JSON flags where available.
-- Nesting caps enforced by CI/linter; any size cap wired as a warning that
-  prompts a cohesion review, not a hard failure.
-- Docs in-repo and versioned — agents cannot see wikis or Google Docs.
-- Idempotent setup script (`bin/setup`) taking a clean machine to working.
-- Structured JSON logs for services; plain text only for user-facing CLI.
-
-## Workflow when this skill triggers
-
-### Step 1 — Read the project before changing anything
-Detect language, framework, conventions, and the real values for the
-template: test / lint / typecheck / build commands, the formatter in use,
-non-standard practices, failure points. **Never invent a command.** No
-headless test command? That is the first thing to fix — flag it.
-
-### Step 2 — Apply the discipline to the work at hand
-Follow the principles and the verification loop. Prefer small test-backed
-steps over a big rewrite.
-
-### Step 3 — Install / update the rules block (persistence)
-1. Pick the canonical file: `AGENTS.md` exists → write there; only
-   `CLAUDE.md` exists → respect it and offer (don't force) migration;
-   neither → create `AGENTS.md`.
-2. Read `assets/agent-rules.md` (sibling to this file) — the canonical block,
-   delimited by `<!-- clean-code-agents:start/end -->` markers.
-3. Fill placeholders with real values from Step 1; delete sections that
-   genuinely don't apply. Never leave an unfilled placeholder.
-4. Insert idempotently: replace between markers if present, else append.
-5. **Bridge for Claude Code**: a minimal `CLAUDE.md` containing `@AGENTS.md`
-   (preferred over a symlink — Windows-safe). If `CLAUDE.md` has unrelated
-   content, append the import line instead of overwriting.
-6. Run the admission filter over the result: anything inferable from the
-   code gets cut. Whole file ≤~100 lines or flag it.
-
-### Step 4 — Summarize
-What changed and that its tests pass; where the block landed and whether a
-bridge was added; any TODO placeholder (especially a missing test command);
-anything the admission filter removed and why.
-
-## Principles
-
-- **The agent is the reader.** Optimize for grep, truncated reads, and
-  full-attention units.
-- **Every persisted line must earn its tokens.** Redundant context is a
-  measured cost, not a style preference.
-- **Context beats ceremony.** Tell the agent which tests to run, not which
-  ritual to perform.
-- **Idempotent.** Re-running the skill improves code and rules without
-  duplicating anything.
-- **Adapt, don't dogmatize.** No number here is a target. Cohesion,
-  greppability, and the size of the working set decide; line counts are at
-  most a prompt to go look. Tune per language/team and say what you changed.
+1. **Read the project.** Find test/lint/typecheck/build commands, formatter,
+   architecture (slices, framework layout, or layers), boundary tooling,
+   non-standard practices, and failure points. Never invent a command; a
+   missing headless test command is the first thing to flag.
+2. **Do the work** with the rules above. New feature goes in a new slice or
+   the framework's place for it.
+3. **Install the rules block.**
+   - Target `AGENTS.md`. If only `CLAUDE.md` exists, respect it and offer
+     migration. If neither exists, create `AGENTS.md`.
+   - Fill [assets/agent-rules.md](assets/agent-rules.md) with real values;
+     delete sections that do not apply; leave no placeholder.
+   - Replace between `<!-- clean-code-agents:start/end -->` markers, else
+     append. Re-running must not duplicate.
+   - Add a `CLAUDE.md` bridge containing `@AGENTS.md`, or append that line
+     if `CLAUDE.md` has other content.
+   - Run the admission filter. Propose checks for enforceable rules.
+4. **Report** what changed and that tests pass, where the block landed,
+   which rules became checks, open placeholders, and what the filter cut.

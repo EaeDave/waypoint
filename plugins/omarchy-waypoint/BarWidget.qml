@@ -220,12 +220,14 @@ BarWidget {
         runAction(["task-visibility", taskVisibility]);
     }
     function editTask(taskId, title, scheduledTime, recurrence,
-                      reminderMinutesBefore, emoji, categoryId) {
+                      reminderMinutesBefore, emoji, categoryId, scheduledDate) {
         const reminders = reminderMinutesBefore.length === 0
             ? "none" : reminderMinutesBefore.join(",");
         const arguments = ["edit", taskId, "--title", title, "--time", scheduledTime,
                            "--reminders", reminders, "--emoji", emoji || "",
                            "--category-id", categoryId || ""];
+        if (scheduledDate)
+            arguments.push("--date", scheduledDate);
         appendRecurrenceArguments(arguments, recurrence);
         runAction(arguments);
     }
