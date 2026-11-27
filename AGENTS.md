@@ -71,7 +71,8 @@ Commit every skill change (`.agents/skills/`, `.claude/skills/`, `skills-lock.js
 Project `Waypoint`, identifier `WAY`, id `61eaddab-f10a-45ae-a94b-039c818f7266`, workspace `eaedave`. Use the `mcp__plane_*` tools.
 
 - Every task is a card `WAY-<n>`. Find or create it before starting.
-- Every card ships as one PR. Put `WAY-<n>` in the branch, commit subjects, and PR title. Before opening a UI PR, exercise the changed interaction locally on the lower-resolution monitor and capture the result without interrupting work on the primary monitor.
+- Every card ships as one PR. Put `WAY-<n>` in the branch, commit subjects, and PR title.
+- Before opening a UI PR, exercise the change locally and include the result and a screenshot in the PR description. If a lower-resolution secondary monitor is available, use it without interrupting work on the primary monitor.
 - Set In Progress while you edit the card and while its PR is open. Set Done only when the PR is merged.
 - State ids for `workitem update --state`: Backlog `d9bb63fc-1795-42da-83fd-e1183fa25422` (untouched); Todo `b87b1d86-0c58-4c56-bd3b-8d84d8f55f75` (planned); In Progress `12ed076a-c595-4db5-ae60-a194c18912d0`; Done `dd664432-c1e4-4371-8999-5b8c2aab6c0a` (PR merged); Cancelled `f4a7520c-de54-4a02-b4d6-bee5d8d6f0f7` (dropped, no PR).
 
