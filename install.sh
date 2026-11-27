@@ -14,7 +14,12 @@ if [[ "$(uname -m)" != "x86_64" ]]; then
   printf 'Waypoint releases currently support Linux x86_64 only.\n' >&2
   exit 1
 fi
-for command in curl tar sha256sum install; do
+plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
+required_commands=(curl tar sha256sum install)
+if [[ -L "${plugin_target}" ]]; then
+  required_commands+=(readlink realpath)
+fi
+for command in "${required_commands[@]}"; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     printf 'Missing required command: %s\n' "${command}" >&2
     exit 1
@@ -79,11 +84,32 @@ else
   printf 'Could not start the user service. Run waypointd manually before opening Waypoint.\n' >&2
 fi
 
-plugin_source="${install_root}/usr/share/waypoint/omarchy-waypoint"
-if [[ -d "${plugin_source}" ]] && command -v omarchy >/dev/null 2>&1; then
-  plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
+plugin_path="usr/share/waypoint/omarchy-waypoint"
+plugin_source="${install_base}/lib/waypoint-current/${plugin_path}"
+manage_plugin=false
+if [[ -L "${plugin_target}" ]]; then
+  link="$(readlink -- "${plugin_target}")"
+  if [[ "${link}" != /* ]]; then
+    link="$(dirname "${plugin_target}")/${link}"
+  fi
+  link="$(realpath -m -- "${link}")"
+  managed_lib="$(realpath -m -- "${install_base}/lib")"
+  if [[ "${link}" == "${managed_lib}/"* ]]; then
+    release_path="${link#"${managed_lib}/"}"
+    if [[ "${release_path}" =~ ^waypoint-(current|[0-9]+\.[0-9]+\.[0-9]+)/${plugin_path}$ ]]; then
+      manage_plugin=true
+    fi
+  fi
+elif [[ ! -e "${plugin_target}" ]] && command -v omarchy >/dev/null 2>&1; then
+  manage_plugin=true
+fi
+if [[ "${manage_plugin}" == true && -d "${plugin_source}" ]]; then
   mkdir -p "$(dirname "${plugin_target}")"
-  ln -sfn "${plugin_source}" "${plugin_target}"
+  ln -sfnT "${plugin_source}" "${plugin_target}"
+  if [[ ! "${plugin_target}" -ef "${install_root}/${plugin_path}" ]]; then
+    printf 'Omarchy plugin does not point to the installed Waypoint release.\n' >&2
+    exit 1
+  fi
   if command -v omarchy-shell >/dev/null 2>&1; then
     omarchy-shell shell rescanPlugins || true
     omarchy plugin enable io.waypoint.bar || true
