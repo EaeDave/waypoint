@@ -78,7 +78,9 @@ void LinuxUpdaterTest::updatesOmarchyPlugin() {
     } else if (pluginKind == QStringLiteral("current")) {
       initialPluginLink = QDir(currentLink).filePath(pluginPath);
     } else {
-      initialPluginLink = QDir(previousRoot).filePath(pluginPath);
+      const QString alias = sandbox.filePath(QStringLiteral("prefix-alias"));
+      QVERIFY(QFile::link(installPrefix, alias));
+      initialPluginLink = QDir(alias).filePath(QStringLiteral("lib/waypoint-9.9.8/") + pluginPath);
     }
     QVERIFY(QFile::link(initialPluginLink, pluginTarget));
   }

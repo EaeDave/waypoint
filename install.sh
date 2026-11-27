@@ -14,7 +14,7 @@ if [[ "$(uname -m)" != "x86_64" ]]; then
   printf 'Waypoint releases currently support Linux x86_64 only.\n' >&2
   exit 1
 fi
-for command in curl tar sha256sum install; do
+for command in curl tar sha256sum install readlink realpath; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     printf 'Missing required command: %s\n' "${command}" >&2
     exit 1
@@ -88,8 +88,8 @@ if [[ -L "${plugin_target}" ]]; then
   if [[ "${link}" != /* ]]; then
     link="$(dirname "${plugin_target}")/${link}"
   fi
-  link="$(realpath -ms -- "${link}")"
-  managed_lib="$(realpath -ms -- "${install_base}/lib")"
+  link="$(realpath -m -- "${link}")"
+  managed_lib="$(realpath -m -- "${install_base}/lib")"
   if [[ "${link}" == "${managed_lib}/"* ]]; then
     release_path="${link#"${managed_lib}/"}"
     if [[ "${release_path}" =~ ^waypoint-(current|[0-9]+\.[0-9]+\.[0-9]+)/${plugin_path}$ ]]; then

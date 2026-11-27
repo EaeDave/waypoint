@@ -10,8 +10,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
-#include <QSaveFile>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QThread>
@@ -337,12 +337,17 @@ int main(int argc, char *argv[]) {
         QStringLiteral("The new daemon did not become ready; Waypoint restored the previous version"));
   }
   const QFileInfo existingPlugin(pluginTarget);
-  const QString releasePath =
-      QFileInfo(currentLink).absoluteDir().relativeFilePath(existingPlugin.symLinkTarget());
-  const bool managedPlugin = existingPlugin.isSymLink() &&
-      QRegularExpression(QStringLiteral(
-          "^waypoint-(current|[0-9]+\\.[0-9]+\\.[0-9]+)/usr/share/waypoint/omarchy-waypoint$"))
-          .match(releasePath).hasMatch();
+  bool managedPlugin = false;
+  if (existingPlugin.isSymLink()) {
+    std::error_code pathError;
+    const auto target =
+        std::filesystem::weakly_canonical(existingPlugin.symLinkTarget().toStdString(), pathError);
+    const QDir managedLib(QFileInfo(currentLink).absoluteDir().canonicalPath());
+    const QString releasePath = managedLib.relativeFilePath(QString::fromStdString(target.string()));
+    managedPlugin = !pathError && QRegularExpression(QStringLiteral(
+        "^waypoint-(current|[0-9]+\\.[0-9]+\\.[0-9]+)/usr/share/waypoint/omarchy-waypoint$"))
+        .match(releasePath).hasMatch();
+  }
   const bool installPlugin = !existingPlugin.exists() && !existingPlugin.isSymLink() &&
       QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")));
   if (installedPlugin.isDir() && (managedPlugin || installPlugin)) {
