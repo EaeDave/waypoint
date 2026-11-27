@@ -17,8 +17,48 @@ env:
   QT_VERSION: 6.9.3
 
 jobs:
+  changes:
+    name: Select affected components
+    runs-on: ubuntu-24.04
+    outputs:
+      linux: ${{ steps.targets.outputs.linux }}
+      android: ${{ steps.targets.outputs.android }}
+      server: ${{ steps.targets.outputs.server }}
+      quickshell: ${{ steps.targets.outputs.quickshell }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - run: python3 -m unittest discover -s tests -p 'test_ci_targets.py'
+      - id: targets
+        env:
+          CI_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CI_HEAD: ${{ github.sha }}
+        run: python3 tools/ci_targets.py >> "$GITHUB_OUTPUT"
+
+  quickshell:
+    name: Quick Shell syntax checks
+    needs: changes
+    if: needs.changes.outputs.quickshell == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check plugin files
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes qt6-declarative-dev-tools
+          cd plugins/omarchy-waypoint
+          /usr/lib/qt6/bin/qmlformat ./*.qml >/dev/null
+          for script in ./*.js; do
+            sed '/^\.pragma library$/d' "$script" | node --check
+          done
+          python3 -m json.tool manifest.json >/dev/null
+
   linux:
     name: Linux build and tests
+    needs: changes
+    if: needs.changes.outputs.linux == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -42,12 +82,22 @@ jobs:
       - name: Test
         env:
           QT_QPA_PLATFORM: offscreen
-        run: |
-          ctest --preset dev
-          cargo test --workspace
+        run: ctest --preset dev
       - name: Lint
+        run: cmake --build build/dev --target waypoint_qmllint
+
+  server:
+    name: Server checks and container build
+    needs: changes
+    if: needs.changes.outputs.server == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Test and lint server
         run: |
-          cmake --build build/dev --target waypoint_qmllint
+          cargo test --workspace
           cargo clippy --workspace --all-targets -- -D warnings
       - name: Audit Rust dependencies
         run: |
@@ -55,18 +105,13 @@ jobs:
           # rsa and libsqlite3-sys are inactive, lockfile-only sqlx dependencies.
           cargo audit --ignore RUSTSEC-2023-0071 --ignore RUSTSEC-2026-0459
 
-  container:
-    name: Server container build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Build server image
         run: docker build --tag waypoint-api .
 
   android:
     name: Android arm64 build
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -104,3 +149,24 @@ jobs:
           name: waypoint-android-arm64-debug
           path: waypoint-android-arm64-debug.apk
           if-no-files-found: error
+
+  result:
+    name: CI result
+    if: ${{ always() }}
+    needs: [changes, quickshell, linux, server, android]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require selected jobs to succeed
+        shell: bash
+        env:
+          JOBS: ${{ toJSON(needs) }}
+        run: |
+          jq -e '
+            .changes as $changes |
+            $changes.result == "success" and
+            all(to_entries[] | select(.key != "changes");
+              $changes.outputs[.key] as $selected |
+              ($selected == "true" and .value.result == "success") or
+              ($selected == "false" and .value.result == "skipped")
+            )
+          ' <<< "$JOBS"
