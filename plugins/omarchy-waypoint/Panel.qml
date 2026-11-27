@@ -2791,22 +2791,34 @@ Panel {
                             year: root.taskPickerMonth.getFullYear()
                             locale: root.portugueseLocale
                             onClicked: date => root.chooseTaskDate(date)
-                            delegate: Text {
+                            delegate: Rectangle {
+                                id: pickerDay
                                 required property var model
-                                text: model.day
                                 width: (taskDateGrid.availableWidth - 6 * taskDateGrid.spacing) / 7
                                 height: (taskDateGrid.availableHeight - 5 * taskDateGrid.spacing) / 6
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
                                 readonly property string dateKey: Model.dateKey(model.date)
                                 readonly property bool futureCompletion: root.taskDatePickerTarget === "completion"
                                     && dateKey > root.latestCompletionDate
-                                color: dateKey === root.taskDatePickerSelection
-                                    ? Color.accent : Color.popups.text
-                                opacity: futureCompletion || model.month !== taskDateGrid.month ? 0.4 : 1
-                                font.family: root.fontFamily
-                                font.pixelSize: Style.font.body
-                                font.bold: model.today
+                                readonly property bool selected: dateKey === root.taskDatePickerSelection
+                                radius: Math.max(Style.cornerRadius, Style.space(6))
+                                color: dayHover.hovered
+                                    ? Style.hoverFillFor(Color.popups.text, Color.accent) : "transparent"
+
+                                HoverHandler {
+                                    id: dayHover
+                                    enabled: !pickerDay.futureCompletion
+                                }
+
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: pickerDay.model.day
+                                    color: pickerDay.selected ? Color.accent : Color.popups.text
+                                    opacity: pickerDay.futureCompletion
+                                        || pickerDay.model.month !== taskDateGrid.month ? 0.4 : 1
+                                    font.family: root.fontFamily
+                                    font.pixelSize: Style.font.body
+                                    font.bold: pickerDay.model.today
+                                }
                             }
                         }
                         RowLayout {
