@@ -303,8 +303,8 @@ int main(int argc, char *argv[]) {
     }
   }
 
-  const QString pluginSource =
-      QDir(installRoot).filePath(QStringLiteral("usr/share/waypoint/omarchy-waypoint"));
+  const QString pluginRelativePath = QStringLiteral("usr/share/waypoint/omarchy-waypoint");
+  const QFileInfo installedPlugin(QDir(installRoot).filePath(pluginRelativePath));
   const QString pluginTarget =
       QDir::home().filePath(QStringLiteral(".config/omarchy/plugins/io.waypoint.bar"));
 
@@ -335,10 +335,14 @@ int main(int argc, char *argv[]) {
     return fail(
         QStringLiteral("The new daemon did not become ready; Waypoint restored the previous version"));
   }
-  if (QFileInfo(pluginSource).isDir() &&
+  if (installedPlugin.isDir() &&
       QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")))) {
     QDir().mkpath(QFileInfo(pluginTarget).absolutePath());
-    if (!replaceSymlink(pluginTarget, pluginSource, &error)) {
+    if (!replaceSymlink(pluginTarget, QDir(currentLink).filePath(pluginRelativePath), &error) ||
+        QFileInfo(pluginTarget).canonicalFilePath() != installedPlugin.canonicalFilePath()) {
+      if (error.isEmpty()) {
+        error = QStringLiteral("Omarchy plugin does not point to the installed Waypoint release");
+      }
       replaceSymlink(currentLink, previousRoot, nullptr);
       if (!systemctl.isEmpty()) {
         run(systemctl,

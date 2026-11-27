@@ -79,11 +79,16 @@ else
   printf 'Could not start the user service. Run waypointd manually before opening Waypoint.\n' >&2
 fi
 
-plugin_source="${install_root}/usr/share/waypoint/omarchy-waypoint"
-if [[ -d "${plugin_source}" ]] && command -v omarchy >/dev/null 2>&1; then
-  plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
+plugin_source="${install_base}/lib/waypoint-current/usr/share/waypoint/omarchy-waypoint"
+plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
+if [[ -d "${plugin_source}" ]] &&
+   { [[ -L "${plugin_target}" ]] || command -v omarchy >/dev/null 2>&1; }; then
   mkdir -p "$(dirname "${plugin_target}")"
-  ln -sfn "${plugin_source}" "${plugin_target}"
+  ln -sfnT "${plugin_source}" "${plugin_target}"
+  if [[ ! "${plugin_target}" -ef "${install_root}/usr/share/waypoint/omarchy-waypoint" ]]; then
+    printf 'Omarchy plugin does not point to the installed Waypoint release.\n' >&2
+    exit 1
+  fi
   if command -v omarchy-shell >/dev/null 2>&1; then
     omarchy-shell shell rescanPlugins || true
     omarchy plugin enable io.waypoint.bar || true

@@ -47,7 +47,13 @@ void LinuxUpdaterTest::waitsForOmarchyShellRestart() {
   const QString controlLink = QDir(installPrefix).filePath(QStringLiteral("bin/waypointctl"));
   const QString restartMarker = sandbox.filePath(QStringLiteral("omarchy-restarted"));
 
-  QVERIFY(QDir().mkpath(QDir(home).filePath(QStringLiteral(".config/omarchy"))));
+  const QString pluginPath = QStringLiteral("usr/share/waypoint/omarchy-waypoint");
+  const QString pluginTarget =
+      QDir(home).filePath(QStringLiteral(".config/omarchy/plugins/io.waypoint.bar"));
+  QVERIFY(QDir().mkpath(QFileInfo(pluginTarget).absolutePath()));
+  QVERIFY(writeFile(QDir(previousRoot).filePath(pluginPath + QStringLiteral("/manifest.json")),
+                    QByteArrayLiteral("{}")));
+  QVERIFY(QFile::link(QDir(previousRoot).filePath(pluginPath), pluginTarget));
   QVERIFY(writeFile(QDir(previousRoot).filePath(QStringLiteral("usr/share/waypoint/VERSION")),
                     QByteArrayLiteral("9.9.8\n")));
   QVERIFY(writeFile(QDir(previousRoot).filePath(QStringLiteral("usr/bin/waypointctl")),
@@ -164,10 +170,14 @@ printf 'restart\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
   QCOMPARE(QFileInfo(currentLink).canonicalFilePath(),
            QFileInfo(QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9"))).canonicalFilePath());
 
-  const QString pluginTarget = QDir(home).filePath(QStringLiteral(".config/omarchy/plugins/io.waypoint.bar"));
-  QCOMPARE(
-      QFileInfo(pluginTarget).symLinkTarget(),
-      QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9/usr/share/waypoint/omarchy-waypoint")));
+  QCOMPARE(QFileInfo(pluginTarget).symLinkTarget(), QDir(currentLink).filePath(pluginPath));
+  QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(),
+           QDir(QFileInfo(currentLink).canonicalFilePath()).filePath(pluginPath));
+
+  QVERIFY(QFile::remove(currentLink));
+  QVERIFY(QFile::link(QStringLiteral("waypoint-9.9.8"), currentLink));
+  QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(),
+           QFileInfo(QDir(previousRoot).filePath(pluginPath)).canonicalFilePath());
 }
 
 QTEST_APPLESS_MAIN(LinuxUpdaterTest)
