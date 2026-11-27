@@ -2801,13 +2801,18 @@ Panel {
                                     && dateKey > root.latestCompletionDate
                                 readonly property bool selected: dateKey === root.taskDatePickerSelection
                                 radius: Math.max(Style.cornerRadius, Style.space(6))
-                                color: dayHover.hovered
+                                color: dayHover.containsMouse
                                     ? Style.hoverFillFor(Color.popups.text, Color.accent) : "transparent"
+                                border.width: dayHover.containsMouse ? Style.spacing.hairline : 0
+                                border.color: Color.popups.text
 
-                                HoverHandler {
+                                MouseArea {
                                     id: dayHover
-                                    enabled: !pickerDay.futureCompletion
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.NoButton
+                                    hoverEnabled: !pickerDay.futureCompletion
                                 }
+
 
                                 Text {
                                     anchors.centerIn: parent
