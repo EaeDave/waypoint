@@ -385,7 +385,7 @@ Android UI smoke tests are defined under `.maestro/`.
 
 ### Continuous integration and releases
 
-`.github/workflows/ci.yml` builds and tests Linux, audits Rust dependencies, builds the server container, and builds a generic arm64 debug APK without Firebase configuration for every pull request and push to `main`.
+`.github/workflows/ci.yml` selects jobs from the changed files on pull requests and pushes to `main`. A Quick Shell-only change checks plugin syntax without compiling Linux or Android. Native Android and desktop-only changes run their own jobs; shared client code runs both. Rust tests, dependency audit, and the container build run for server changes. Docs-only changes skip component jobs. Unknown paths and revision ranges that cannot be compared run full CI. `CI result` reports whether all selected jobs passed.
 
 `.github/workflows/release.yml` reads the semantic version from `CMakeLists.txt`. When `main` contains a version without a corresponding `v<version>` tag, it builds the maintainer's signed, Firebase-enabled Android APK and a bundled Linux package, creates the tag, generates checksums, and publishes a GitHub release. `server/Cargo.toml` must contain the same version.
 
