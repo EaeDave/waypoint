@@ -14,7 +14,12 @@ if [[ "$(uname -m)" != "x86_64" ]]; then
   printf 'Waypoint releases currently support Linux x86_64 only.\n' >&2
   exit 1
 fi
-for command in curl tar sha256sum install readlink realpath; do
+plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
+required_commands=(curl tar sha256sum install)
+if [[ -L "${plugin_target}" ]]; then
+  required_commands+=(readlink realpath)
+fi
+for command in "${required_commands[@]}"; do
   if ! command -v "${command}" >/dev/null 2>&1; then
     printf 'Missing required command: %s\n' "${command}" >&2
     exit 1
@@ -81,7 +86,6 @@ fi
 
 plugin_path="usr/share/waypoint/omarchy-waypoint"
 plugin_source="${install_base}/lib/waypoint-current/${plugin_path}"
-plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
 manage_plugin=false
 if [[ -L "${plugin_target}" ]]; then
   link="$(readlink -- "${plugin_target}")"

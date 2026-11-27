@@ -42,6 +42,7 @@ void LinuxUpdaterTest::updatesOmarchyPlugin_data() {
   QTest::addColumn<QString>("pluginKind");
   QTest::addColumn<bool>("daemonFails");
   QTest::newRow("migrate-versioned-link") << QStringLiteral("legacy") << false;
+  QTest::newRow("migrate-aliased-versioned-link") << QStringLiteral("aliased") << false;
   QTest::newRow("preserve-source-link") << QStringLiteral("source") << false;
   QTest::newRow("preserve-local-directory") << QStringLiteral("directory") << false;
   QTest::newRow("restore-active-link-on-failure") << QStringLiteral("current") << true;
@@ -77,10 +78,13 @@ void LinuxUpdaterTest::updatesOmarchyPlugin() {
       initialPluginLink = sourcePlugin;
     } else if (pluginKind == QStringLiteral("current")) {
       initialPluginLink = QDir(currentLink).filePath(pluginPath);
-    } else {
+    } else if (pluginKind == QStringLiteral("aliased")) {
       const QString alias = sandbox.filePath(QStringLiteral("prefix-alias"));
       QVERIFY(QFile::link(installPrefix, alias));
-      initialPluginLink = QDir(alias).filePath(QStringLiteral("lib/waypoint-9.9.8/") + pluginPath);
+      initialPluginLink = QDir(alias).filePath(QStringLiteral("lib/") + QFileInfo(previousRoot).fileName() +
+                                             u'/' + pluginPath);
+    } else {
+      initialPluginLink = QDir(previousRoot).filePath(pluginPath);
     }
     QVERIFY(QFile::link(initialPluginLink, pluginTarget));
   }
@@ -205,7 +209,7 @@ fi
       ? previousRoot : QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9"));
   QCOMPARE(QFileInfo(currentLink).canonicalFilePath(), QFileInfo(expectedRoot).canonicalFilePath());
 
-  if (pluginKind == QStringLiteral("legacy")) {
+  if (pluginKind == QStringLiteral("legacy") || pluginKind == QStringLiteral("aliased")) {
     QFile restartLog(restartMarker);
     QVERIFY2(restartLog.open(QIODevice::ReadOnly), "The updater did not reload the Omarchy plugin");
     QCOMPARE(restartLog.readAll(), QByteArrayLiteral("rescan\nrestart\n"));
