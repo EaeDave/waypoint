@@ -26,7 +26,7 @@ Panel {
     property var completionTask: null
     property var editedTask: null
     property bool completionPickerVisible: false
-    property bool completionCustomDateVisible: false
+    property string completionDate: ""
     property string completionFeedback: ""
     property var completionUndo: null
     readonly property color completionLateColor: "#d9a441"
@@ -59,7 +59,11 @@ Panel {
     property date editingDate: new Date()
     readonly property date activeTaskDate: creatingTask ? pendingQuickDate : editingDate
     property date taskPickerMonth: new Date()
-    property bool taskDatePickerForEnding: false
+    property string taskDatePickerTarget: "scheduled"
+    readonly property string taskDatePickerSelection: taskDatePickerTarget === "completion"
+        ? completionDate : taskDatePickerTarget === "ending"
+        ? taskCustomUntilDate.text : Model.dateKey(activeTaskDate)
+    property string latestCompletionDate: ""
     property string editingEmoji: ""
     property string editingCategoryId: ""
     property string emojiPickerTarget: ""
@@ -193,18 +197,21 @@ Panel {
             return;
         }
         const todayKey = Model.dateKey(new Date());
+        latestCompletionDate = todayKey;
         if (!editDate && task.occurrenceDate >= todayKey) {
             hostWidget.setOccurrenceCompleted(task.taskId, task.occurrenceDate, true, todayKey);
             return;
         }
         completionTask = task;
-        completionDateInput.text = String(task.completedDate || todayKey);
-        completionCustomDateVisible = editDate;
+        completionDate = String(task.completedDate || todayKey);
         completionPickerVisible = true;
     }
 
     function saveCompletion(dateKey) {
         if (!hostWidget || !completionTask)
+            return;
+        latestCompletionDate = Model.dateKey(new Date());
+        if (dateKey === "" || dateKey > latestCompletionDate)
             return;
         if (hostWidget.setOccurrenceCompleted(completionTask.taskId,
                 completionTask.occurrenceDate, true, dateKey,
@@ -585,16 +592,25 @@ Panel {
             + (list ? list.label : "Entrada") + "\n" + reminders + "\n" + repeat;
     }
 
-    function openTaskDatePicker(forEnding) {
-        taskDatePickerForEnding = forEnding;
-        const date = forEnding ? Model.parseLocalDate(taskCustomUntilDate.text) : activeTaskDate;
+    function openTaskDatePicker(target) {
+        taskDatePickerTarget = target;
+        const date = Model.parseLocalDate(taskDatePickerSelection);
         taskPickerMonth = new Date(date.getFullYear(), date.getMonth(), 1);
         taskDatePickerVisible = true;
     }
 
     function chooseTaskDate(date) {
-        if (taskDatePickerForEnding)
-            taskCustomUntilDate.text = Model.dateKey(date);
+        const dateKey = Model.dateKey(date);
+        if (taskDatePickerTarget === "completion") {
+            latestCompletionDate = Model.dateKey(new Date());
+            if (dateKey > latestCompletionDate)
+                return;
+            completionDate = dateKey;
+            taskDatePickerVisible = false;
+            return;
+        }
+        if (taskDatePickerTarget === "ending")
+            taskCustomUntilDate.text = dateKey;
         else if (creatingTask)
             pendingQuickDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
         else
@@ -756,6 +772,13 @@ Panel {
         completionFeedbackTimer.stop();
         completionFeedback = "";
         completionUndo = null;
+    }
+
+    Timer {
+        interval: 15000
+        repeat: true
+        running: root.opened && root.completionPickerVisible
+        onTriggered: root.latestCompletionDate = Model.dateKey(new Date())
     }
 
     Timer {
@@ -2338,7 +2361,7 @@ Panel {
                             accent: Color.accent
                             bordered: true
                             tooltipText: "Alterar data"
-                            onClicked: root.openTaskDatePicker(false)
+                            onClicked: root.openTaskDatePicker("scheduled")
                         }
                         TextField {
                             id: taskTimeInput
@@ -2555,7 +2578,7 @@ Panel {
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 bordered: true
-                                onClicked: root.openTaskDatePicker(true)
+                                onClicked: root.openTaskDatePicker("ending")
                             }
 
                             Text {
@@ -2678,7 +2701,7 @@ Panel {
 
             Rectangle {
                 anchors.fill: parent
-                z: 220
+                z: root.taskDatePickerTarget === "completion" ? 240 : 220
                 visible: root.taskDatePickerVisible
                 color: Color.menu.scrim
 
@@ -2709,7 +2732,8 @@ Panel {
                         spacing: Style.space(8)
 
                         Text {
-                            text: root.taskDatePickerForEnding ? "DATA FINAL" : "DATA DA TAREFA"
+                            text: root.taskDatePickerTarget === "completion" ? "DATA DA CONCLUSÃO"
+                                : root.taskDatePickerTarget === "ending" ? "DATA FINAL" : "DATA DA TAREFA"
                             color: Color.popups.text
                             font.family: root.fontFamily
                             font.pixelSize: Style.font.caption
@@ -2774,10 +2798,12 @@ Panel {
                                 height: (taskDateGrid.availableHeight - 5 * taskDateGrid.spacing) / 6
                                 horizontalAlignment: Text.AlignHCenter
                                 verticalAlignment: Text.AlignVCenter
-                                color: Model.dateKey(model.date) === (root.taskDatePickerForEnding
-                                    ? taskCustomUntilDate.text : Model.dateKey(root.activeTaskDate))
+                                readonly property string dateKey: Model.dateKey(model.date)
+                                readonly property bool futureCompletion: root.taskDatePickerTarget === "completion"
+                                    && dateKey > root.latestCompletionDate
+                                color: dateKey === root.taskDatePickerSelection
                                     ? Color.accent : Color.popups.text
-                                opacity: model.month === taskDateGrid.month ? 1 : 0.4
+                                opacity: futureCompletion || model.month !== taskDateGrid.month ? 0.4 : 1
                                 font.family: root.fontFamily
                                 font.pixelSize: Style.font.body
                                 font.bold: model.today
@@ -3203,49 +3229,18 @@ Panel {
                             accent: Color.accent
                             bordered: true
                             enabled: root.completionTask
-                                     && root.completionTask.occurrenceDate <= Model.dateKey(new Date())
+                                     && root.completionTask.occurrenceDate <= root.latestCompletionDate
                                      && root.hostWidget && !root.hostWidget.actionBusy
                             onClicked: root.saveCompletion(root.completionTask.occurrenceDate)
                         }
                         Button {
                             Layout.fillWidth: true
-                            text: "Escolher data"
+                            text: "Escolher data · " + root.portugueseLocale.toString(
+                                Model.parseLocalDate(root.completionDate), "dd/MM/yyyy")
                             foreground: Color.popups.text
                             accent: Color.accent
                             bordered: true
-                            onClicked: {
-                                root.completionCustomDateVisible = true;
-                                completionDateInput.forceActiveFocus();
-                                completionDateInput.selectAll();
-                            }
-                        }
-                        TextField {
-                            id: completionDateInput
-                            Layout.fillWidth: true
-                            visible: root.completionCustomDateVisible
-                            placeholderText: "AAAA-MM-DD"
-                            color: Color.popups.text
-                            font.family: root.fontFamily
-                            selectByMouse: true
-                            validator: RegularExpressionValidator {
-                                regularExpression: /\d{4}-\d{2}-\d{2}/
-                            }
-                            readonly property bool validDate: acceptableInput
-                                && Qt.formatDate(Date.fromLocaleString(Qt.locale("C"), text,
-                                                                      "yyyy-MM-dd"), "yyyy-MM-dd") === text
-                                && text <= Model.dateKey(new Date())
-                            onAccepted: {
-                                if (validDate)
-                                    root.saveCompletion(text);
-                            }
-                        }
-                        Text {
-                            Layout.fillWidth: true
-                            visible: root.completionCustomDateVisible
-                            text: "Use AAAA-MM-DD, até hoje."
-                            color: Qt.darker(Color.popups.text, 1.5)
-                            font.family: root.fontFamily
-                            font.pixelSize: Style.font.caption
+                            onClicked: root.openTaskDatePicker("completion")
                         }
                         RowLayout {
                             Layout.fillWidth: true
@@ -3258,14 +3253,14 @@ Panel {
                             }
                             Item { Layout.fillWidth: true }
                             Button {
-                                visible: root.completionCustomDateVisible
                                 text: "Salvar"
                                 foreground: Color.popups.text
                                 accent: Color.accent
                                 selected: true
-                                enabled: completionDateInput.validDate
+                                enabled: root.completionDate !== ""
+                                         && root.completionDate <= root.latestCompletionDate
                                          && root.hostWidget && !root.hostWidget.actionBusy
-                                onClicked: root.saveCompletion(completionDateInput.text)
+                                onClicked: root.saveCompletion(root.completionDate)
                             }
                         }
                     }

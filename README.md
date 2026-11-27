@@ -60,6 +60,8 @@ Desktop, Android, the home-screen widget, and the Omarchy panel keep each comple
 
 Use **Alterar data** to correct an actual completion date without changing the original registration timestamp, or **Desfazer** to reopen the occurrence. Undoing a date edit restores the previous known actual date. Legacy completions retain their registration timestamp but have an unknown actual date until explicitly corrected; the app never guesses it from the timestamp.
 
+In the Omarchy panel, **Escolher data** opens a calendar for the actual completion date. Select today or an earlier day, then choose **Salvar**.
+
 The registration day has a collapsed **Conclusões registradas** section, grouped by task with expandable original occurrences. This secondary activity does not duplicate normal calendar markers or change recurrence cadence. The pending-only filter hides it. Small Android widgets expose the complete, scrollable day history through **DIA** or **VER TODAS**.
 
 The CLI requires an explicit actual date when completing a task. For a recurring occurrence, `--date` identifies the original due day:
