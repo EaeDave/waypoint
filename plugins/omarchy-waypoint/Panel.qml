@@ -63,7 +63,7 @@ Panel {
     readonly property string taskDatePickerSelection: taskDatePickerTarget === "completion"
         ? completionDate : taskDatePickerTarget === "ending"
         ? taskCustomUntilDate.text : Model.dateKey(activeTaskDate)
-    readonly property string latestCompletionDate: Model.dateKey(today)
+    property string latestCompletionDate: ""
     property string editingEmoji: ""
     property string editingCategoryId: ""
     property string emojiPickerTarget: ""
@@ -197,6 +197,7 @@ Panel {
             return;
         }
         const todayKey = Model.dateKey(new Date());
+        latestCompletionDate = todayKey;
         if (!editDate && task.occurrenceDate >= todayKey) {
             hostWidget.setOccurrenceCompleted(task.taskId, task.occurrenceDate, true, todayKey);
             return;
@@ -208,6 +209,9 @@ Panel {
 
     function saveCompletion(dateKey) {
         if (!hostWidget || !completionTask)
+            return;
+        latestCompletionDate = Model.dateKey(new Date());
+        if (dateKey === "" || dateKey > latestCompletionDate)
             return;
         if (hostWidget.setOccurrenceCompleted(completionTask.taskId,
                 completionTask.occurrenceDate, true, dateKey,
@@ -598,6 +602,7 @@ Panel {
     function chooseTaskDate(date) {
         const dateKey = Model.dateKey(date);
         if (taskDatePickerTarget === "completion") {
+            latestCompletionDate = Model.dateKey(new Date());
             if (dateKey > latestCompletionDate)
                 return;
             completionDate = dateKey;
@@ -767,6 +772,13 @@ Panel {
         completionFeedbackTimer.stop();
         completionFeedback = "";
         completionUndo = null;
+    }
+
+    Timer {
+        interval: 15000
+        repeat: true
+        running: root.opened && root.completionPickerVisible
+        onTriggered: root.latestCompletionDate = Model.dateKey(new Date())
     }
 
     Timer {
@@ -3217,7 +3229,7 @@ Panel {
                             accent: Color.accent
                             bordered: true
                             enabled: root.completionTask
-                                     && root.completionTask.occurrenceDate <= Model.dateKey(new Date())
+                                     && root.completionTask.occurrenceDate <= root.latestCompletionDate
                                      && root.hostWidget && !root.hostWidget.actionBusy
                             onClicked: root.saveCompletion(root.completionTask.occurrenceDate)
                         }
