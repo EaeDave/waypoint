@@ -2,6 +2,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QTemporaryDir>
@@ -32,10 +34,22 @@ class LinuxUpdaterTest final : public QObject {
   Q_OBJECT
 
 private slots:
-  void waitsForOmarchyShellRestart();
+  void updatesOmarchyPlugin_data();
+  void updatesOmarchyPlugin();
 };
 
-void LinuxUpdaterTest::waitsForOmarchyShellRestart() {
+void LinuxUpdaterTest::updatesOmarchyPlugin_data() {
+  QTest::addColumn<QString>("pluginKind");
+  QTest::addColumn<bool>("daemonFails");
+  QTest::newRow("migrate-versioned-link") << QStringLiteral("legacy") << false;
+  QTest::newRow("preserve-source-link") << QStringLiteral("source") << false;
+  QTest::newRow("preserve-local-directory") << QStringLiteral("directory") << false;
+  QTest::newRow("restore-active-link-on-failure") << QStringLiteral("current") << true;
+}
+
+void LinuxUpdaterTest::updatesOmarchyPlugin() {
+  QFETCH(QString, pluginKind);
+  QFETCH(bool, daemonFails);
   QTemporaryDir sandbox;
   QVERIFY(sandbox.isValid());
 
@@ -53,7 +67,21 @@ void LinuxUpdaterTest::waitsForOmarchyShellRestart() {
   QVERIFY(QDir().mkpath(QFileInfo(pluginTarget).absolutePath()));
   QVERIFY(writeFile(QDir(previousRoot).filePath(pluginPath + QStringLiteral("/manifest.json")),
                     QByteArrayLiteral("{}")));
-  QVERIFY(QFile::link(QDir(previousRoot).filePath(pluginPath), pluginTarget));
+  const QString sourcePlugin = sandbox.filePath(QStringLiteral("checkout/plugin"));
+  QString initialPluginLink;
+  if (pluginKind == QStringLiteral("directory")) {
+    QVERIFY(writeFile(QDir(pluginTarget).filePath(QStringLiteral("manifest.json")), QByteArrayLiteral("{}")));
+  } else {
+    if (pluginKind == QStringLiteral("source")) {
+      QVERIFY(writeFile(QDir(sourcePlugin).filePath(QStringLiteral("manifest.json")), QByteArrayLiteral("{}")));
+      initialPluginLink = sourcePlugin;
+    } else if (pluginKind == QStringLiteral("current")) {
+      initialPluginLink = QDir(currentLink).filePath(pluginPath);
+    } else {
+      initialPluginLink = QDir(previousRoot).filePath(pluginPath);
+    }
+    QVERIFY(QFile::link(initialPluginLink, pluginTarget));
+  }
   QVERIFY(writeFile(QDir(previousRoot).filePath(QStringLiteral("usr/share/waypoint/VERSION")),
                     QByteArrayLiteral("9.9.8\n")));
   QVERIFY(writeFile(QDir(previousRoot).filePath(QStringLiteral("usr/bin/waypointctl")),
@@ -130,8 +158,13 @@ printf 'restart\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
 
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("curl")), curlScript, true));
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("tar")), tarScript, true));
-  QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("systemctl")),
-                    QByteArrayLiteral("#!/bin/sh\nexit 0\n"), true));
+  const QByteArray systemctlScript = R"(#!/bin/sh
+if [ "$*" = "--user restart waypointd.service" ] && [ "$WAYPOINT_TEST_DAEMON_FAILS" = 1 ] &&
+   grep -qx "$WAYPOINT_TEST_RELEASE_VERSION" "$WAYPOINT_INSTALL_PREFIX/lib/waypoint-current/usr/share/waypoint/VERSION"; then
+  exit 1
+fi
+)";
+  QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("systemctl")), systemctlScript, true));
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("omarchy")), omarchyScript, true));
   QVERIFY(writeFile(QDir(fakeBin).filePath(QStringLiteral("omarchy-shell")), omarchyShellScript, true));
 
@@ -146,6 +179,7 @@ printf 'restart\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
           QCryptographicHash::hash(QByteArrayLiteral("archive"), QCryptographicHash::Sha256).toHex()));
   environment.insert(QStringLiteral("WAYPOINT_TEST_RELEASE_VERSION"), QString::fromLatin1(releaseVersion));
   environment.insert(QStringLiteral("WAYPOINT_TEST_OMARCHY_MARKER"), restartMarker);
+  environment.insert(QStringLiteral("WAYPOINT_TEST_DAEMON_FAILS"), daemonFails ? QStringLiteral("1") : QStringLiteral("0"));
   environment.insert(QStringLiteral("PATH"),
                      fakeBin + QDir::listSeparator() + environment.value(QStringLiteral("PATH")));
 
@@ -163,21 +197,33 @@ printf 'restart\n' >>"$WAYPOINT_TEST_OMARCHY_MARKER"
 
   QVERIFY2(updater.waitForFinished(15000), qPrintable(updater.errorString()));
   const QByteArray output = updater.readAll();
-  QVERIFY2(updater.exitStatus() == QProcess::NormalExit && updater.exitCode() == 0, output.constData());
-  QFile restartLog(restartMarker);
-  QVERIFY2(restartLog.open(QIODevice::ReadOnly), "The updater did not reload the Omarchy plugin");
-  QCOMPARE(restartLog.readAll(), QByteArrayLiteral("rescan\nrestart\n"));
-  QCOMPARE(QFileInfo(currentLink).canonicalFilePath(),
-           QFileInfo(QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9"))).canonicalFilePath());
+  QVERIFY2(updater.exitStatus() == QProcess::NormalExit, output.constData());
+  QCOMPARE(updater.exitCode(), daemonFails ? 1 : 0);
+  const QString expectedRoot = daemonFails
+      ? previousRoot : QDir(installPrefix).filePath(QStringLiteral("lib/waypoint-9.9.9"));
+  QCOMPARE(QFileInfo(currentLink).canonicalFilePath(), QFileInfo(expectedRoot).canonicalFilePath());
 
-  QCOMPARE(QFileInfo(pluginTarget).symLinkTarget(), QDir(currentLink).filePath(pluginPath));
-  QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(),
-           QDir(QFileInfo(currentLink).canonicalFilePath()).filePath(pluginPath));
-
-  QVERIFY(QFile::remove(currentLink));
-  QVERIFY(QFile::link(QStringLiteral("waypoint-9.9.8"), currentLink));
-  QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(),
-           QFileInfo(QDir(previousRoot).filePath(pluginPath)).canonicalFilePath());
+  if (pluginKind == QStringLiteral("legacy")) {
+    QFile restartLog(restartMarker);
+    QVERIFY2(restartLog.open(QIODevice::ReadOnly), "The updater did not reload the Omarchy plugin");
+    QCOMPARE(restartLog.readAll(), QByteArrayLiteral("rescan\nrestart\n"));
+    QCOMPARE(QFileInfo(pluginTarget).symLinkTarget(), QDir(currentLink).filePath(pluginPath));
+    QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(), QDir(expectedRoot).filePath(pluginPath));
+  } else {
+    QVERIFY(!QFileInfo::exists(restartMarker));
+    QCOMPARE(QFileInfo(pluginTarget).symLinkTarget(), initialPluginLink);
+    if (daemonFails) {
+      QFile status(QDir(home).filePath(QStringLiteral(".local/share/Waypoint/Waypoint/update-release.json")));
+      QVERIFY(status.open(QIODevice::ReadOnly));
+      const auto result = QJsonDocument::fromJson(status.readAll()).object();
+      QCOMPARE(result.value(QStringLiteral("installState")).toString(), QStringLiteral("error"));
+      QVERIFY(result.value(QStringLiteral("installError")).toString().contains(
+          QStringLiteral("restored the previous version")));
+      QCOMPARE(QFileInfo(pluginTarget).canonicalFilePath(), QDir(previousRoot).filePath(pluginPath));
+    } else {
+      QVERIFY(QFileInfo::exists(QDir(pluginTarget).filePath(QStringLiteral("manifest.json"))));
+    }
+  }
 }
 
 QTEST_APPLESS_MAIN(LinuxUpdaterTest)

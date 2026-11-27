@@ -11,6 +11,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QSaveFile>
+#include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QThread>
@@ -335,8 +336,16 @@ int main(int argc, char *argv[]) {
     return fail(
         QStringLiteral("The new daemon did not become ready; Waypoint restored the previous version"));
   }
-  if (installedPlugin.isDir() &&
-      QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")))) {
+  const QFileInfo existingPlugin(pluginTarget);
+  const QString releasePath =
+      QFileInfo(currentLink).absoluteDir().relativeFilePath(existingPlugin.symLinkTarget());
+  const bool managedPlugin = existingPlugin.isSymLink() &&
+      QRegularExpression(QStringLiteral(
+          "^waypoint-(current|[0-9]+\\.[0-9]+\\.[0-9]+)/usr/share/waypoint/omarchy-waypoint$"))
+          .match(releasePath).hasMatch();
+  const bool installPlugin = !existingPlugin.exists() && !existingPlugin.isSymLink() &&
+      QFileInfo::exists(QDir::home().filePath(QStringLiteral(".config/omarchy")));
+  if (installedPlugin.isDir() && (managedPlugin || installPlugin)) {
     QDir().mkpath(QFileInfo(pluginTarget).absolutePath());
     if (!replaceSymlink(pluginTarget, QDir(currentLink).filePath(pluginRelativePath), &error) ||
         QFileInfo(pluginTarget).canonicalFilePath() != installedPlugin.canonicalFilePath()) {
@@ -351,11 +360,10 @@ int main(int argc, char *argv[]) {
       }
       return fail(error);
     }
-  }
-
-  if (!reloadOmarchyPlugin(pluginTarget, &error)) {
-    return fail(
-        QStringLiteral("Waypoint was updated, but the Omarchy plugin could not reload: %1").arg(error));
+    if (!reloadOmarchyPlugin(pluginTarget, &error)) {
+      return fail(
+          QStringLiteral("Waypoint was updated, but the Omarchy plugin could not reload: %1").arg(error));
+    }
   }
   writeStatus(QStringLiteral("complete"), releaseVersion);
   if (relaunchDesktop) {

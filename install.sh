@@ -79,13 +79,30 @@ else
   printf 'Could not start the user service. Run waypointd manually before opening Waypoint.\n' >&2
 fi
 
-plugin_source="${install_base}/lib/waypoint-current/usr/share/waypoint/omarchy-waypoint"
+plugin_path="usr/share/waypoint/omarchy-waypoint"
+plugin_source="${install_base}/lib/waypoint-current/${plugin_path}"
 plugin_target="${HOME}/.config/omarchy/plugins/io.waypoint.bar"
-if [[ -d "${plugin_source}" ]] &&
-   { [[ -L "${plugin_target}" ]] || command -v omarchy >/dev/null 2>&1; }; then
+manage_plugin=false
+if [[ -L "${plugin_target}" ]]; then
+  link="$(readlink -- "${plugin_target}")"
+  if [[ "${link}" != /* ]]; then
+    link="$(dirname "${plugin_target}")/${link}"
+  fi
+  link="$(realpath -ms -- "${link}")"
+  managed_lib="$(realpath -ms -- "${install_base}/lib")"
+  if [[ "${link}" == "${managed_lib}/"* ]]; then
+    release_path="${link#"${managed_lib}/"}"
+    if [[ "${release_path}" =~ ^waypoint-(current|[0-9]+\.[0-9]+\.[0-9]+)/${plugin_path}$ ]]; then
+      manage_plugin=true
+    fi
+  fi
+elif [[ ! -e "${plugin_target}" ]] && command -v omarchy >/dev/null 2>&1; then
+  manage_plugin=true
+fi
+if [[ "${manage_plugin}" == true && -d "${plugin_source}" ]]; then
   mkdir -p "$(dirname "${plugin_target}")"
   ln -sfnT "${plugin_source}" "${plugin_target}"
-  if [[ ! "${plugin_target}" -ef "${install_root}/usr/share/waypoint/omarchy-waypoint" ]]; then
+  if [[ ! "${plugin_target}" -ef "${install_root}/${plugin_path}" ]]; then
     printf 'Omarchy plugin does not point to the installed Waypoint release.\n' >&2
     exit 1
   fi
